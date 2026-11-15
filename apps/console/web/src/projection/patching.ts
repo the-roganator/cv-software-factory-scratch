@@ -29,7 +29,7 @@ export function lastRead(events: readonly PublicEvent[], t: number): PublicEvent
 }
 
 /** The app's repository, whose moves go down the line and whose pins read "the app's". */
-export const APP_REPOSITORY = 'the-roganator/cv-worlds-worst-website';
+export const APP_REPOSITORY = 'the-roganator/cv-worlds-worst-website-scratch';
 
 type Day = PayloadOf<'patching.read'>;
 type Repository = Day['repositories'][number];

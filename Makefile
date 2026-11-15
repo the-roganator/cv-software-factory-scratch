@@ -1,6 +1,6 @@
 # One entry point for the factory. `make` on its own lists the targets.
 
-CLUSTER := software-factory
+CLUSTER := software-factory-scratch
 CONTEXT := k3d-$(CLUSTER)
 # The volume k3s's data directory lives on, outside the node, so the cluster can move to a new k3s (deploy/k3d/cluster.yaml).
 STATE := k3d-$(CLUSTER)-state
@@ -17,7 +17,7 @@ REVISION ?= main
 # patches, which leave out what would read GitHub from the check's cluster. Never set on a cluster of Martin's.
 PLATFORM_CHECK ?=
 # The private checkout, which holds the answer key: `make up` gives the scoreboard each entry's id and fingerprint.
-PRIVATE_DIR ?= $(CURDIR)/../cv-software-factory-private
+override PRIVATE_DIR := /nonexistent/the-scratch-cluster-has-no-private-checkout
 # The workers that connect to the store, each as a role of its own (packages/store/migrations/0022_worker-roles.sql).
 STORE_WORKERS := triage line gateway probes crawler intake logs
 # The local certificate authority behind the console's HTTPS, outside the repository (scripts/local-ca.ts).
@@ -30,10 +30,10 @@ LOCAL_CA = $(or $(shell node scripts/local-ca.ts dir),$(error node cannot say wh
 # (packages/store/src/operator.ts), so it works on any cluster as soon as it is made. A store not yet migrated has no
 # operator, and the owner appends there; it cannot enrol at all.
 as-martin = $(call password,factory,postgres-$(1)) && \
-	{ $(KUBECTL) -n factory port-forward svc/postgres 15432:5432 >/dev/null 2>&1 & forward=$$!; \
+	{ $(KUBECTL) -n factory port-forward svc/postgres 25432:5432 >/dev/null 2>&1 & forward=$$!; \
 	trap 'kill $$forward' EXIT; sleep 2; \
 	secret() { $(KUBECTL) -n factory get secret "$$1" -o jsonpath='{.data.password}' | base64 -d; }; \
-	export PGHOST=127.0.0.1 PGPORT=15432 PGDATABASE=factory; \
+	export PGHOST=127.0.0.1 PGPORT=25432 PGDATABASE=factory; \
 	role="$$(secret postgres-$(1) | PGUSER=factory PGPASSWORD="$$(secret postgres)" \
 		node packages/store/src/operator.ts factory_$(1))" && \
 	if [ "$$role" = factory ]; then from=postgres; else from=postgres-$${role\#factory_}; fi && \
@@ -106,8 +106,8 @@ up: ## Create the local cluster; Argo CD then deploys everything from main (or R
 	@# A cluster without the console's HTTPS port gets it in place: k3d makes the cluster's load balancer again, and keeps
 	@# everything in the cluster, the store included. The load balancer's configured ports, so a stopped one counts too.
 	@docker inspect -f '{{json .HostConfig.PortBindings}}' k3d-$(CLUSTER)-serverlb | grep -q '"443/tcp"' || { \
-		echo "  This cluster has no HTTPS port: adding 127.0.0.1:8443, which restarts its load balancer and nothing else."; \
-		k3d cluster edit $(CLUSTER) --port-add 127.0.0.1:8443:443@loadbalancer; }
+		echo "  This cluster has no HTTPS port: adding 127.0.0.1:9443, which restarts its load balancer and nothing else."; \
+		k3d cluster edit $(CLUSTER) --port-add 127.0.0.1:9443:443@loadbalancer; }
 	@# The Kubernetes API's binding is fixed when the cluster is made, and `k3d cluster edit` cannot move it: a cluster
 	@# made before deploy/k3d/cluster.yaml bound it to 127.0.0.1 still publishes it on every interface. Said, not mended:
 	@# only a cluster made again moves it, which `make upgrade-cluster` does, keeping the store.
@@ -199,21 +199,21 @@ gateway-key:
 # because the Keychain prints a value with newlines as hex), goes to the cluster the same way: through stdin, decoded on
 # the way. Without it the GitHub worker reads and writes nothing. Restart the worker after changing the key.
 github-key:
-	@if [ -n "$${GITHUB_APP_PRIVATE_KEY:-}" ] || security find-generic-password -s factory-github-app-key >/dev/null 2>&1; then \
+	@if [ -n "$${GITHUB_APP_PRIVATE_KEY:-}" ] || security find-generic-password -s scratch-factory-github-app-key >/dev/null 2>&1; then \
 			{ if [ -n "$${GITHUB_APP_PRIVATE_KEY:-}" ]; then printf '%s\n' "$$GITHUB_APP_PRIVATE_KEY"; \
-				else security find-generic-password -s factory-github-app-key -w | base64 -d; fi; } | \
+				else security find-generic-password -s scratch-factory-github-app-key -w | base64 -d; fi; } | \
 				$(KUBECTL) -n factory create secret generic github-app --from-file=private-key=/dev/stdin --dry-run=client -o yaml | \
 				$(apply-secret) >/dev/null && echo "  The GitHub worker has the App's key, so it acts as the factory in GitHub."; \
-		else echo "  No App key (GITHUB_APP_PRIVATE_KEY, or the Keychain's factory-github-app-key): the GitHub worker reads and writes nothing."; fi
+		else echo "  No App key (GITHUB_APP_PRIVATE_KEY, or the Keychain's scratch-factory-github-app-key): the GitHub worker reads and writes nothing."; fi
 
 # Pushover's application token and Martin's user key, from the environment (PUSHOVER_APP_TOKEN, PUSHOVER_USER_KEY) or
 # the macOS Keychain, go to Alertmanager the same way: through
 # stdin, as one Secret's two entries, never written to a file or put on a command line. Without both there is no
 # Secret, and any made before is deleted: Alertmanager still comes up and still sends the app's objective alerts to the intake, but nothing reaches
 # Martin's phone. Alertmanager reads the keys each time it sends, so a change needs no restart.
-pushover-key: ## Give Alertmanager Pushover's keys from the Keychain (pushover-app-token, pushover-user-key)
-	@token="$${PUSHOVER_APP_TOKEN:-$$(security find-generic-password -s pushover-app-token -w 2>/dev/null)}"; \
-		user="$${PUSHOVER_USER_KEY:-$$(security find-generic-password -s pushover-user-key -w 2>/dev/null)}"; \
+pushover-key: ## Give Alertmanager Pushover's keys from the Keychain (scratch-pushover-app-token, scratch-pushover-user-key)
+	@token="$${PUSHOVER_APP_TOKEN:-$$(security find-generic-password -s scratch-pushover-app-token -w 2>/dev/null)}"; \
+		user="$${PUSHOVER_USER_KEY:-$$(security find-generic-password -s scratch-pushover-user-key -w 2>/dev/null)}"; \
 		if [ -n "$$token" ] && [ -n "$$user" ]; then \
 			$(call namespace,telemetry) && \
 			printf 'app-token=%s\nuser-key=%s\n' "$$token" "$$user" | \
@@ -221,7 +221,7 @@ pushover-key: ## Give Alertmanager Pushover's keys from the Keychain (pushover-a
 				$(apply-secret) >/dev/null && echo "  Alertmanager has Pushover's keys, so pages and notifications reach Martin's phone."; \
 		else $(KUBECTL) -n telemetry delete secret pushover --ignore-not-found >/dev/null || \
 				echo "  Could not delete the old pushover Secret: Alertmanager may still page with the keys it had."; \
-			echo "  No Pushover keys (PUSHOVER_APP_TOKEN and PUSHOVER_USER_KEY, or the Keychain's pushover-app-token and pushover-user-key): nothing reaches Martin's phone."; fi
+			echo "  No Pushover keys (PUSHOVER_APP_TOKEN and PUSHOVER_USER_KEY, or the Keychain's scratch-pushover-app-token and scratch-pushover-user-key): nothing reaches Martin's phone."; fi
 
 # The scoreboard's Secrets (deploy/base/scoreboard). Its role's password, made once, is in two: `factory`'s, for the
 # migrations that set it, and the scoreboard's own, for its pod. The answer key, each entry's id and fingerprint and
@@ -270,7 +270,7 @@ share-key: ## Give the traffic generator its signing key, made once, and the app
 # may use (scripts/github-settings.ts makes it), is given the same key again each time, as SCAN_STATE_KEY. A key made
 # anew opens no state sealed before it: the next scan reads the alerts, and seals with the new one. The worker reads
 # its keys as it starts, so a new one starts it again, before GitHub is given it: a run that stops there has done so.
-SCAN_STATE_REPOSITORIES := the-roganator/cv-software-factory the-roganator/cv-worlds-worst-website
+SCAN_STATE_REPOSITORIES := the-roganator/cv-software-factory-scratch the-roganator/cv-worlds-worst-website-scratch
 scan-state-key: ## Give each repository's scan and the GitHub worker the key the scan's state is sealed with, made once
 	@$(call namespace,factory)
 	@for repository in $(SCAN_STATE_REPOSITORIES); do name="$${repository#*/}"; \
@@ -424,7 +424,7 @@ samples: node_modules ## Load the sample work items into the cluster's store, wi
 	@$(KUBECTL) -n factory delete pod artifacts-copier --wait=false >/dev/null
 	@# Then the events, as Martin, through a port-forward to Postgres: the samples hold his commands too.
 	@$(call as-operator,ARTIFACTS_DIR=packages/samples/log/artifacts node apps/factory/src/cli.ts events load packages/samples/log)
-	@echo "  Console  https://console.localhost:8443"
+	@echo "  Console  https://console.localhost:9443"
 
 bench-down: ## Take the bench down: stop its host gateway (:8180) and remove its throwaway Postgres containers (sf-bench-*), saying what each cost
 	@.claude/skills/try-the-line/bin/bench-down.sh
@@ -432,9 +432,9 @@ bench-down: ## Take the bench down: stop its host gateway (:8180) and remove its
 real-store: node_modules ## Replace the cluster's store with an empty one for real events (FORCE=1 if it holds some, or another session holds the cluster)
 	$(cluster-held)
 	@# As the database's owner, through a port-forward: only the owner may drop the schema.
-	@$(KUBECTL) -n factory port-forward svc/postgres 15432:5432 >/dev/null 2>&1 & forward=$$!; \
+	@$(KUBECTL) -n factory port-forward svc/postgres 25432:5432 >/dev/null 2>&1 & forward=$$!; \
 		trap 'kill $$forward' EXIT; sleep 2; \
-		PGHOST=127.0.0.1 PGPORT=15432 PGDATABASE=factory PGUSER=factory \
+		PGHOST=127.0.0.1 PGPORT=25432 PGDATABASE=factory PGUSER=factory \
 		PGPASSWORD="$$($(KUBECTL) -n factory get secret postgres -o jsonpath='{.data.password}' | base64 -d)" \
 		node packages/store/src/real-store.ts $(if $(FORCE),--force)
 	@# The samples' screenshots go too, and the console starts again from an empty history.
@@ -444,7 +444,7 @@ real-store: node_modules ## Replace the cluster's store with an empty one for re
 	@$(KUBECTL) -n factory exec artifacts-copier -- find /var/lib/factory/artifacts -mindepth 1 -delete
 	@$(KUBECTL) -n factory delete pod artifacts-copier --wait=false >/dev/null
 	@$(KUBECTL) -n factory rollout restart deployment/console >/dev/null
-	@echo "  Console  https://console.localhost:8443"
+	@echo "  Console  https://console.localhost:9443"
 
 stop-the-line: node_modules ## Stop the line: agents stop, workers take nothing new, a canary in flight aborts if its stable version has a pod (REASON="...")
 	@# Both halves run whichever fails: a canary is aborted even if the store cannot be reached, and the other way round.
@@ -478,15 +478,15 @@ drill-vulnerability: node_modules ## Print a drill's pull requests and its excep
 		--advisory='$(subst ','\'',$(value ADVISORY))' --rating='$(subst ','\'',$(value RATING))' \
 		$(if $(EXPIRES),--expires='$(subst ','\'',$(value EXPIRES))') $(if $(REASON),--reason='$(subst ','\'',$(value REASON))')
 
-# The proofs' role, through a port-forward of its own (as-martin's is 15432, which the drill's stop and start use), with
+# The proofs' role, through a port-forward of its own (as-martin's is 25432, which the drill's stop and start use), with
 # its password from the Secret `make up` makes. Every proof is taken from this checkout, which must be main's head,
 # clean; the drill asks first; nothing runs on a schedule (apps/factory/src/commands/guardrails.ts).
 guardrails: node_modules ## Take every guardrail's proof but the attacks, and record each in the store, from a clean main (PROOFS="egress bypass" for some)
 	@secret() { $(KUBECTL) -n factory get secret "$$1" -o jsonpath='{.data.password}' | base64 -d; }; \
 	password="$$(secret postgres-proofs)" && [ -n "$$password" ] || { echo "No postgres-proofs Secret: run make up." >&2; exit 2; }; \
-	{ $(KUBECTL) -n factory port-forward svc/postgres 15433:5432 >/dev/null 2>&1 & forward=$$!; \
+	{ $(KUBECTL) -n factory port-forward svc/postgres 25433:5432 >/dev/null 2>&1 & forward=$$!; \
 	trap 'kill $$forward' EXIT; sleep 2; \
-	PGHOST=127.0.0.1 PGPORT=15433 PGDATABASE=factory PGUSER=factory_proofs PGPASSWORD="$$password" KUBE_CONTEXT=$(CONTEXT) \
+	PGHOST=127.0.0.1 PGPORT=25433 PGDATABASE=factory PGUSER=factory_proofs PGPASSWORD="$$password" KUBE_CONTEXT=$(CONTEXT) \
 		node apps/factory/src/cli.ts guardrails $(foreach proof,$(PROOFS),--only $(proof)); }
 
 enrol: node_modules ## Print a one-time code to enrol a passkey on the console (REVOKE_OTHERS=1: revoke every passkey and session first)
@@ -503,8 +503,8 @@ status: ## Show what is running, and where to open it
 		$(KUBECTL) -n argocd get applications -o custom-columns='APPLICATION:.metadata.name,SYNC:.status.sync.status,HEALTH:.status.health.status'; \
 		echo; \
 		echo "  Deployed from $$($(KUBECTL) -n argocd get application root -o jsonpath='{.spec.source.targetRevision}') at $$($(KUBECTL) -n argocd get application root -o jsonpath='{.status.sync.revision}' | cut -c1-7)"; \
-		echo "  Console  https://console.localhost:8443  $$(curl -sf --cacert "$(LOCAL_CA)/ca.crt" https://console.localhost:8443/version || echo '(not up yet)')"; \
-		echo "  Website  http://website.localhost:8080   $$(curl -sf http://website.localhost:8080/version || echo '(not up yet)')"; \
-		echo "  Grafana  http://grafana.localhost:8080"; \
-		echo "  Argo CD  http://argocd.localhost:8080    read-only; the admin password is in the argocd-initial-admin-secret Secret"; \
+		echo "  Console  https://console.localhost:9443  $$(curl -sf --cacert "$(LOCAL_CA)/ca.crt" https://console.localhost:9443/version || echo '(not up yet)')"; \
+		echo "  Website  http://website.localhost:9080   $$(curl -sf http://website.localhost:9080/version || echo '(not up yet)')"; \
+		echo "  Grafana  http://grafana.localhost:9080"; \
+		echo "  Argo CD  http://argocd.localhost:9080    read-only; the admin password is in the argocd-initial-admin-secret Secret"; \
 	fi

@@ -69,7 +69,7 @@ jobs:
           client-id: ${{ vars.DRIFT_CHECK_APP_CLIENT_ID }}
           private-key: ${{ secrets.DRIFT_CHECK_APP_PRIVATE_KEY }}
           owner: the-roganator
-          repositories: cv-software-factory,cv-worlds-worst-website
+          repositories: cv-software-factory-scratch,cv-worlds-worst-website-scratch
           permission-actions: read
           permission-administration: read
           permission-environments: read

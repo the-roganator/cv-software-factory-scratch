@@ -31,7 +31,7 @@ import type { RefusalRecorder } from './refusals.ts';
 /** Martin's GitHub account (`mrogan`), as `scripts/review-gate.ts` knows him. */
 export const MARTIN = 6206459;
 
-/** The App's bot account (`mrogan-software-factory[bot]`): the user that opens its issues and pull requests. */
+/** The App's bot account (`the-roganator-scratch-factory[bot]`): the user that opens its issues and pull requests. */
 export const APP_USER = 337_765_427;
 
 /** What an issue opened by anyone else is told, once. Fixed: it says nothing of the issue, or of who opened it. */
