@@ -96,35 +96,35 @@ export interface DeployTarget {
 
 export const DEPLOYS: DeployTarget[] = [
   {
-    repo: 'the-roganator/cv-software-factory',
+    repo: 'the-roganator/cv-software-factory-scratch',
     profile: 'local',
     branch: 'deploy/local',
     pins: [
       {
         what: 'console',
         file: 'deploy/overlays/local/console-image/kustomization.yaml',
-        images: [{ name: 'console', image: 'the-roganator/cv-software-factory/console' }],
+        images: [{ name: 'console', image: 'the-roganator/cv-software-factory-scratch/console' }],
       },
       {
         what: 'the factory',
         file: 'deploy/overlays/local/factory-image/kustomization.yaml',
         images: [
-          { name: 'factory', image: 'the-roganator/cv-software-factory/factory' },
-          { name: 'factory-browser', image: 'the-roganator/cv-software-factory/factory-browser' },
-          { name: 'factory-runner', image: 'the-roganator/cv-software-factory/factory-runner' },
+          { name: 'factory', image: 'the-roganator/cv-software-factory-scratch/factory' },
+          { name: 'factory-browser', image: 'the-roganator/cv-software-factory-scratch/factory-browser' },
+          { name: 'factory-runner', image: 'the-roganator/cv-software-factory-scratch/factory-runner' },
         ],
       },
     ],
   },
   {
-    repo: 'the-roganator/cv-worlds-worst-website',
+    repo: 'the-roganator/cv-worlds-worst-website-scratch',
     profile: 'local',
     branch: 'deploy/local',
     pins: [
       {
         what: '',
         file: 'deploy/overlays/local/image/kustomization.yaml',
-        images: [{ name: 'website', image: 'the-roganator/cv-worlds-worst-website' }],
+        images: [{ name: 'website', image: 'the-roganator/cv-worlds-worst-website-scratch' }],
         jobs: ['build and push', 'sign and attest'],
       },
     ],

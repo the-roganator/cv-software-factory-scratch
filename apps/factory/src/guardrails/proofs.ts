@@ -79,7 +79,7 @@ export const text = (...parts: string[]) =>
   cutTo(parts.filter(Boolean).join('\n').trim() || '(nothing printed)', OUTPUT);
 
 /** The repository the CI proofs are read from: this one. */
-export const REPOSITORY = 'the-roganator/cv-software-factory';
+export const REPOSITORY = 'the-roganator/cv-software-factory-scratch';
 const ORGANISATION = REPOSITORY.split('/')[0] as string;
 
 /** A refusal script, taken again to a file of the run's own, and judged against the record kept in deploy/test/. */

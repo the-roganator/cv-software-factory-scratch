@@ -150,7 +150,7 @@ describe('root, at a revision', () => {
     for (const { metadata, spec } of applications) {
       if (metadata.name === 'website') {
         expect(metadata.labels?.['software-factory/repository']).toBe('app');
-        expect(spec.source?.repoURL).toBe('https://github.com/the-roganator/cv-worlds-worst-website.git');
+        expect(spec.source?.repoURL).toBe('https://github.com/the-roganator/cv-worlds-worst-website-scratch.git');
         continue;
       }
       const values = spec.sources?.[1];
@@ -163,7 +163,7 @@ describe('root, at a revision', () => {
   });
 });
 
-const THIS_REPOSITORY = 'https://github.com/the-roganator/cv-software-factory.git';
+const THIS_REPOSITORY = 'https://github.com/the-roganator/cv-software-factory-scratch.git';
 interface Application {
   kind: string;
   metadata: { name: string; labels?: Record<string, string> };

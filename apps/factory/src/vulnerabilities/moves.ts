@@ -38,7 +38,7 @@ import type { Kind } from './inventory.ts';
 import { type Finding, fingerprint, SEVERITIES, type Severity } from './sarif.ts';
 
 /** The app's repository, whose moves its line makes. */
-export const APP = 'the-roganator/cv-worlds-worst-website';
+export const APP = 'the-roganator/cv-worlds-worst-website-scratch';
 
 /** The shape of `moves.json`: a reader refuses a version it does not know. */
 export const MOVES_VERSION = 1;

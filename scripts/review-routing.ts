@@ -43,10 +43,10 @@ export const REVIEW_APP = 5470762;
 export const FACTORY_APP = 337765427;
 
 /** This repository, the factory's: the only one where the App's pin moves pass (ADR 0019). */
-export const FACTORY_REPO = 'the-roganator/cv-software-factory';
+export const FACTORY_REPO = 'the-roganator/cv-software-factory-scratch';
 
 /** The app's repository: the only one where Lights-out applies, and the App's pull requests may pass untagged. */
-export const APP_REPO = 'the-roganator/cv-worlds-worst-website';
+export const APP_REPO = 'the-roganator/cv-worlds-worst-website-scratch';
 
 /** Test integrity's check run, as the app's `gates.yml` calls `app-gates.yml`'s job, posted by GitHub Actions. */
 export const TEST_INTEGRITY_CHECK = 'gates / test integrity';
@@ -538,7 +538,9 @@ export function imageOf(content: string, digest: string): string | undefined {
 /** The repository whose `build.yml` signs an image, from its name in GHCR: only the factory's and the app's. */
 export function signerOf(image: string): string | undefined {
   const repo = /^ghcr\.io\/the-roganator\/([\w.-]+)(?:\/[\w.-]+)?$/.exec(image)?.[1];
-  return repo === 'cv-software-factory' || repo === 'cv-worlds-worst-website' ? `the-roganator/${repo}` : undefined;
+  return repo === 'cv-software-factory-scratch' || repo === 'cv-worlds-worst-website-scratch'
+    ? `the-roganator/${repo}`
+    : undefined;
 }
 
 export interface PinChecks {

@@ -29,8 +29,8 @@ import { createWorkerServer } from '../../src/github/server.ts';
 import { doorReads } from './door-reads.ts';
 import { client, quiet, type Sent } from './fake.ts';
 
-const REPO = 'the-roganator/cv-software-factory';
-const APP = 'the-roganator/cv-worlds-worst-website';
+const REPO = 'the-roganator/cv-software-factory-scratch';
+const APP = 'the-roganator/cv-worlds-worst-website-scratch';
 const SHA = 'a'.repeat(40);
 const PIN = 1040;
 
@@ -145,7 +145,7 @@ describe('the door’s guard, and the shapes a number can take', () => {
       ],
       ['readyForReview', `{"repo":"${REPO}","number":7,"pullRequest":{"number":1040,"url":"u","nodeId":"n"}}`],
       // Another repository's name, or this one's in another case.
-      ['comment', `{"repo":"The-Roganator/cv-software-factory","number":1040,"body":"x"}`],
+      ['comment', `{"repo":"The-Roganator/cv-software-factory-scratch","number":1040,"body":"x"}`],
       ['comment', `{"repo":"${REPO}/","number":1040,"body":"x"}`],
       ['comment', `{"repo":["${REPO}"],"number":1040,"body":"x"}`],
       ['comment', `[{"repo":"${REPO}","number":1040,"body":"x"}]`],
@@ -336,7 +336,7 @@ describe('the pin queue’s own conditions', () => {
       { user: { id: MARTIN } },
       { user: { id: 49_699_333 } },
       { user: null },
-      { head: { ref: 'factory/pin/zap', sha: HEAD, repo: { full_name: 'someone/cv-software-factory' } } },
+      { head: { ref: 'factory/pin/zap', sha: HEAD, repo: { full_name: 'someone/cv-software-factory-scratch' } } },
       { head: { ref: 'factory/pin/zap', sha: HEAD, repo: null } },
       { head: { ref: 'factory/pin-next/zap', sha: HEAD, repo: { full_name: REPO } } },
       { head: { ref: 'factory/pin/zap/more', sha: HEAD, repo: { full_name: REPO } } },

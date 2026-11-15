@@ -509,7 +509,7 @@ describe('the merge queue', () => {
     });
     expect(read.checks.map((c) => c.name)).toEqual(['browser tests', 'review']);
     expect(calls(sent).find((s) => s.path === '/graphql')?.body).toMatchObject({
-      variables: { owner: 'the-roganator', name: 'cv-worlds-worst-website', number: 17 },
+      variables: { owner: 'the-roganator', name: 'cv-worlds-worst-website-scratch', number: 17 },
     });
   });
 

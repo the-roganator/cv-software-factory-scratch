@@ -270,7 +270,7 @@ share-key: ## Give the traffic generator its signing key, made once, and the app
 # may use (scripts/github-settings.ts makes it), is given the same key again each time, as SCAN_STATE_KEY. A key made
 # anew opens no state sealed before it: the next scan reads the alerts, and seals with the new one. The worker reads
 # its keys as it starts, so a new one starts it again, before GitHub is given it: a run that stops there has done so.
-SCAN_STATE_REPOSITORIES := the-roganator/cv-software-factory the-roganator/cv-worlds-worst-website
+SCAN_STATE_REPOSITORIES := the-roganator/cv-software-factory-scratch the-roganator/cv-worlds-worst-website-scratch
 scan-state-key: ## Give each repository's scan and the GitHub worker the key the scan's state is sealed with, made once
 	@$(call namespace,factory)
 	@for repository in $(SCAN_STATE_REPOSITORIES); do name="$${repository#*/}"; \

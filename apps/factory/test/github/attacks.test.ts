@@ -24,7 +24,7 @@ import { OTHER_SHA, quiet, REPO, SHA } from './fake.ts';
  * actions are fakes that keep what they were asked; the recorder is real, so each answer's signature verifies.
  */
 const { privateKey, publicKey } = generateKeyPairSync('ed25519');
-const FACTORY = 'the-roganator/cv-software-factory';
+const FACTORY = 'the-roganator/cv-software-factory-scratch';
 const AT = () => new Date('2026-11-03T12:00:00Z');
 
 interface Call {

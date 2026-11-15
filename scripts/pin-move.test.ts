@@ -701,7 +701,7 @@ describe('a pin move holds, each for its one reason', () => {
   });
 
   it('an image of ours, which passes only as an exact pin', async () => {
-    const ours = (d: string) => `ghcr.io/the-roganator/cv-software-factory/browser:1@sha256:${hex(d)}`;
+    const ours = (d: string) => `ghcr.io/the-roganator/cv-software-factory-scratch/browser:1@sha256:${hex(d)}`;
     const c: Case = {
       base: [zapItem(ours('a'))],
       head: [zapItem(ours('b'))],
