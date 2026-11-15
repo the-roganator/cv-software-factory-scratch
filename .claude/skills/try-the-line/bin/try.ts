@@ -20,7 +20,7 @@ import {
 } from '../../../../scripts/cluster-lock.ts';
 
 /** This repository's images, each with the Dockerfile that builds it. */
-export const REGISTRY = 'ghcr.io/the-roganator/cv-software-factory';
+export const REGISTRY = 'ghcr.io/the-roganator/cv-software-factory-scratch';
 export const IMAGES: Record<string, string> = {
   factory: 'apps/factory/Dockerfile',
   'factory-runner': 'apps/runner/Dockerfile',

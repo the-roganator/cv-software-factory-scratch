@@ -1,6 +1,6 @@
 [
   {
-    "url": "https://api.github.com/repos/the-roganator/cv-worlds-worst-website/pulls/11",
+    "url": "https://api.github.com/repos/the-roganator/cv-worlds-worst-website-scratch/pulls/11",
     "id": 11,
     "node_id": "PR_11",
     "number": 11,
@@ -21,7 +21,7 @@
       "ref": "dependabot/npm_and_yarn/invented-lib-7.6.6",
       "sha": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee1",
       "repo": {
-        "full_name": "the-roganator/cv-worlds-worst-website"
+        "full_name": "the-roganator/cv-worlds-worst-website-scratch"
       }
     },
     "base": {
@@ -29,12 +29,12 @@
       "ref": "main",
       "sha": "ffffffffffffffffffffffffffffffffffffffff",
       "repo": {
-        "full_name": "the-roganator/cv-worlds-worst-website"
+        "full_name": "the-roganator/cv-worlds-worst-website-scratch"
       }
     }
   },
   {
-    "url": "https://api.github.com/repos/the-roganator/cv-worlds-worst-website/pulls/12",
+    "url": "https://api.github.com/repos/the-roganator/cv-worlds-worst-website-scratch/pulls/12",
     "id": 12,
     "node_id": "PR_12",
     "number": 12,
@@ -55,7 +55,7 @@
       "ref": "dependabot/npm_and_yarn/example/scoped-js-1.14.7",
       "sha": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee2",
       "repo": {
-        "full_name": "the-roganator/cv-worlds-worst-website"
+        "full_name": "the-roganator/cv-worlds-worst-website-scratch"
       }
     },
     "base": {
@@ -63,12 +63,12 @@
       "ref": "main",
       "sha": "ffffffffffffffffffffffffffffffffffffffff",
       "repo": {
-        "full_name": "the-roganator/cv-worlds-worst-website"
+        "full_name": "the-roganator/cv-worlds-worst-website-scratch"
       }
     }
   },
   {
-    "url": "https://api.github.com/repos/the-roganator/cv-worlds-worst-website/pulls/13",
+    "url": "https://api.github.com/repos/the-roganator/cv-worlds-worst-website-scratch/pulls/13",
     "id": 13,
     "node_id": "PR_13",
     "number": 13,
@@ -89,7 +89,7 @@
       "ref": "dependabot/npm_and_yarn/tooling-7ddd2f2d32",
       "sha": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee3",
       "repo": {
-        "full_name": "the-roganator/cv-worlds-worst-website"
+        "full_name": "the-roganator/cv-worlds-worst-website-scratch"
       }
     },
     "base": {
@@ -97,12 +97,12 @@
       "ref": "main",
       "sha": "ffffffffffffffffffffffffffffffffffffffff",
       "repo": {
-        "full_name": "the-roganator/cv-worlds-worst-website"
+        "full_name": "the-roganator/cv-worlds-worst-website-scratch"
       }
     }
   },
   {
-    "url": "https://api.github.com/repos/the-roganator/cv-worlds-worst-website/pulls/14",
+    "url": "https://api.github.com/repos/the-roganator/cv-worlds-worst-website-scratch/pulls/14",
     "id": 14,
     "node_id": "PR_14",
     "number": 14,
@@ -123,7 +123,7 @@
       "ref": "dependabot/github_actions/example/setup-thing-5.2.6",
       "sha": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee4",
       "repo": {
-        "full_name": "the-roganator/cv-worlds-worst-website"
+        "full_name": "the-roganator/cv-worlds-worst-website-scratch"
       }
     },
     "base": {
@@ -131,12 +131,12 @@
       "ref": "main",
       "sha": "ffffffffffffffffffffffffffffffffffffffff",
       "repo": {
-        "full_name": "the-roganator/cv-worlds-worst-website"
+        "full_name": "the-roganator/cv-worlds-worst-website-scratch"
       }
     }
   },
   {
-    "url": "https://api.github.com/repos/the-roganator/cv-worlds-worst-website/pulls/15",
+    "url": "https://api.github.com/repos/the-roganator/cv-worlds-worst-website-scratch/pulls/15",
     "id": 15,
     "node_id": "PR_15",
     "number": 15,
@@ -157,7 +157,7 @@
       "ref": "dependabot/docker/apps/console/node-24.11.0-trixie-slim",
       "sha": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee5",
       "repo": {
-        "full_name": "the-roganator/cv-worlds-worst-website"
+        "full_name": "the-roganator/cv-worlds-worst-website-scratch"
       }
     },
     "base": {
@@ -165,12 +165,12 @@
       "ref": "main",
       "sha": "ffffffffffffffffffffffffffffffffffffffff",
       "repo": {
-        "full_name": "the-roganator/cv-worlds-worst-website"
+        "full_name": "the-roganator/cv-worlds-worst-website-scratch"
       }
     }
   },
   {
-    "url": "https://api.github.com/repos/the-roganator/cv-worlds-worst-website/pulls/16",
+    "url": "https://api.github.com/repos/the-roganator/cv-worlds-worst-website-scratch/pulls/16",
     "id": 16,
     "node_id": "PR_16",
     "number": 16,
@@ -191,7 +191,7 @@
       "ref": "dependabot/docker/deploy/images/scanner/example/scanner-1.40.1",
       "sha": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee6",
       "repo": {
-        "full_name": "the-roganator/cv-worlds-worst-website"
+        "full_name": "the-roganator/cv-worlds-worst-website-scratch"
       }
     },
     "base": {
@@ -199,12 +199,12 @@
       "ref": "main",
       "sha": "ffffffffffffffffffffffffffffffffffffffff",
       "repo": {
-        "full_name": "the-roganator/cv-worlds-worst-website"
+        "full_name": "the-roganator/cv-worlds-worst-website-scratch"
       }
     }
   },
   {
-    "url": "https://api.github.com/repos/the-roganator/cv-worlds-worst-website/pulls/17",
+    "url": "https://api.github.com/repos/the-roganator/cv-worlds-worst-website-scratch/pulls/17",
     "id": 17,
     "node_id": "PR_17",
     "number": 17,
@@ -225,7 +225,7 @@
       "ref": "dependabot/docker/deploy/images/scanner/docker-fa2ab4b861",
       "sha": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee7",
       "repo": {
-        "full_name": "the-roganator/cv-worlds-worst-website"
+        "full_name": "the-roganator/cv-worlds-worst-website-scratch"
       }
     },
     "base": {
@@ -233,12 +233,12 @@
       "ref": "main",
       "sha": "ffffffffffffffffffffffffffffffffffffffff",
       "repo": {
-        "full_name": "the-roganator/cv-worlds-worst-website"
+        "full_name": "the-roganator/cv-worlds-worst-website-scratch"
       }
     }
   },
   {
-    "url": "https://api.github.com/repos/the-roganator/cv-worlds-worst-website/pulls/18",
+    "url": "https://api.github.com/repos/the-roganator/cv-worlds-worst-website-scratch/pulls/18",
     "id": 18,
     "node_id": "PR_18",
     "number": 18,
@@ -259,7 +259,7 @@
       "ref": "dependabot/playwright-235210807e",
       "sha": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee8",
       "repo": {
-        "full_name": "the-roganator/cv-worlds-worst-website"
+        "full_name": "the-roganator/cv-worlds-worst-website-scratch"
       }
     },
     "base": {
@@ -267,12 +267,12 @@
       "ref": "main",
       "sha": "ffffffffffffffffffffffffffffffffffffffff",
       "repo": {
-        "full_name": "the-roganator/cv-worlds-worst-website"
+        "full_name": "the-roganator/cv-worlds-worst-website-scratch"
       }
     }
   },
   {
-    "url": "https://api.github.com/repos/the-roganator/cv-worlds-worst-website/pulls/19",
+    "url": "https://api.github.com/repos/the-roganator/cv-worlds-worst-website-scratch/pulls/19",
     "id": 19,
     "node_id": "PR_19",
     "number": 19,
@@ -293,7 +293,7 @@
       "ref": "dependabot/devcontainers/example/feature-2.1.0",
       "sha": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee9",
       "repo": {
-        "full_name": "the-roganator/cv-worlds-worst-website"
+        "full_name": "the-roganator/cv-worlds-worst-website-scratch"
       }
     },
     "base": {
@@ -301,12 +301,12 @@
       "ref": "main",
       "sha": "ffffffffffffffffffffffffffffffffffffffff",
       "repo": {
-        "full_name": "the-roganator/cv-worlds-worst-website"
+        "full_name": "the-roganator/cv-worlds-worst-website-scratch"
       }
     }
   },
   {
-    "url": "https://api.github.com/repos/the-roganator/cv-worlds-worst-website/pulls/20",
+    "url": "https://api.github.com/repos/the-roganator/cv-worlds-worst-website-scratch/pulls/20",
     "id": 20,
     "node_id": "PR_20",
     "number": 20,
@@ -327,7 +327,7 @@
       "ref": "dependabot/npm_and_yarn/no_version_here",
       "sha": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee0",
       "repo": {
-        "full_name": "the-roganator/cv-worlds-worst-website"
+        "full_name": "the-roganator/cv-worlds-worst-website-scratch"
       }
     },
     "base": {
@@ -335,12 +335,12 @@
       "ref": "main",
       "sha": "ffffffffffffffffffffffffffffffffffffffff",
       "repo": {
-        "full_name": "the-roganator/cv-worlds-worst-website"
+        "full_name": "the-roganator/cv-worlds-worst-website-scratch"
       }
     }
   },
   {
-    "url": "https://api.github.com/repos/the-roganator/cv-worlds-worst-website/pulls/21",
+    "url": "https://api.github.com/repos/the-roganator/cv-worlds-worst-website-scratch/pulls/21",
     "id": 21,
     "node_id": "PR_21",
     "number": 21,
@@ -361,7 +361,7 @@
       "ref": "dependabot/npm_and_yarn/impostor-1.0.0",
       "sha": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee1",
       "repo": {
-        "full_name": "the-roganator/cv-worlds-worst-website"
+        "full_name": "the-roganator/cv-worlds-worst-website-scratch"
       }
     },
     "base": {
@@ -369,12 +369,12 @@
       "ref": "main",
       "sha": "ffffffffffffffffffffffffffffffffffffffff",
       "repo": {
-        "full_name": "the-roganator/cv-worlds-worst-website"
+        "full_name": "the-roganator/cv-worlds-worst-website-scratch"
       }
     }
   },
   {
-    "url": "https://api.github.com/repos/the-roganator/cv-worlds-worst-website/pulls/22",
+    "url": "https://api.github.com/repos/the-roganator/cv-worlds-worst-website-scratch/pulls/22",
     "id": 22,
     "node_id": "PR_22",
     "number": 22,
@@ -403,12 +403,12 @@
       "ref": "main",
       "sha": "ffffffffffffffffffffffffffffffffffffffff",
       "repo": {
-        "full_name": "the-roganator/cv-worlds-worst-website"
+        "full_name": "the-roganator/cv-worlds-worst-website-scratch"
       }
     }
   },
   {
-    "url": "https://api.github.com/repos/the-roganator/cv-worlds-worst-website/pulls/23",
+    "url": "https://api.github.com/repos/the-roganator/cv-worlds-worst-website-scratch/pulls/23",
     "id": 23,
     "node_id": "PR_23",
     "number": 23,
@@ -429,7 +429,7 @@
       "ref": "fix/cart",
       "sha": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee3",
       "repo": {
-        "full_name": "the-roganator/cv-worlds-worst-website"
+        "full_name": "the-roganator/cv-worlds-worst-website-scratch"
       }
     },
     "base": {
@@ -437,7 +437,7 @@
       "ref": "main",
       "sha": "ffffffffffffffffffffffffffffffffffffffff",
       "repo": {
-        "full_name": "the-roganator/cv-worlds-worst-website"
+        "full_name": "the-roganator/cv-worlds-worst-website-scratch"
       }
     }
   }

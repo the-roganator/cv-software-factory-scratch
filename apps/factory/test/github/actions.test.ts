@@ -245,7 +245,11 @@ describe('acting in GitHub', () => {
       { path: 'test/search.test.ts', line: 4, body: suggestion, reply: declined },
     ]);
     const asked = calls(sent).map((s) => s.body as { query: string; variables: Record<string, unknown> });
-    expect(asked[0]?.variables).toEqual({ owner: 'the-roganator', name: 'cv-worlds-worst-website', number: 66 });
+    expect(asked[0]?.variables).toEqual({
+      owner: 'the-roganator',
+      name: 'cv-worlds-worst-website-scratch',
+      number: 66,
+    });
     expect(
       asked
         .slice(1)

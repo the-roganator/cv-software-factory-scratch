@@ -1677,7 +1677,7 @@ describe('Verify on the line', () => {
     it('reopens a move’s ticket the dry run verified on its move, never a route', async () => {
       const workItem = await nextWorkItem(database.as.triage);
       const move = {
-        repository: 'the-roganator/cv-worlds-worst-website',
+        repository: 'the-roganator/cv-worlds-worst-website-scratch',
         name: 'node',
         ecosystem: 'docker' as const,
         from: '24.11.0-alpine',

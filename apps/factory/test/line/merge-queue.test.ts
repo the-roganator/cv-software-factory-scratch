@@ -12,7 +12,7 @@ import { clock, database, event, line, martin, payloads, stage, ticket, types, w
 
 withLineStore();
 
-const REPO = 'the-roganator/cv-worlds-worst-website';
+const REPO = 'the-roganator/cv-worlds-worst-website-scratch';
 const { privateKey, publicKey } = generateKeyPairSync('ed25519');
 
 /** Martin's controls, as the admin service appends them. */

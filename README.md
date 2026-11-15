@@ -1,9 +1,9 @@
 # Software Factory
 
-[![check, the merge queue's latest run](https://github.com/the-roganator/cv-software-factory/actions/workflows/check.yml/badge.svg?event=merge_group)](https://github.com/the-roganator/cv-software-factory/actions/workflows/check.yml?query=event%3Amerge_group)
-[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/the-roganator/cv-software-factory/badge)](https://scorecard.dev/viewer/?uri=github.com/the-roganator/cv-software-factory)
+[![check, the merge queue's latest run](https://github.com/the-roganator/cv-software-factory-scratch/actions/workflows/check.yml/badge.svg?event=merge_group)](https://github.com/the-roganator/cv-software-factory-scratch/actions/workflows/check.yml?query=event%3Amerge_group)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/the-roganator/cv-software-factory-scratch/badge)](https://scorecard.dev/viewer/?uri=github.com/the-roganator/cv-software-factory-scratch)
 [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/16155/badge)](https://www.bestpractices.dev/projects/16155)
-[![release](https://img.shields.io/github/v/release/the-roganator/cv-software-factory)](https://github.com/the-roganator/cv-software-factory/releases)
+[![release](https://img.shields.io/github/v/release/the-roganator/cv-software-factory-scratch)](https://github.com/the-roganator/cv-software-factory-scratch/releases)
 
 AI agents and deterministic gates that look after a live web app. They notice problems, write fixes, prove the fixes are safe, ship them as canaries and check that they worked. No person writes the fixes; people own the rules.
 
@@ -14,7 +14,7 @@ I'm Martin Rogan. This is my portfolio: a working system you can open and judge 
 
 ## What it will do
 
-The factory looks after [The World's Worst Website](https://github.com/the-roganator/cv-worlds-worst-website), a small shop that is broken on purpose: its first commit already holds more than twenty defects, and nothing public says where they are. Its line has eight stages:
+The factory looks after [The World's Worst Website](https://github.com/the-roganator/cv-worlds-worst-website-scratch), a small shop that is broken on purpose: its first commit already holds more than twenty defects, and nothing public says where they are. Its line has eight stages:
 
 **Sense → Triage → Plan → Build → Gates → Review → Release → Verify**
 

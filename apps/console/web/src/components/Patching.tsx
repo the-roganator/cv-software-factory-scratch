@@ -37,9 +37,9 @@ import { patchingNow } from './patching-view.ts';
 import { bringIntoSheet, SheetFrame } from './SheetFrame.tsx';
 import '../styles/patching.css';
 
-const FACTORY = 'https://github.com/the-roganator/cv-software-factory';
+const FACTORY = 'https://github.com/the-roganator/cv-software-factory-scratch';
 const repoUrl = (repository: string | undefined) =>
-  `https://github.com/${repository ?? 'the-roganator/cv-software-factory'}`;
+  `https://github.com/${repository ?? 'the-roganator/cv-software-factory-scratch'}`;
 
 /** Who a word names: Martin, signed in, reads "you"; everyone else reads "Martin". */
 interface Who {

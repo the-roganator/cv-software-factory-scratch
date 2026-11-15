@@ -66,10 +66,10 @@ Never run one on the host without `GITHUB_DRY_RUN=true` while the cluster's runs
 
 The GitHub worker signs each refusal it answers (its guard's, and GitHub's 403s) so the line can record it: `make refusal-key` (and so `make up`) makes its Ed25519 key once, through stdin, the Secret `refusal-signing-key` in `factory`, which only the worker reads, and its public half, the ConfigMap `refusal-key`, which the line reads, and the console, to check each relayed refusal Guardrails shows. On the host, `REFUSAL_SIGNING_KEY` and `REFUSAL_PUBLIC_KEY` take them as PEM; without them the worker answers unsigned and the line records none.
 
-Its read of the scan's moves opens the state each repository's scan keeps ([the state](COMPONENTS/SECURITY-SCANNING.md#the-state)) with that repository's key, which `make scan-state-key` makes once, as the Secret `scan-state-key` in `factory`. On the host each is a setting named for its repository, `SCAN_STATE_KEY_CV_SOFTWARE_FACTORY` and `SCAN_STATE_KEY_CV_WORLDS_WORST_WEBSITE`, the key as the Secret holds it, 32 bytes in base64:
+Its read of the scan's moves opens the state each repository's scan keeps ([the state](COMPONENTS/SECURITY-SCANNING.md#the-state)) with that repository's key, which `make scan-state-key` makes once, as the Secret `scan-state-key` in `factory`. On the host each is a setting named for its repository, `SCAN_STATE_KEY_CV_SOFTWARE_FACTORY_SCRATCH` and `SCAN_STATE_KEY_CV_WORLDS_WORST_WEBSITE_SCRATCH`, the key as the Secret holds it, 32 bytes in base64:
 
 ```sh
-SCAN_STATE_KEY_CV_WORLDS_WORST_WEBSITE="$(kubectl --context k3d-software-factory -n factory get secret scan-state-key -o 'jsonpath={.data.cv-worlds-worst-website}' | base64 -d)"
+SCAN_STATE_KEY_CV_WORLDS_WORST_WEBSITE_SCRATCH="$(kubectl --context k3d-software-factory -n factory get secret scan-state-key -o 'jsonpath={.data.cv-worlds-worst-website-scratch}' | base64 -d)"
 ```
 
 Without one the worker starts, says which repository's moves it cannot read, and fails that read naming `make scan-state-key`; one that is set and is not a key stops it starting.
@@ -104,7 +104,7 @@ Runners need the cluster, with the line started: their agent pods reach the clus
 
 ```sh
 kubectl --context k3d-software-factory -n factory port-forward svc/line 8092:8080 & sleep 2
-curl -s localhost:8092/v1/smoke -H 'content-type: application/json' -d "{\"commit\":\"$(git ls-remote https://github.com/the-roganator/cv-worlds-worst-website.git main | cut -f1)\"}"
+curl -s localhost:8092/v1/smoke -H 'content-type: application/json' -d "{\"commit\":\"$(git ls-remote https://github.com/the-roganator/cv-worlds-worst-website-scratch.git main | cut -f1)\"}"
 ```
 
 A runner's two steps also run as containers, for working on the runner itself: `docker build -f apps/runner/Dockerfile .`, then `runner prepare` and `runner agent` with the variables in `apps/runner/src/step.ts`.

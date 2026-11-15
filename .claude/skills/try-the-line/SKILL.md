@@ -78,9 +78,9 @@ What stays in your hands: whether the try is dry or live and what it takes (step
 1. **Build** `factory` and `factory-runner` from one commit, in a worktree, and import them:
    ```sh
    T=local-$(git rev-parse --short HEAD)
-   docker build -f apps/factory/Dockerfile -t ghcr.io/the-roganator/cv-software-factory/factory:$T .
-   docker build -f apps/runner/Dockerfile -t ghcr.io/the-roganator/cv-software-factory/factory-runner:$T .
-   k3d image import -c software-factory ghcr.io/the-roganator/cv-software-factory/factory:$T ghcr.io/the-roganator/cv-software-factory/factory-runner:$T
+   docker build -f apps/factory/Dockerfile -t ghcr.io/the-roganator/cv-software-factory-scratch/factory:$T .
+   docker build -f apps/runner/Dockerfile -t ghcr.io/the-roganator/cv-software-factory-scratch/factory-runner:$T .
+   k3d image import -c software-factory ghcr.io/the-roganator/cv-software-factory-scratch/factory:$T ghcr.io/the-roganator/cv-software-factory-scratch/factory-runner:$T
    ```
    Build `console` too if its code changed.
 2. **Pause Argo CD** on `root` only, which owns every factory deployment: `bin/argocd-core app set root --sync-policy manual`. If an operation on `root` sticks, on a hook its own sync must fix, end it with `bin/argocd-core app terminate-op root`, which returns before the operation has ended, wait for it with `bin/argocd-core app wait root --operation`, and sync only what it needs with `bin/argocd-core app sync root --resource <group>:<kind>:<namespace>/<name>` for each resource (a core kind's group is empty: `:ConfigMap:factory/<name>`); never write `operation` or `status` by hand.
@@ -89,7 +89,7 @@ What stays in your hands: whether the try is dry or live and what it takes (step
 5. **Point** `line` (its container, its `runner-image` initContainer and `RUNNER_IMAGE`), `gateway` and `github` at the new images with `kubectl set image` and `set env`. Point `admin` at the `factory` image too when the branch changes a route the admin service serves, such as `POST /admin/attacks/:attack`, which the console's Guardrails panel calls: the console reaches whatever image `admin` runs, and `main`'s answers a route it lacks "Not found". For a try of the red-team harness, point `red-team` as well: its container on `factory`, and its runner image by digest (step 6). Every `set env` in these steps names its container: `-c line`, `-c gateway`, `-c github`, `-c console`, `-c admin`, `-c red-team`. Without `-c` it writes every container, the line's `runner-image` init container included, and Argo CD never removes a field it does not own, so a `RUNNER_IMAGE` or `LINE_MODE` left there outlives the run and fails `make admission-ready`. Undoing one takes the same `-c`: `bin/k -n factory set env deployment/line -c line NAME-`.
 6. **An image by digest.** Some of admission's rules admit an image only as a digest reference, and an image imported with `k3d image import` has only its tag in the node's containerd. `factory-red-team-pods` (`deploy/base/admission/factory/red-team-pods.yaml`) is one: it admits the harness's pods on the runner image only as `factory-runner@sha256:…`, so `red-team`'s `RUNNER_IMAGE` and its `runner-image` initContainer take a digest reference. Give the local image one on the node, from the digest containerd lists for its tag, and point at that; the undo removes it:
    ```sh
-   R=ghcr.io/the-roganator/cv-software-factory/factory-runner T=local-$(git rev-parse --short HEAD)
+   R=ghcr.io/the-roganator/cv-software-factory-scratch/factory-runner T=local-$(git rev-parse --short HEAD)
    D=$(docker exec k3d-software-factory-server-0 ctr -n k8s.io images ls "name==$R:$T" | awk 'NR>1 {print $3}')
    if [ -z "$D" ]; then echo "no $R:$T on the node: import it first (step 1)" >&2; else
      docker exec k3d-software-factory-server-0 ctr -n k8s.io images tag "$R:$T" "$R@$D"

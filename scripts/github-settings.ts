@@ -30,7 +30,7 @@ import { execFileSync } from 'node:child_process';
  * reports as "<calling job> / <job>".
  */
 export const REPOSITORIES: Record<string, string[]> = {
-  'the-roganator/cv-software-factory': [
+  'the-roganator/cv-software-factory-scratch': [
     'lint, types, tests',
     'browser tests',
     'image builds',
@@ -40,7 +40,7 @@ export const REPOSITORIES: Record<string, string[]> = {
     'platform',
   ],
   // The app's gates come from this repository (app-gates.yml); tests first is a signal, not a requirement.
-  'the-roganator/cv-worlds-worst-website': [
+  'the-roganator/cv-worlds-worst-website-scratch': [
     'lint, types, tests',
     'image builds',
     'title / pull request title',
@@ -94,8 +94,8 @@ export const SCAN_STATE_ENVIRONMENT: KeyEnvironment = { name: 'scan-state', key:
  * (scripts/workflows.test.ts). `--check` reads these, and not the repository's own secrets or other environments.
  */
 export const ENVIRONMENTS: Record<string, KeyEnvironment[]> = {
-  'the-roganator/cv-software-factory': [REVIEW_ENVIRONMENT, DRIFT_CHECK_ENVIRONMENT, SCAN_STATE_ENVIRONMENT],
-  'the-roganator/cv-worlds-worst-website': [REVIEW_ENVIRONMENT, SCAN_STATE_ENVIRONMENT],
+  'the-roganator/cv-software-factory-scratch': [REVIEW_ENVIRONMENT, DRIFT_CHECK_ENVIRONMENT, SCAN_STATE_ENVIRONMENT],
+  'the-roganator/cv-worlds-worst-website-scratch': [REVIEW_ENVIRONMENT, SCAN_STATE_ENVIRONMENT],
 };
 
 /** An App's permission, as GitHub names it, and its level. */

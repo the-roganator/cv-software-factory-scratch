@@ -343,7 +343,7 @@ describe('reading GitHub for the line', () => {
 });
 
 describe('reading what a release is made of', () => {
-  const IMAGE = 'the-roganator/cv-worlds-worst-website';
+  const IMAGE = 'the-roganator/cv-worlds-worst-website-scratch';
   const DIGEST = `sha256:${'1'.repeat(64)}`;
   const UNSIGNED = `sha256:${'2'.repeat(64)}`;
   const sha = (n: number) => n.toString(16).padStart(40, '0');
@@ -431,7 +431,7 @@ describe('reading what a release is made of', () => {
     const { github } = client([]);
     const given = sources();
     const reads = new LiveReads(github, given);
-    for (const image of ['the-roganator/cv-software-factory/factory', 'someone/else']) {
+    for (const image of ['the-roganator/cv-software-factory-scratch/factory', 'someone/else']) {
       await expect(reads.imageRevision(REPO, image, DIGEST)).rejects.toBeInstanceOf(DeployRefused);
       await expect(reads.imageSigned(REPO, image, DIGEST)).rejects.toBeInstanceOf(DeployRefused);
     }
@@ -460,7 +460,7 @@ describe('reading what a release is made of', () => {
     const build = {
       commit: SHA,
       pinned: OTHER_SHA,
-      image: 'the-roganator/cv-worlds-worst-website',
+      image: 'the-roganator/cv-worlds-worst-website-scratch',
       digest: `sha256:${'1'.repeat(64)}`,
       signature: 'unsigned' as const,
       reason: 'no signature',
@@ -625,15 +625,17 @@ describe('the worker over HTTP, for the line', () => {
     const signatures = { verify: async (_: string, __: string, signer: Signer) => void signers.push(signer.identity) };
     const { worker } = await serve(ROUTES, { registry, signatures, proposals });
     const digest = `sha256:${'1'.repeat(64)}`;
-    expect(await worker.read('imageRevision', REPO, { image: 'the-roganator/cv-worlds-worst-website', digest })).toBe(
-      SHA,
-    );
-    expect(await worker.read('imageSigned', REPO, { image: 'the-roganator/cv-worlds-worst-website', digest })).toEqual({
+    expect(
+      await worker.read('imageRevision', REPO, { image: 'the-roganator/cv-worlds-worst-website-scratch', digest }),
+    ).toBe(SHA);
+    expect(
+      await worker.read('imageSigned', REPO, { image: 'the-roganator/cv-worlds-worst-website-scratch', digest }),
+    ).toEqual({
       signed: true,
       reason: null,
     });
     expect(signers).toEqual([
-      'https://github.com/the-roganator/cv-worlds-worst-website/.github/workflows/build.yml@refs/heads/main',
+      'https://github.com/the-roganator/cv-worlds-worst-website-scratch/.github/workflows/build.yml@refs/heads/main',
     ]);
     // The same image under another owner is not one the repository deploys.
     await expect(
@@ -642,11 +644,11 @@ describe('the worker over HTTP, for the line', () => {
     expect(await worker.read('deployProposal', REPO, { branch: 'deploy/local' })).toBeNull();
     expect(await worker.read('deployBuild', REPO, { branch: 'deploy/local' })).toBeNull();
     await expect(
-      worker.read('imageRevision', REPO, { image: 'the-roganator/cv-software-factory/factory', digest }),
+      worker.read('imageRevision', REPO, { image: 'the-roganator/cv-software-factory-scratch/factory', digest }),
     ).rejects.toMatchObject({ status: 422, kind: 'deploy-refused' });
     for (const args of [
       { image: 'ghcr.io/../x', digest },
-      { image: 'the-roganator/cv-worlds-worst-website', digest: 'latest' },
+      { image: 'the-roganator/cv-worlds-worst-website-scratch', digest: 'latest' },
     ]) {
       await expect(worker.read('imageRevision', REPO, args)).rejects.toMatchObject({ status: 400 });
     }

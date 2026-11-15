@@ -3,4 +3,4 @@ kind: Component
 images:
 - digest: sha256:1a0201e910934748013a112f421c7b601fcdc796305aa5adbebcd13e6f18ef4b
   name: console
-  newName: ghcr.io/the-roganator/cv-software-factory/console
+  newName: ghcr.io/the-roganator/cv-software-factory-scratch/console
