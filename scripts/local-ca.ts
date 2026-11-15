@@ -1,5 +1,5 @@
 /**
- * The local certificate authority behind https://console.localhost:8443, and the one certificate it gives Traefik.
+ * The local certificate authority behind https://console.localhost:9443, and the one certificate it gives Traefik.
  * `make up` runs it through `make local-tls`; `make untrust-ca` undoes it.
  *
  *     node scripts/local-ca.ts issue     make the authority if there is none, and renew the certificate when it is due
@@ -38,7 +38,7 @@ export const HOSTS = ['console.localhost'];
 /** How the authority is named, in its certificate and in the login keychain. */
 export const AUTHORITY_NAME = 'Software Factory local CA';
 /** Where the console is, once Traefik has the certificate. */
-export const CONSOLE_URL = 'https://console.localhost:8443';
+export const CONSOLE_URL = 'https://console.localhost:9443';
 
 const DAY = 24 * 60 * 60 * 1000;
 const AUTHORITY_DAYS = 730;

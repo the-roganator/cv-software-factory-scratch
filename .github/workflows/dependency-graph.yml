@@ -2,7 +2,7 @@
 # repository's list resolves, indirect ones included, submitted to GitHub's dependency submission API on each push to
 # the default branch, so the graph and Dependabot's alerts hold the whole lockfile and not only what a manifest names.
 #
-# Shared: cv-worlds-worst-website calls this workflow at a pinned commit, on a push alone, and grants `contents: write`
+# Shared: cv-worlds-worst-website-scratch calls this workflow at a pinned commit, on a push alone, and grants `contents: write`
 # to it alone; its snapshot reaches its own graph, since the submission names the calling repository. The script and
 # Syft's pin come from this repository at the workflow's own commit; the submitted repository's checkout is data, and
 # nothing in it runs. Each lockfile is copied alone into an empty directory, which Syft's image reads, read-only and

@@ -24,7 +24,7 @@ import { recordBytes, recordHash, signRecord } from '../../src/signed-refusals.t
 
 const { privateKey, publicKey } = generateKeyPairSync('ed25519');
 const other = generateKeyPairSync('ed25519');
-const REPO = 'the-roganator/cv-worlds-worst-website';
+const REPO = 'the-roganator/cv-worlds-worst-website-scratch';
 
 function harness({ key = true } = {}) {
   const appended: NewEvent[] = [];
@@ -102,7 +102,7 @@ describe('the line’s relay of the GitHub worker’s refusals', () => {
   it('logs, and does not append, one that does not verify, or any with no key to verify it', async () => {
     const { appended, logged, refusals } = harness();
     refusals.relay(answered({ key: other.privateKey }), { workItem: '1400' });
-    refusals.relay({ ...answered(), repo: 'the-roganator/cv-software-factory' }, { workItem: '1400' });
+    refusals.relay({ ...answered(), repo: 'the-roganator/cv-software-factory-scratch' }, { workItem: '1400' });
     await refusals.settled();
     expect(appended).toEqual([]);
     expect(logged.map((l) => [l.msg, l.why])).toEqual([

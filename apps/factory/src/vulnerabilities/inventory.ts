@@ -170,7 +170,8 @@ export function ciCopy(reference: string) {
  */
 export function signerOf(image: string) {
   const repository = /^ghcr\.io\/the-roganator\/([\w.-]+)(?:\/[\w.-]+)?$/.exec(image)?.[1];
-  if (repository !== 'cv-software-factory' && repository !== 'cv-worlds-worst-website') return undefined;
+  if (repository !== 'cv-software-factory-scratch' && repository !== 'cv-worlds-worst-website-scratch')
+    return undefined;
   return `https://github.com/the-roganator/${repository}/.github/workflows/build.yml@refs/heads/main`;
 }
 

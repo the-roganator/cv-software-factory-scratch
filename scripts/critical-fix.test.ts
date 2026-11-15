@@ -574,7 +574,7 @@ describe('a Critical fix: the threat model, each held', () => {
     const without = passedGates().filter((r) => r.name !== name);
     const one = passedGates().find((r) => r.name === name) as Run;
     for (const [run, why] of [
-      [{ ...one, app: { slug: 'mrogan-software-factory' } }, 'has not run'],
+      [{ ...one, app: { slug: 'the-roganator-scratch-factory' } }, 'has not run'],
       [{ ...one, workflow: '.github/workflows/other.yml' }, 'ran in no run of .github/workflows/gates.yml'],
       [{ ...one, workflow: null }, 'ran in no run of'],
       [{ ...one, head_sha: 'b'.repeat(40) }, 'has not run'],
