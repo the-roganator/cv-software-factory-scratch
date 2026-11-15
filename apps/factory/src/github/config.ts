@@ -11,7 +11,7 @@
  *     REFUSAL_SIGNING_KEY             the Ed25519 private key, as PEM, it signs each refusal with (`refusals.ts`);
  *                                     without it, it answers each unsigned, and no worker records one
  *     SCAN_STATE_KEY_<REPOSITORY>     the key a repository's scan seals its state with (vulnerabilities/state.ts), by
- *                                     its name in capitals, `-` as `_` (SCAN_STATE_KEY_CV_SOFTWARE_FACTORY); without
+ *                                     its name in capitals, `-` as `_` (SCAN_STATE_KEY_CV_SOFTWARE_FACTORY_SCRATCH); without
  *                                     it the worker cannot read that repository's moves, and says so
  *     GITHUB_DRY_RUN_CHECKS_SECONDS   how long after a dry run's commit its checks pass (default 120)
  *     GITHUB_DRY_RUN_MERGE_SECONDS    how long after a dry run's pull request is readied it is merged (default 1200)
@@ -41,7 +41,10 @@ import { type PinScope, readPinScope } from './pins.ts';
 import { GHCR } from './registry.ts';
 
 /** The two public repositories: the factory's own, and the app it looks after. */
-export const REPOSITORIES = ['the-roganator/cv-software-factory', 'the-roganator/cv-worlds-worst-website'] as const;
+export const REPOSITORIES = [
+  'the-roganator/cv-software-factory-scratch',
+  'the-roganator/cv-worlds-worst-website-scratch',
+] as const;
 
 export interface GitHubConfig {
   credentials: AppCredentials | undefined;

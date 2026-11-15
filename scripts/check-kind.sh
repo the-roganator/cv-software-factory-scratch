@@ -31,7 +31,7 @@
 # required check).
 set -uo pipefail
 
-APP='mrogan-software-factory[bot]'
+APP='the-roganator-scratch-factory[bot]'
 CONSOLE_PINS=deploy/overlays/local/console-image/kustomization.yaml
 FACTORY_PINS=deploy/overlays/local/factory-image/kustomization.yaml
 # The branch the merge queue makes for a pull request into main, its number the second group: the same expression as

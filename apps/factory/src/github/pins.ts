@@ -53,7 +53,7 @@ import type { RefusalRecorder } from './refusals.ts';
 import type { Moves, ReadMove } from './scanning.ts';
 
 /** The repositories whose pins the watch moves: this one. The app's moves are its line's. */
-export const PIN_REPOS: readonly string[] = ['the-roganator/cv-software-factory'];
+export const PIN_REPOS: readonly string[] = ['the-roganator/cv-software-factory-scratch'];
 
 /** The label on every pull request and issue the watch opens. */
 export const PIN_LABEL = 'pin';
