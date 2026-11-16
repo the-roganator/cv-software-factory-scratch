@@ -2,9 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { UnsignedError } from '../apps/factory/src/github/signatures.ts';
 import { signedBy } from './signed-by.ts';
 
-const IMAGE = `ghcr.io/the-roganator/cv-software-factory/factory@sha256:${'a'.repeat(64)}`;
+const IMAGE = `ghcr.io/the-roganator/cv-software-factory-scratch/factory@sha256:${'a'.repeat(64)}`;
 const OTHER =
-  'https://github.com/the-roganator/cv-software-factory/.github/workflows/other-identity.yml@refs/heads/refusal/other-identity';
+  'https://github.com/the-roganator/cv-software-factory-scratch/.github/workflows/other-identity.yml@refs/heads/refusal/other-identity';
 const refusing = (error: Error) => ({
   verify: async () => {
     throw error;

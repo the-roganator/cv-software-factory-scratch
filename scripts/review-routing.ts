@@ -41,8 +41,8 @@ export const MARTIN = 6206459;
 /** The review App, which alone posts the `review` check the rulesets require. */
 export const REVIEW_APP = 5470762;
 
-/** The factory's App's bot user (`mrogan-software-factory[bot]`), which opens its pull requests. */
-export const FACTORY_APP = 337765427;
+/** The factory's App's bot user (`the-roganator-scratch-factory[bot]`), which opens its pull requests. */
+export const FACTORY_APP = 357103795;
 
 /** This repository, the factory's: the only one where the App's pin moves pass (ADR 0019). */
 export const FACTORY_REPO = FACTORY_REPOSITORY;

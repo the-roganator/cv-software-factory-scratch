@@ -102,7 +102,7 @@ function required(
   const result = spawnSync('bash', ['-eo', 'pipefail', '-c', script], {
     env: {
       PATH: `${bin}:${process.env.PATH}`,
-      GITHUB_REPOSITORY: 'the-roganator/cv-software-factory',
+      GITHUB_REPOSITORY: 'the-roganator/cv-software-factory-scratch',
       BASE: 'abc123',
       QUEUE_RUN: queue.run ?? '',
       QUEUE_STATE: queue.state ?? '',
@@ -162,8 +162,8 @@ describe('the required check', () => {
     const { status, asked } = required(release, { run: '42', state: 'completed success' });
     expect(status).toBe(0);
     expect(asked).toEqual([
-      'api repos/the-roganator/cv-software-factory/actions/workflows/check.yml/runs?event=merge_group&head_sha=abc123 --jq .workflow_runs[0].id // empty',
-      'api repos/the-roganator/cv-software-factory/actions/runs/42/jobs?per_page=100 --jq .jobs[] | select(.name == "lint, types, tests") | "\\(.status) \\(.conclusion)"',
+      'api repos/the-roganator/cv-software-factory-scratch/actions/workflows/check.yml/runs?event=merge_group&head_sha=abc123 --jq .workflow_runs[0].id // empty',
+      'api repos/the-roganator/cv-software-factory-scratch/actions/runs/42/jobs?per_page=100 --jq .jobs[] | select(.name == "lint, types, tests") | "\\(.status) \\(.conclusion)"',
     ]);
   });
 
