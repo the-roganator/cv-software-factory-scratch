@@ -3,7 +3,7 @@
 # that repository's code scanning, at the line that pins it, in one of the categories `vulnerabilities/01` to
 # `vulnerabilities/20`: the file has a run for each, no run over the 5,000 results code scanning keeps of one.
 #
-# Shared: cv-worlds-worst-website calls this workflow at a pinned commit, grants `actions: read`, `contents: read`,
+# Shared: cv-worlds-worst-website-scratch calls this workflow at a pinned commit, grants `actions: read`, `contents: read`,
 # `packages: read` and `security-events: write`, and passes SCAN_STATE_KEY by name; its results reach its own code
 # scanning, since the upload names the calling repository. The scripts (the lockfile gate's reading of a lockfile
 # among them, which the scan shares) and Trivy's pin come from this repository at the workflow's own commit, and the

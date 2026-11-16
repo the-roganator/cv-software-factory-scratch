@@ -335,7 +335,7 @@ export interface LineSettings {
   holdForSpend?(hold: NewEvent, spentUsd: number): Promise<boolean>;
 }
 
-export const APP_REPOSITORY = 'the-roganator/cv-worlds-worst-website';
+export const APP_REPOSITORY = 'the-roganator/cv-worlds-worst-website-scratch';
 
 /** How long a work item stays leased for an action that is not a step. */
 const ACTION_LEASE_SECONDS = 300;

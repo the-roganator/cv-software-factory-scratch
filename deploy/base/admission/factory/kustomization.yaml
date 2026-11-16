@@ -40,8 +40,8 @@ patches:
         path: /spec/variables/1/expression
         value: >-
           [
-            'ghcr.io/the-roganator/cv-software-factory/factory',
-            'ghcr.io/the-roganator/cv-software-factory/factory-browser',
-            'ghcr.io/the-roganator/cv-software-factory/factory-runner',
-            'ghcr.io/the-roganator/cv-software-factory/console'
+            'ghcr.io/the-roganator/cv-software-factory-scratch/factory',
+            'ghcr.io/the-roganator/cv-software-factory-scratch/factory-browser',
+            'ghcr.io/the-roganator/cv-software-factory-scratch/factory-runner',
+            'ghcr.io/the-roganator/cv-software-factory-scratch/console'
           ]
