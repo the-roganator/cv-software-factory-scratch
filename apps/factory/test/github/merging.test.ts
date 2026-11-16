@@ -25,7 +25,7 @@ import { calls, client, OTHER_SHA, quiet, REPO, type Route, type Sent, SHA } fro
 const { privateKey, publicKey } = generateKeyPairSync('ed25519');
 const AT = () => new Date('2026-11-04T12:00:00Z');
 /** The factory's own App, which may post a check named `review` too. */
-const FACTORY_APP = 5187559;
+const FACTORY_APP = 5774780;
 const BRANCH = 'factory/1400-cart';
 
 /** A guard that knows who opened each pull request: the App opened every one but #121, which Martin opened. */
@@ -229,7 +229,7 @@ function reviewRun(
     head_sha: head,
     status: conclusion === null ? 'in_progress' : 'completed',
     conclusion,
-    app: { id: app, slug: app === REVIEW_APP ? 'the-roganator-review-gate' : 'mrogan-software-factory' },
+    app: { id: app, slug: app === REVIEW_APP ? 'the-roganator-review-gate' : 'the-roganator-scratch-factory' },
     completed_at: conclusion === null ? null : '2026-11-04T11:30:00Z',
     html_url: `https://github.com/${REPO}/runs/${id}`,
     output: {
@@ -436,7 +436,7 @@ function queueAnswer({
 }
 
 const QUEUE_COMMIT = 'c'.repeat(40);
-const added = (at: string, by = 'mrogan-software-factory') => ({
+const added = (at: string, by = 'the-roganator-scratch-factory') => ({
   __typename: 'AddedToMergeQueueEvent',
   createdAt: at,
   actor: { login: by },
@@ -504,12 +504,12 @@ describe('the merge queue', () => {
       head: SHA,
       state: 'open',
       queued: { position: 1, state: 'AWAITING_CHECKS', enqueuedAt: '2026-11-04T11:40:00Z', commit: QUEUE_COMMIT },
-      added: { at: '2026-11-04T11:40:00Z', by: 'mrogan-software-factory' },
+      added: { at: '2026-11-04T11:40:00Z', by: 'the-roganator-scratch-factory' },
       removed: null,
     });
     expect(read.checks.map((c) => c.name)).toEqual(['browser tests', 'review']);
     expect(calls(sent).find((s) => s.path === '/graphql')?.body).toMatchObject({
-      variables: { owner: 'the-roganator', name: 'cv-worlds-worst-website', number: 17 },
+      variables: { owner: 'the-roganator', name: 'cv-worlds-worst-website-scratch', number: 17 },
     });
   });
 

@@ -38,7 +38,7 @@ Every request the probes, the crawler and the page reader make sends `x-unmeasur
 - **The objectives** judge the visitors' requests and the [traffic generator](TRAFFIC-GENERATOR.md)'s alone. The senses look for what goes wrong on their own requests themselves.
 - **An error** one of their requests causes is still logged, so the [log watcher](LOG-WATCHER.md) sees it, with no trace.
 - **But for caching.** The app answers every request with the mark `private, no-store`, so a marked answer cannot say whether an asset may be kept. The crawler asks for each static asset that answered once more, without the mark, and judges its caching on that answer, as a visitor's browser reads it: a few requests a crawl, one for each asset, counted as a visitor's.
-- **Only on the Service.** The app's public route removes the header, so a sense run on the host through Traefik (`APP_URL=http://website.localhost:8080`) is counted like a visitor.
+- **Only on the Service.** The app's public route removes the header, so a sense run on the host through Traefik (`APP_URL=http://website.localhost:9080`) is counted like a visitor.
 
 ### The sense runner
 

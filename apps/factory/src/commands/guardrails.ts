@@ -20,7 +20,7 @@
  * any checkout: for trying a proof, never for its record.
  *
  * The store is the one `PGHOST` and the rest name, as the proofs' role (`factory_proofs`); `KUBE_CONTEXT` names the
- * cluster (`k3d-software-factory`). It runs the repository's scripts, so it runs from a checkout on the Mac alone, and
+ * cluster (`k3d-software-factory-scratch`). It runs the repository's scripts, so it runs from a checkout on the Mac alone, and
  * its code is loaded only when it runs: the factory's image holds none of it.
  */
 export const USAGE = '  factory guardrails [--only <proof>]... [--no-record]';

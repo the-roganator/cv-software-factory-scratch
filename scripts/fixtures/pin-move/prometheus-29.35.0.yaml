@@ -163,9 +163,9 @@ data:
   martin.tmpl: |-
     {{ define "martin.message" }}{{ range .Alerts.Firing }}{{ or .Annotations.description .Annotations.summary .Labels.alertname }}
     Firing since {{ .StartsAt.UTC.Format "15:04 UTC, 2 January" }}.{{ with .Labels.work_item }}{{ if match "^[1-9][0-9]*$" . }}
-    <a href="{{ template "console.origin" }}/?item={{ . }}&sheet">#{{ . }} in the console</a>{{ end }}{{ end }}{{ $deploy := eq .Labels.cause "deploy" }}{{ with .Labels.pull_request }}{{ if match "^[1-9][0-9]*$" . }} · <a href="https://github.com/the-roganator/cv-worlds-worst-website/pull/{{ . }}">{{ if $deploy }}Deploy{{ else }}Pull request{{ end }} #{{ . }}</a>{{ end }}{{ end }}{{ end }}{{ end }}
+    <a href="{{ template "console.origin" }}/?item={{ . }}&sheet">#{{ . }} in the console</a>{{ end }}{{ end }}{{ $deploy := eq .Labels.cause "deploy" }}{{ with .Labels.pull_request }}{{ if match "^[1-9][0-9]*$" . }} · <a href="https://github.com/the-roganator/cv-worlds-worst-website-scratch/pull/{{ . }}">{{ if $deploy }}Deploy{{ else }}Pull request{{ end }} #{{ . }}</a>{{ end }}{{ end }}{{ end }}{{ end }}
   profile.tmpl: |-
-    {{ define "console.origin" }}https://console.localhost:8443{{ end }}
+    {{ define "console.origin" }}https://console.localhost:9443{{ end }}
 
 ---
 # Source: prometheus/templates/cm.yaml

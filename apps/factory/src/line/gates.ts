@@ -36,7 +36,7 @@ import { type CheckRun, outcomeOf, type PullRequestState } from '../github/reads
 import { whatClearedOnLook } from './verify.ts';
 
 /** The App, as GitHub names the app behind a check run: the factory's own runs (the reviewer's) are not gates. */
-export const APP_SLUG = 'mrogan-software-factory';
+export const APP_SLUG = 'the-roganator-scratch-factory';
 
 /**
  * The review gate's check (ADR 0014, scripts/review-gate.ts): Martin's say on a pull request, not one of its gates. The
