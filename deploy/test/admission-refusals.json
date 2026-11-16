@@ -11,20 +11,20 @@
     {
       "namespace": "factory",
       "case": "unsigned",
-      "image": "ghcr.io/the-roganator/cv-software-factory-scratch/factory@sha256:c4d692aa367f8eaf55c61a6ad672b28f51d10bde0467b50e1aa46b031e9a0aee",
+      "image": "ghcr.io/the-roganator/cv-software-factory-scratch/factory@sha256:f6cd7e139c868b207821399da292c9ec1909dd9f42a0d34f7d6b46fa64ad9edb",
       "at": "2026-11-10T23:59:12Z",
       "outcome": "refused",
-      "message": "admission webhook \"ivpol.validate.kyverno.svc-fail-finegrained-factory-images\" denied the request: Policy factory-images failed: images must be signed by build.yml on main of the repository that builds them: ghcr.io/the-roganator/cv-software-factory-scratch/factory@sha256:c4d692aa367f8eaf55c61a6ad672b28f51d10bde0467b50e1aa46b031e9a0aee",
+      "message": "admission webhook \"ivpol.validate.kyverno.svc-fail-finegrained-factory-images\" denied the request: Policy factory-images failed: images must be signed by build.yml on main of the repository that builds them: ghcr.io/the-roganator/cv-software-factory-scratch/factory@sha256:f6cd7e139c868b207821399da292c9ec1909dd9f42a0d34f7d6b46fa64ad9edb",
       "signature": "none",
       "signedBy": []
     },
     {
       "namespace": "factory",
       "case": "other-identity",
-      "image": "ghcr.io/the-roganator/cv-software-factory-scratch/factory@sha256:6c51f5c657ee7a7104df238f44fb138818474fd81fbb22370c4aa840eaf09e7c",
+      "image": "ghcr.io/the-roganator/cv-software-factory-scratch/factory@sha256:d8eb75ba8e5e293c2856bac9e10f8eb91aa0e7d537b89b89b5e6a74dd4ec8dca",
       "at": "2026-11-10T23:59:16Z",
       "outcome": "refused",
-      "message": "admission webhook \"ivpol.validate.kyverno.svc-fail-finegrained-factory-images\" denied the request: Policy factory-images failed: images must be signed by build.yml on main of the repository that builds them: ghcr.io/the-roganator/cv-software-factory-scratch/factory@sha256:6c51f5c657ee7a7104df238f44fb138818474fd81fbb22370c4aa840eaf09e7c",
+      "message": "admission webhook \"ivpol.validate.kyverno.svc-fail-finegrained-factory-images\" denied the request: Policy factory-images failed: images must be signed by build.yml on main of the repository that builds them: ghcr.io/the-roganator/cv-software-factory-scratch/factory@sha256:d8eb75ba8e5e293c2856bac9e10f8eb91aa0e7d537b89b89b5e6a74dd4ec8dca",
       "signature": "other",
       "signedBy": [
         "https://github.com/the-roganator/cv-software-factory-scratch/.github/workflows/other-identity.yml@refs/heads/refusal/other-identity"
@@ -45,20 +45,20 @@
     {
       "namespace": "runners",
       "case": "unsigned",
-      "image": "ghcr.io/the-roganator/cv-software-factory-scratch/factory@sha256:c4d692aa367f8eaf55c61a6ad672b28f51d10bde0467b50e1aa46b031e9a0aee",
+      "image": "ghcr.io/the-roganator/cv-software-factory-scratch/factory@sha256:f6cd7e139c868b207821399da292c9ec1909dd9f42a0d34f7d6b46fa64ad9edb",
       "at": "2026-11-10T23:59:19Z",
       "outcome": "refused",
-      "message": "admission webhook \"ivpol.validate.kyverno.svc-fail-finegrained-factory-images\" denied the request: Policy factory-images failed: images must be signed by build.yml on main of the repository that builds them: ghcr.io/the-roganator/cv-software-factory-scratch/factory@sha256:c4d692aa367f8eaf55c61a6ad672b28f51d10bde0467b50e1aa46b031e9a0aee",
+      "message": "admission webhook \"ivpol.validate.kyverno.svc-fail-finegrained-factory-images\" denied the request: Policy factory-images failed: images must be signed by build.yml on main of the repository that builds them: ghcr.io/the-roganator/cv-software-factory-scratch/factory@sha256:f6cd7e139c868b207821399da292c9ec1909dd9f42a0d34f7d6b46fa64ad9edb",
       "signature": "none",
       "signedBy": []
     },
     {
       "namespace": "runners",
       "case": "other-identity",
-      "image": "ghcr.io/the-roganator/cv-software-factory-scratch/factory@sha256:6c51f5c657ee7a7104df238f44fb138818474fd81fbb22370c4aa840eaf09e7c",
+      "image": "ghcr.io/the-roganator/cv-software-factory-scratch/factory@sha256:d8eb75ba8e5e293c2856bac9e10f8eb91aa0e7d537b89b89b5e6a74dd4ec8dca",
       "at": "2026-11-10T23:59:22Z",
       "outcome": "refused",
-      "message": "admission webhook \"ivpol.validate.kyverno.svc-fail-finegrained-factory-images\" denied the request: Policy factory-images failed: images must be signed by build.yml on main of the repository that builds them: ghcr.io/the-roganator/cv-software-factory-scratch/factory@sha256:6c51f5c657ee7a7104df238f44fb138818474fd81fbb22370c4aa840eaf09e7c",
+      "message": "admission webhook \"ivpol.validate.kyverno.svc-fail-finegrained-factory-images\" denied the request: Policy factory-images failed: images must be signed by build.yml on main of the repository that builds them: ghcr.io/the-roganator/cv-software-factory-scratch/factory@sha256:d8eb75ba8e5e293c2856bac9e10f8eb91aa0e7d537b89b89b5e6a74dd4ec8dca",
       "signature": "other",
       "signedBy": [
         "https://github.com/the-roganator/cv-software-factory-scratch/.github/workflows/other-identity.yml@refs/heads/refusal/other-identity"
@@ -79,20 +79,20 @@
     {
       "namespace": "red-team",
       "case": "unsigned",
-      "image": "ghcr.io/the-roganator/cv-software-factory-scratch/factory@sha256:c4d692aa367f8eaf55c61a6ad672b28f51d10bde0467b50e1aa46b031e9a0aee",
+      "image": "ghcr.io/the-roganator/cv-software-factory-scratch/factory@sha256:f6cd7e139c868b207821399da292c9ec1909dd9f42a0d34f7d6b46fa64ad9edb",
       "at": "2026-11-10T23:59:25Z",
       "outcome": "refused",
-      "message": "admission webhook \"ivpol.validate.kyverno.svc-fail-finegrained-factory-images\" denied the request: Policy factory-images failed: images must be signed by build.yml on main of the repository that builds them: ghcr.io/the-roganator/cv-software-factory-scratch/factory@sha256:c4d692aa367f8eaf55c61a6ad672b28f51d10bde0467b50e1aa46b031e9a0aee",
+      "message": "admission webhook \"ivpol.validate.kyverno.svc-fail-finegrained-factory-images\" denied the request: Policy factory-images failed: images must be signed by build.yml on main of the repository that builds them: ghcr.io/the-roganator/cv-software-factory-scratch/factory@sha256:f6cd7e139c868b207821399da292c9ec1909dd9f42a0d34f7d6b46fa64ad9edb",
       "signature": "none",
       "signedBy": []
     },
     {
       "namespace": "red-team",
       "case": "other-identity",
-      "image": "ghcr.io/the-roganator/cv-software-factory-scratch/factory@sha256:6c51f5c657ee7a7104df238f44fb138818474fd81fbb22370c4aa840eaf09e7c",
+      "image": "ghcr.io/the-roganator/cv-software-factory-scratch/factory@sha256:d8eb75ba8e5e293c2856bac9e10f8eb91aa0e7d537b89b89b5e6a74dd4ec8dca",
       "at": "2026-11-10T23:59:28Z",
       "outcome": "refused",
-      "message": "admission webhook \"ivpol.validate.kyverno.svc-fail-finegrained-factory-images\" denied the request: Policy factory-images failed: images must be signed by build.yml on main of the repository that builds them: ghcr.io/the-roganator/cv-software-factory-scratch/factory@sha256:6c51f5c657ee7a7104df238f44fb138818474fd81fbb22370c4aa840eaf09e7c",
+      "message": "admission webhook \"ivpol.validate.kyverno.svc-fail-finegrained-factory-images\" denied the request: Policy factory-images failed: images must be signed by build.yml on main of the repository that builds them: ghcr.io/the-roganator/cv-software-factory-scratch/factory@sha256:d8eb75ba8e5e293c2856bac9e10f8eb91aa0e7d537b89b89b5e6a74dd4ec8dca",
       "signature": "other",
       "signedBy": [
         "https://github.com/the-roganator/cv-software-factory-scratch/.github/workflows/other-identity.yml@refs/heads/refusal/other-identity"
@@ -113,20 +113,20 @@
     {
       "namespace": "website",
       "case": "unsigned",
-      "image": "ghcr.io/the-roganator/cv-worlds-worst-website-scratch@sha256:e3e255b30b701deafd7362a082dcd0a4bba05d0db08dfbea0b1195604a028504",
+      "image": "ghcr.io/the-roganator/cv-worlds-worst-website-scratch@sha256:bdb15554bfcd788a5c878b903b536d5d5313adf490c48736593d7b88ce11b325",
       "at": "2026-11-10T23:59:31Z",
       "outcome": "refused",
-      "message": "admission webhook \"ivpol.validate.kyverno.svc-fail-finegrained-website-images\" denied the request: Policy website-images failed: images must be signed by build.yml on main of the repository that builds them: ghcr.io/the-roganator/cv-worlds-worst-website-scratch@sha256:e3e255b30b701deafd7362a082dcd0a4bba05d0db08dfbea0b1195604a028504",
+      "message": "admission webhook \"ivpol.validate.kyverno.svc-fail-finegrained-website-images\" denied the request: Policy website-images failed: images must be signed by build.yml on main of the repository that builds them: ghcr.io/the-roganator/cv-worlds-worst-website-scratch@sha256:bdb15554bfcd788a5c878b903b536d5d5313adf490c48736593d7b88ce11b325",
       "signature": "none",
       "signedBy": []
     },
     {
       "namespace": "website",
       "case": "other-identity",
-      "image": "ghcr.io/the-roganator/cv-software-factory-scratch/factory-browser@sha256:4f76ec0c5946e242ad64e9fa28b59ac3a0639def16f3a9539b1c27691cc97f0f",
+      "image": "ghcr.io/the-roganator/cv-software-factory-scratch/factory-browser@sha256:e2bee9e81dd43e9724167ea54ca6975455258f906b8351259e23a80e8ab732da",
       "at": "2026-11-10T23:59:35Z",
       "outcome": "refused",
-      "message": "admission webhook \"ivpol.validate.kyverno.svc-fail-finegrained-website-images\" denied the request: Policy website-images failed: images must be signed by build.yml on main of the repository that builds them: ghcr.io/the-roganator/cv-software-factory-scratch/factory-browser@sha256:4f76ec0c5946e242ad64e9fa28b59ac3a0639def16f3a9539b1c27691cc97f0f",
+      "message": "admission webhook \"ivpol.validate.kyverno.svc-fail-finegrained-website-images\" denied the request: Policy website-images failed: images must be signed by build.yml on main of the repository that builds them: ghcr.io/the-roganator/cv-software-factory-scratch/factory-browser@sha256:e2bee9e81dd43e9724167ea54ca6975455258f906b8351259e23a80e8ab732da",
       "signature": "other",
       "signedBy": [
         "https://github.com/the-roganator/cv-software-factory-scratch/.github/workflows/other-identity.yml@refs/heads/refusal/other-identity"
@@ -147,20 +147,20 @@
     {
       "namespace": "scoreboard",
       "case": "unsigned",
-      "image": "ghcr.io/the-roganator/cv-software-factory-scratch/factory@sha256:c4d692aa367f8eaf55c61a6ad672b28f51d10bde0467b50e1aa46b031e9a0aee",
+      "image": "ghcr.io/the-roganator/cv-software-factory-scratch/factory@sha256:f6cd7e139c868b207821399da292c9ec1909dd9f42a0d34f7d6b46fa64ad9edb",
       "at": "2026-11-10T23:59:38Z",
       "outcome": "refused",
-      "message": "admission webhook \"ivpol.validate.kyverno.svc-fail-finegrained-scoreboard-images\" denied the request: Policy scoreboard-images failed: images must be signed by build.yml on main of the repository that builds them: ghcr.io/the-roganator/cv-software-factory-scratch/factory@sha256:c4d692aa367f8eaf55c61a6ad672b28f51d10bde0467b50e1aa46b031e9a0aee",
+      "message": "admission webhook \"ivpol.validate.kyverno.svc-fail-finegrained-scoreboard-images\" denied the request: Policy scoreboard-images failed: images must be signed by build.yml on main of the repository that builds them: ghcr.io/the-roganator/cv-software-factory-scratch/factory@sha256:f6cd7e139c868b207821399da292c9ec1909dd9f42a0d34f7d6b46fa64ad9edb",
       "signature": "none",
       "signedBy": []
     },
     {
       "namespace": "scoreboard",
       "case": "other-identity",
-      "image": "ghcr.io/the-roganator/cv-software-factory-scratch/factory@sha256:6c51f5c657ee7a7104df238f44fb138818474fd81fbb22370c4aa840eaf09e7c",
+      "image": "ghcr.io/the-roganator/cv-software-factory-scratch/factory@sha256:d8eb75ba8e5e293c2856bac9e10f8eb91aa0e7d537b89b89b5e6a74dd4ec8dca",
       "at": "2026-11-10T23:59:41Z",
       "outcome": "refused",
-      "message": "admission webhook \"ivpol.validate.kyverno.svc-fail-finegrained-scoreboard-images\" denied the request: Policy scoreboard-images failed: images must be signed by build.yml on main of the repository that builds them: ghcr.io/the-roganator/cv-software-factory-scratch/factory@sha256:6c51f5c657ee7a7104df238f44fb138818474fd81fbb22370c4aa840eaf09e7c",
+      "message": "admission webhook \"ivpol.validate.kyverno.svc-fail-finegrained-scoreboard-images\" denied the request: Policy scoreboard-images failed: images must be signed by build.yml on main of the repository that builds them: ghcr.io/the-roganator/cv-software-factory-scratch/factory@sha256:d8eb75ba8e5e293c2856bac9e10f8eb91aa0e7d537b89b89b5e6a74dd4ec8dca",
       "signature": "other",
       "signedBy": [
         "https://github.com/the-roganator/cv-software-factory-scratch/.github/workflows/other-identity.yml@refs/heads/refusal/other-identity"
@@ -189,10 +189,10 @@
     {
       "namespace": "flagd",
       "case": "other-identity",
-      "image": "ghcr.io/the-roganator/cv-software-factory-scratch/factory@sha256:6c51f5c657ee7a7104df238f44fb138818474fd81fbb22370c4aa840eaf09e7c",
+      "image": "ghcr.io/the-roganator/cv-software-factory-scratch/factory@sha256:d8eb75ba8e5e293c2856bac9e10f8eb91aa0e7d537b89b89b5e6a74dd4ec8dca",
       "at": "2026-11-10T23:59:43Z",
       "outcome": "refused",
-      "message": "admission webhook \"ivpol.validate.kyverno.svc-fail-finegrained-flagd-images\" denied the request: Policy flagd-images failed: images from this project's GHCR must be ones this namespace runs: ghcr.io/the-roganator/cv-software-factory-scratch/factory@sha256:6c51f5c657ee7a7104df238f44fb138818474fd81fbb22370c4aa840eaf09e7c",
+      "message": "admission webhook \"ivpol.validate.kyverno.svc-fail-finegrained-flagd-images\" denied the request: Policy flagd-images failed: images from this project's GHCR must be ones this namespace runs: ghcr.io/the-roganator/cv-software-factory-scratch/factory@sha256:d8eb75ba8e5e293c2856bac9e10f8eb91aa0e7d537b89b89b5e6a74dd4ec8dca",
       "signature": "other",
       "signedBy": [
         "https://github.com/the-roganator/cv-software-factory-scratch/.github/workflows/other-identity.yml@refs/heads/refusal/other-identity"

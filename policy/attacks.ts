@@ -131,7 +131,7 @@ export const expectedRefusals = (attack: Attack): RefusalMechanism[] => [...ATTA
  * refusal is admission control's own, not a pull that failed.
  */
 export const RED_TEAM_UNSIGNED_IMAGE =
-  'ghcr.io/the-roganator/cv-software-factory-scratch/factory@sha256:c4d692aa367f8eaf55c61a6ad672b28f51d10bde0467b50e1aa46b031e9a0aee';
+  'ghcr.io/the-roganator/cv-software-factory-scratch/factory@sha256:f6cd7e139c868b207821399da292c9ec1909dd9f42a0d34f7d6b46fa64ad9edb';
 
 /** The repository the egress attack's pod runs, signed and vetted by `factory-images`: the runner image, by digest. */
 export const RED_TEAM_RUNNER_REPOSITORY = 'ghcr.io/the-roganator/cv-software-factory-scratch/factory-runner';
