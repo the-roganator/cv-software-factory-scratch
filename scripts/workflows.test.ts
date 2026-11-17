@@ -5,7 +5,6 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
 import { syftPin } from '../apps/factory/src/vulnerabilities/graph.ts';
-import { REAL } from '../policy/repositories.ts';
 import { ENVIRONMENTS, KEY_BRANCH, SCAN_STATE_ENVIRONMENT } from './github-settings.ts';
 
 /**
@@ -53,15 +52,8 @@ const CHECKED_OUT: Record<string, string[]> = {
   'copilot-held-runs.yml': ['mise.toml', 'mise.lock', 'scripts/copilot-held-runs.ts'],
 };
 
-/** The app's repository, as a job's condition names it: the caller's APP_REPOSITORY variable, or the real one. */
-const APP_EXPRESSION = `(vars.APP_REPOSITORY || '${REAL.app}')`;
-
-/** review.yml's job that works out the gate's pin moves (scripts/pin-moves.ts), with no secret. */
-const PIN_MOVE_JOB = 'pin-move';
-/** review.yml's job that works out the gate's Critical fixes in the app (scripts/critical-fixes.ts), with no secret. */
-const CRITICAL_FIX_JOB = 'critical-fix';
-/** The jobs that read main whole and hold no secret, which the tests below hold to that. */
-const ANSWER_JOBS = [PIN_MOVE_JOB, CRITICAL_FIX_JOB];
+/** review.yml's job that works out the gate's moves (scripts/moves.ts), with no secret: it reads main whole. */
+const MOVE_JOB = 'move';
 
 interface Step {
   id?: string;
@@ -251,9 +243,9 @@ describe('every workflow', () => {
     // Every workflow that holds a secret is here, so a new one with no list of its own fails.
     for (const file of Object.keys(WITH_A_SECRET)) expect(Object.keys(CHECKED_OUT), file).toContain(file);
     for (const file of Object.keys(CHECKED_OUT)) {
-      // review.yml's pin move and critical fix jobs hold no secret and read main whole: the tests below hold them to that.
+      // review.yml's move job holds no secret and reads main whole: the test below holds it to that.
       const steps = Object.entries(read(file).jobs)
-        .filter(([id]) => !(file === 'review.yml' && ANSWER_JOBS.includes(id)))
+        .filter(([id]) => !(file === 'review.yml' && id === MOVE_JOB))
         .flatMap(([, job]) => job.steps ?? []);
       const checkouts = steps.filter((s) => s.uses?.startsWith('actions/checkout@'));
       expect(checkouts, file).toHaveLength(1);
@@ -278,42 +270,20 @@ describe('every workflow', () => {
     }
   });
 
-  it("works out the gate's pin moves in a job of review.yml's own, with no secret, nothing to write and main's code", () => {
+  it("works out the gate's moves in a job of review.yml's own, with the scan's key alone, nothing to write and main's code", () => {
     const workflow = read('review.yml');
-    const job = workflow.jobs[PIN_MOVE_JOB] as Job;
-    expect(secretsOf(workflow, job)).toEqual({ names: [], passed: false });
-    expect(job.environment).toBeUndefined();
-    // actions: read, to learn which workflow made each check run at the head: a read, as the others are.
-    expect(job.permissions).toEqual({ contents: 'read', 'pull-requests': 'read', checks: 'read', actions: 'read' });
-    const checkouts = (job.steps ?? []).filter((s) => s.uses?.startsWith('actions/checkout@'));
-    expect(checkouts).toHaveLength(1);
-    expect(checkouts[0]?.with).toEqual({
-      repository: expression('job.workflow_repository'),
-      ref: expression('job.workflow_sha'),
-      'persist-credentials': false,
-    });
-    // The gate, which holds the key, takes its answers and reads no head itself; it runs whatever the job did.
-    const review = workflow.jobs.review as Job & { needs?: unknown };
-    expect(review.needs).toEqual(ANSWER_JOBS);
-    // A platform run asks for a verdict only when the App's: its pin moves alone wait for it.
-    const onlyApp =
-      "(github.event.workflow_run.name != 'platform' || github.event.workflow_run.actor.login == 'mrogan-software-factory[bot]')";
-    expect(review.if).toBe(expression(`!cancelled() && ${onlyApp}`));
-    expect(job.if).toBe(expression(`github.repository != ${APP_EXPRESSION} && ${onlyApp}`));
-    const judge = (review.steps ?? []).find((s) => s.run === 'node scripts/review-gate.ts') as Step & {
-      env?: Record<string, unknown>;
-    };
-    expect(judge.env?.PIN_MOVES).toBe(expression(`needs.${PIN_MOVE_JOB}.outputs.answers`));
-    for (const step of job.steps ?? []) expect(step.run ?? '').not.toMatch(/\bgit\b|CHECKS_TOKEN/);
-  });
-
-  it("works out the gate's Critical fixes in a job of review.yml's own, in the app alone, as the pin moves are", () => {
-    const workflow = read('review.yml');
-    const job = workflow.jobs[CRITICAL_FIX_JOB] as Job;
-    expect(secretsOf(workflow, job)).toEqual({ names: [], passed: false });
-    expect(job.environment).toBeUndefined();
-    expect(job.permissions).toEqual({ contents: 'read', 'pull-requests': 'read', checks: 'read', actions: 'read' });
-    expect(job.if).toBe(expression(`github.repository == ${APP_EXPRESSION}`));
+    const job = workflow.jobs[MOVE_JOB] as Job;
+    // The scan's state key, from the environment only main may use, to the one step that reads the moves; no other.
+    expect(secretsOf(workflow, job)).toEqual({ names: [SCAN_STATE_ENVIRONMENT.key], passed: false });
+    expect(environmentOf(job)).toBe(SCAN_STATE_ENVIRONMENT.name);
+    const holding = (job.steps ?? []).filter((step) => JSON.stringify(step).includes('secrets.'));
+    expect(holding.map((step) => step.run)).toEqual(['node scripts/moves.ts --moves']);
+    const called = (workflow.on as { workflow_call?: { secrets?: Record<string, unknown> } }).workflow_call;
+    expect(called?.secrets?.[SCAN_STATE_ENVIRONMENT.key]).toEqual({ description: expect.any(String), required: false });
+    // actions: read, for the scan's moves, an artifact of vulnerabilities.yml's run: a read, as the others are.
+    expect(job.permissions).toEqual({ contents: 'read', 'pull-requests': 'read', actions: 'read' });
+    // In both repositories, whoever opened the pull request.
+    expect(job.if).toBeUndefined();
     const checkouts = (job.steps ?? []).filter((s) => s.uses?.startsWith('actions/checkout@'));
     expect(checkouts).toHaveLength(1);
     expect(checkouts[0]?.with).toEqual({
@@ -323,10 +293,16 @@ describe('every workflow', () => {
     });
     expect((job.steps ?? []).map((s) => s.run).filter(Boolean)).toEqual([
       'pnpm install --frozen-lockfile --ignore-scripts',
-      'node scripts/critical-fixes.ts --critical-fixes',
+      'node scripts/moves.ts --moves',
     ]);
-    const judge = ((workflow.jobs.review as Job).steps ?? []).find((s) => s.run === 'node scripts/review-gate.ts');
-    expect(judge?.env?.CRITICAL_FIXES).toBe(expression(`needs.${CRITICAL_FIX_JOB}.outputs.answers`));
+    // The gate, which holds the key, takes its answers and reads no head itself; it runs whatever the job did.
+    const review = workflow.jobs.review as Job & { needs?: unknown };
+    expect(review.needs).toEqual([MOVE_JOB]);
+    expect(review.if).toBe(expression('!cancelled()'));
+    const judge = (review.steps ?? []).find((s) => s.run === 'node scripts/review-gate.ts') as Step & {
+      env?: Record<string, unknown>;
+    };
+    expect(judge.env?.MOVES).toBe(expression(`needs.${MOVE_JOB}.outputs.answers`));
     for (const step of job.steps ?? []) expect(step.run ?? '').not.toMatch(/\bgit\b|CHECKS_TOKEN/);
   });
 
