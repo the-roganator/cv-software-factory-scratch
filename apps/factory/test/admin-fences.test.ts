@@ -232,7 +232,7 @@ describe('the admin service', () => {
     const env = Object.fromEntries(
       (deployment?.manifest.spec?.template?.spec?.containers?.[0]?.env ?? []).map((e) => [e.name, e.value]),
     );
-    expect(env.ADMIN_ORIGIN).toBe('https://console.localhost:8443');
+    expect(env.ADMIN_ORIGIN).toBe('https://console.localhost:9443');
     expect(env.ADMIN_TRUSTED_PROXIES).toBe('10.42.0.0/16');
   });
 });

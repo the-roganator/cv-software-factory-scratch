@@ -82,20 +82,22 @@ describe('the repository’s spelling', () => {
   const env = (repos: string) => configFromEnv({ GITHUB_REPOSITORIES: repos } as NodeJS.ProcessEnv);
   it('refused at start: another case in owner, in name, among duplicates, with space round it', () => {
     for (const repos of [
-      'The-Roganator/cv-software-factory',
-      'the-roganator/CV-Software-Factory',
-      'the-roganator/cv-software-factory,THE-ROGANATOR/cv-software-factory',
-      ' the-roganator/cv-software-factory , the-roganator/Cv-Worlds-Worst-Website ',
+      'The-Roganator/cv-software-factory-scratch',
+      'the-roganator/CV-Software-Factory-Scratch',
+      'the-roganator/cv-software-factory-scratch,THE-ROGANATOR/cv-software-factory-scratch',
+      ' the-roganator/cv-software-factory-scratch , the-roganator/Cv-Worlds-Worst-Website-Scratch ',
     ]) {
       expect(() => env(repos), repos).toThrow(/write it/);
     }
-    expect(env(' the-roganator/cv-software-factory ').repositories).toEqual(['the-roganator/cv-software-factory']);
+    expect(env(' the-roganator/cv-software-factory-scratch ').repositories).toEqual([
+      'the-roganator/cv-software-factory-scratch',
+    ]);
   });
 
   // No weakness: GitHub's API answers 404 for the name with `.git` (asked read-only on 2026-11-12), so it is no alias.
   it('control: a name with `.git` after it is taken as another repository, which GitHub does not have', () => {
-    const { repositories } = env('the-roganator/cv-software-factory.git');
-    expect(repositories).toEqual(['the-roganator/cv-software-factory.git']);
+    const { repositories } = env('the-roganator/cv-software-factory-scratch.git');
+    expect(repositories).toEqual(['the-roganator/cv-software-factory-scratch.git']);
   });
 });
 

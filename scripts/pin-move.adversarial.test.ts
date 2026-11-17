@@ -160,7 +160,7 @@ describe('the platform rule, where the reads of #1057 aimed', () => {
   });
 
   it("holds another app's check run of the name, the factory's App's among them", async () => {
-    for (const app of [{ slug: 'mrogan-software-factory' }, { slug: 'dependabot' }, null])
+    for (const app of [{ slug: 'the-roganator-scratch-factory' }, { slug: 'dependabot' }, null])
       expect(
         await reasonOf(sidecarIO({ runs: async () => tied([check(1, 'success', 1, { app })], [workflowRun(1)]) })),
       ).toBe('platform has not run at ccccccc');

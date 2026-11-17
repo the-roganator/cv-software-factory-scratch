@@ -2,7 +2,7 @@
  * The samples' screenshots: real captures of the app, each with one sample's invented change applied to a
  * scratch copy of it, which is thrown away afterwards and goes nowhere.
  *
- *     pnpm --filter @software-factory/samples capture [--app <checkout of cv-worlds-worst-website>]
+ *     pnpm --filter @software-factory/samples capture [--app <checkout of cv-worlds-worst-website-scratch>]
  *
  * Writes each screenshot into the samples' event log (log/artifacts, named by hash) and what the samples need to
  * know about it into captures.json: where the probe looked, and how much of each page differs from the app as
@@ -20,7 +20,7 @@ import { ARTIFACTS, CAPTURES, type Captures } from './captures.ts';
 
 /** The app as it was published, which every sample's change is made to. */
 const APP = {
-  repository: 'https://github.com/the-roganator/cv-worlds-worst-website.git',
+  repository: 'https://github.com/the-roganator/cv-worlds-worst-website-scratch.git',
   commit: '7d3353a10f3847284a24ab09cc5db9781f338ecc',
 };
 

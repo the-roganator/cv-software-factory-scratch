@@ -25,7 +25,7 @@ import { QUEUE_BRANCH } from './review-gate.ts';
  */
 
 const SCRIPT = resolve('scripts/check-kind.sh');
-const APP = 'mrogan-software-factory[bot]';
+const APP = 'the-roganator-scratch-factory[bot]';
 const CONSOLE = 'deploy/overlays/local/console-image/kustomization.yaml';
 const FACTORY = 'deploy/overlays/local/factory-image/kustomization.yaml';
 const QUEUE = `refs/heads/gh-readonly-queue/main/pr-699-${'a'.repeat(40)}`;
@@ -122,7 +122,7 @@ function kind(repo: string, run: Run, args: string[] = []) {
       ...GIT_ENV,
       PATH: `${bin}:${process.env.PATH}`,
       GITHUB_EVENT_NAME: run.event,
-      GITHUB_REPOSITORY: 'the-roganator/cv-software-factory',
+      GITHUB_REPOSITORY: 'the-roganator/cv-software-factory-scratch',
       AUTHOR: run.author ?? '',
       GITHUB_BASE_REF: run.base ?? '',
       QUEUE_BRANCH: run.branch ?? '',
@@ -162,7 +162,7 @@ describe('a deploy', () => {
   it("reads the queue's pull request from its branch, through the API", () => {
     const { asked } = kind(repository({ [CONSOLE]: moved(CONSOLE) }), queued);
     expect(asked).toEqual([
-      'api repos/the-roganator/cv-software-factory/pulls/699 --jq "\\(.user.login) \\(.base.ref)"',
+      'api repos/the-roganator/cv-software-factory-scratch/pulls/699 --jq "\\(.user.login) \\(.base.ref)"',
     ]);
   });
 
@@ -170,7 +170,7 @@ describe('a deploy', () => {
     expect(APP_LOGIN).toBe(APP);
     const script = readFileSync(SCRIPT, 'utf-8');
     expect(script).toContain(`APP='${APP}'`);
-    const ours = DEPLOYS.filter((d) => d.repo.endsWith('/cv-software-factory')).flatMap((d) =>
+    const ours = DEPLOYS.filter((d) => d.repo.endsWith('/cv-software-factory-scratch')).flatMap((d) =>
       d.pins.map((p) => p.file),
     );
     expect(ours.sort()).toEqual([CONSOLE, FACTORY]);
@@ -660,7 +660,7 @@ describe('the classes a cluster is not made from', () => {
       ].map((m) => ({ name: m[1], at: m[2] })),
     );
     expect(pinned.map((pin) => pin.name).sort()).toEqual(['console', 'factory', 'factory-browser', 'factory-runner']);
-    for (const pin of pinned) expect(pin.at).toBe(`ghcr.io/the-roganator/cv-software-factory/${pin.name}`);
+    for (const pin of pinned) expect(pin.at).toBe(`ghcr.io/the-roganator/cv-software-factory-scratch/${pin.name}`);
     // No manifest runs one of them any other way: every image of this repository's registry a manifest names is by digest.
     const manifests = execFileSync('git', ['ls-files', '-z', 'deploy/'], { encoding: 'utf-8' })
       .split('\0')
@@ -669,7 +669,7 @@ describe('the classes a cluster is not made from', () => {
       for (const line of readFileSync(file, 'utf-8')
         .split('\n')
         .filter((l) => /^\s*-?\s*image:/.test(l)))
-        if (line.includes('ghcr.io/the-roganator/cv-software-factory/'))
+        if (line.includes('ghcr.io/the-roganator/cv-software-factory-scratch/'))
           expect(line, file).toMatch(/@sha256:[0-9a-f]{64}/);
     // `make up` and what the job runs build no image and import none: the cluster pulls each by its digest.
     const { texts } = runs();
@@ -752,7 +752,7 @@ describe('a pin move', () => {
  * for GitHub that answers each read the script makes from a table: one it does not hold fails, as GitHub failing would.
  */
 describe('the queue’s cluster, made once already', () => {
-  const REPO = 'the-roganator/cv-software-factory';
+  const REPO = 'the-roganator/cv-software-factory-scratch';
   const DEPLOYMENT = 'deploy/base/console/deployment.yaml';
   const WORKFLOW = '.github/workflows/platform.yml';
   const INPUTS: Record<string, string> = {
