@@ -13,7 +13,7 @@ import { APP_USER } from '../../src/github/issues.ts';
 import type { Moves, ReadMove } from '../../src/github/scanning.ts';
 import type { Route, Sent } from './fake.ts';
 
-export const FACTORY = 'the-roganator/cv-software-factory';
+export const FACTORY = 'the-roganator/cv-software-factory-scratch';
 const OWNER = 'the-roganator';
 
 export const digest = (seed: string) => `sha256:${createHash('sha256').update(seed).digest('hex')}`;

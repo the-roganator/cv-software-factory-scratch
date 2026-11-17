@@ -1,14 +1,14 @@
 {
   "repositories": [
     {
-      "repository": "the-roganator/cv-software-factory",
+      "repository": "the-roganator/cv-software-factory-scratch",
       "run": {
         "id": 42000000101,
         "event": "schedule",
         "conclusion": "failure",
         "commit": "1111111111111111111111111111111111111111",
         "finished": "2026-11-11T04:58:00Z",
-        "url": "https://github.com/the-roganator/cv-software-factory/actions/runs/42000000101"
+        "url": "https://github.com/the-roganator/cv-software-factory-scratch/actions/runs/42000000101"
       },
       "judged": "2026-11-11T04:57:00Z",
       "failed": ["due-within-a-day"],
@@ -142,14 +142,14 @@
       ]
     },
     {
-      "repository": "the-roganator/cv-worlds-worst-website",
+      "repository": "the-roganator/cv-worlds-worst-website-scratch",
       "run": {
         "id": 42000000202,
         "event": "schedule",
         "conclusion": "success",
         "commit": "3333333333333333333333333333333333333333",
         "finished": "2026-11-11T05:02:00Z",
-        "url": "https://github.com/the-roganator/cv-worlds-worst-website/actions/runs/42000000202"
+        "url": "https://github.com/the-roganator/cv-worlds-worst-website-scratch/actions/runs/42000000202"
       },
       "judged": "2026-11-11T05:01:00Z",
       "failed": [],
@@ -217,7 +217,7 @@
       "container": "sidecar",
       "image": "ghcr.io/example/sidecar:2.0.0",
       "digest": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
-      "repository": "the-roganator/cv-software-factory",
+      "repository": "the-roganator/cv-software-factory-scratch",
       "item": "loki",
       "pin": {
         "file": "deploy/base/telemetry/values/loki.yaml",
@@ -234,7 +234,7 @@
     },
     {
       "row": "not-running",
-      "repository": "the-roganator/cv-software-factory",
+      "repository": "the-roganator/cv-software-factory-scratch",
       "item": "postgres:17.6@sha256:7777777777777777777777777777777777777777777777777777777777777777",
       "image": "postgres:17.6@sha256:7777777777777777777777777777777777777777777777777777777777777777",
       "pin": {

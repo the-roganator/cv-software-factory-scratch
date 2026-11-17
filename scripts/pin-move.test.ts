@@ -288,9 +288,9 @@ describe('a pin move, replayed as the App would make it', () => {
     expect(await at([...others, run(PLATFORM_CHECK, 'success', { head_sha: 'd'.repeat(40) })])).toBe(
       'platform has not run at ccccccc',
     );
-    expect(await at([...others, run(PLATFORM_CHECK, 'success', { app: { slug: 'mrogan-software-factory' } })])).toBe(
-      'platform has not run at ccccccc',
-    );
+    expect(
+      await at([...others, run(PLATFORM_CHECK, 'success', { app: { slug: 'the-roganator-scratch-factory' } })]),
+    ).toBe('platform has not run at ccccccc');
     expect(await at([...others, run(PLATFORM_CHECK, 'success', { workflow: CHECK_WORKFLOW })])).toMatch(
       /^platform at ccccccc ran in no run of \.github\/workflows\/platform\.yml/,
     );
@@ -701,7 +701,7 @@ describe('a pin move holds, each for its one reason', () => {
   });
 
   it('an image of ours, which passes only as an exact pin', async () => {
-    const ours = (d: string) => `ghcr.io/the-roganator/cv-software-factory/browser:1@sha256:${hex(d)}`;
+    const ours = (d: string) => `ghcr.io/the-roganator/cv-software-factory-scratch/browser:1@sha256:${hex(d)}`;
     const c: Case = {
       base: [zapItem(ours('a'))],
       head: [zapItem(ours('b'))],
@@ -739,7 +739,7 @@ describe('a pin move holds, each for its one reason', () => {
     );
     const retried = [run(ZAP_CHECK, 'success', { id: 1 }), run(ZAP_CHECK, 'failure', { id: 2 })];
     expect(await reasonOf({ ...ZAP_CASE, io: { runs: async () => retried } })).toMatch(/is failure, not a success/);
-    const foreign = [run(ZAP_CHECK, 'success', { app: { slug: 'mrogan-software-factory' } })];
+    const foreign = [run(ZAP_CHECK, 'success', { app: { slug: 'the-roganator-scratch-factory' } })];
     expect(await reasonOf({ ...ZAP_CASE, io: { runs: async () => foreign } })).toBe('ZAP scan has not run at ccccccc');
     const elsewhere = [run(ZAP_CHECK, 'success', { head_sha: 'd'.repeat(40) })];
     expect(await reasonOf({ ...ZAP_CASE, io: { runs: async () => elsewhere } })).toBe(
