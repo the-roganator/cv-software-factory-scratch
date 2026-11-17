@@ -46,7 +46,7 @@ import {
 const HEAD = 'a'.repeat(40);
 const EARLIER = 'b'.repeat(40);
 const QUEUE = 'c'.repeat(40);
-const FACTORY_REPO = 'the-roganator/cv-software-factory';
+const FACTORY_REPO = 'the-roganator/cv-software-factory-scratch';
 
 const pr = (author: number | null, repo = APP_REPO, over: Partial<PullRequest> = {}): PullRequest => ({
   number: 7,
@@ -266,7 +266,7 @@ describe('approval routing: the rule, the first that holds', () => {
         pins: [
           {
             file: 'deploy/k.yaml',
-            image: 'ghcr.io/the-roganator/cv-software-factory/factory',
+            image: 'ghcr.io/the-roganator/cv-software-factory-scratch/factory',
             from: 'sha256:1',
             to: 'sha256:2',
           },
@@ -283,7 +283,7 @@ describe('approval routing: the rule, the first that holds', () => {
       pins: [
         {
           file: 'deploy/k.yaml',
-          image: 'ghcr.io/the-roganator/cv-worlds-worst-website',
+          image: 'ghcr.io/the-roganator/cv-worlds-worst-website-scratch',
           from: 'sha256:1',
           to: 'sha256:2',
         },
@@ -294,7 +294,7 @@ describe('approval routing: the rule, the first that holds', () => {
     ).toMatchObject({
       pass: true,
       rule: 'exact-pin',
-      title: 'An exact pin of cv-worlds-worst-website, each signed on main',
+      title: 'An exact pin of cv-worlds-worst-website-scratch, each signed on main',
     });
   });
 
@@ -303,7 +303,7 @@ describe('approval routing: the rule, the first that holds', () => {
       pins: [
         {
           file: 'deploy/k.yaml',
-          image: 'ghcr.io/the-roganator/cv-worlds-worst-website',
+          image: 'ghcr.io/the-roganator/cv-worlds-worst-website-scratch',
           from: 'sha256:1',
           to: 'sha256:2',
         },
@@ -345,7 +345,7 @@ describe('approval routing: the rule, the first that holds', () => {
   });
 
   it('says why a change of digests alone is not an exact pin, in the app’s repository too', () => {
-    const reason = 'ghcr.io/the-roganator/cv-worlds-worst-website@1111111: cosign does not verify it';
+    const reason = 'ghcr.io/the-roganator/cv-worlds-worst-website-scratch@1111111: cosign does not verify it';
     const said = route(facts({ pin: { reason, digests: true } }));
     // Untagged, it would otherwise pass as low-risk: an image whose signature does not verify never does.
     expect(said).toMatchObject({ pass: false, rule: 'held' });
@@ -464,10 +464,10 @@ describe('test integrity’s reading', () => {
     });
     // Posted by another app, the factory's included, which can post check runs of any name: never read, and no reason
     // to stop waiting for GitHub Actions' own.
-    const foreign = run({ app: { slug: 'mrogan-software-factory' } });
+    const foreign = run({ app: { slug: 'the-roganator-scratch-factory' } });
     expect(testIntegrityRun([foreign], HEAD, files, 'main')).toEqual({
       reason:
-        'test integrity has not run at aaaaaaa: only mrogan-software-factory posted a run of that name, not GitHub Actions',
+        'test integrity has not run at aaaaaaa: only the-roganator-scratch-factory posted a run of that name, not GitHub Actions',
       pending: true,
     });
     expect(testIntegrityRun([{ ...foreign, conclusion: 'failure' }], HEAD, files, 'main')).toMatchObject({
@@ -755,10 +755,10 @@ kind: Component
 images:
 - digest: ${digestOf('2')}
   name: console
-  newName: ghcr.io/the-roganator/cv-software-factory/console
+  newName: ghcr.io/the-roganator/cv-software-factory-scratch/console
 - digest: ${digestOf('4')}
   name: factory
-  newName: ghcr.io/the-roganator/cv-software-factory/factory
+  newName: ghcr.io/the-roganator/cv-software-factory-scratch/factory
 `;
   const file = (patch: string, over: Partial<FileChange> = {}): FileChange => ({
     filename: 'deploy/overlays/local/image/kustomization.yaml',
@@ -813,12 +813,12 @@ images:
   });
 
   it('names each pin’s image from the file at the head, and the repository that signs it', () => {
-    expect(imageOf(kustomization, digestOf('4'))).toBe('ghcr.io/the-roganator/cv-software-factory/factory');
+    expect(imageOf(kustomization, digestOf('4'))).toBe('ghcr.io/the-roganator/cv-software-factory-scratch/factory');
     expect(imageOf(kustomization, digestOf('9'))).toBeUndefined();
     // A digest two entries share names neither, so a pin is never checked against the other's image.
     expect(imageOf(kustomization.replace(digestOf('2'), digestOf('4')), digestOf('4'))).toBeUndefined();
-    expect(signerOf('ghcr.io/the-roganator/cv-software-factory/factory')).toBe(FACTORY_REPO);
-    expect(signerOf('ghcr.io/the-roganator/cv-worlds-worst-website')).toBe(APP_REPO);
+    expect(signerOf('ghcr.io/the-roganator/cv-software-factory-scratch/factory')).toBe(FACTORY_REPO);
+    expect(signerOf('ghcr.io/the-roganator/cv-worlds-worst-website-scratch')).toBe(APP_REPO);
     expect(signerOf('ghcr.io/aquasecurity/trivy')).toBeUndefined();
     expect(signerOf('ghcr.io/the-roganator/cv-software-factory-private/x')).toBeUndefined();
   });
@@ -828,13 +828,13 @@ images:
       pins: [
         {
           file: 'deploy/overlays/local/image/kustomization.yaml',
-          image: 'ghcr.io/the-roganator/cv-software-factory/console',
+          image: 'ghcr.io/the-roganator/cv-software-factory-scratch/console',
           from: digestOf('1'),
           to: digestOf('2'),
         },
         {
           file: 'deploy/overlays/local/image/kustomization.yaml',
-          image: 'ghcr.io/the-roganator/cv-software-factory/factory',
+          image: 'ghcr.io/the-roganator/cv-software-factory-scratch/factory',
           from: digestOf('3'),
           to: digestOf('4'),
         },
@@ -886,7 +886,10 @@ images:
     expect(await exactPin([file(moved)], checks(), false)).toEqual({
       reason: 'GitHub lists only some of its files, and the rest are unread',
     });
-    const other = kustomization.replace('ghcr.io/the-roganator/cv-software-factory/factory', 'ghcr.io/someone/factory');
+    const other = kustomization.replace(
+      'ghcr.io/the-roganator/cv-software-factory-scratch/factory',
+      'ghcr.io/someone/factory',
+    );
     expect(await exactPin([file(moved)], checks({ content: async () => other }), true)).toMatchObject({
       reason: expect.stringContaining("not an image the factory's or the app's build.yml signs"),
     });
