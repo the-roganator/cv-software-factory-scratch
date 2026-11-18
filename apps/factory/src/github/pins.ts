@@ -278,20 +278,13 @@ const runText = (moves: Moves) => `the scan of run [${moves.run.id}](${moves.run
 /** The same, to start a sentence. */
 const RunText = (moves: Moves) => `T${runText(moves).slice(1)}`;
 
-/** Why a move waits for Martin, and what to do, by its lane and what it moves; undefined when the gate may pass it. */
+/** Why a move waits for Martin, and what to do; undefined when the gate passes it as a move and the worker queues it. */
 function waitsFor(move: ReadMove): string | undefined {
+  if (move.major && move.clears.CRITICAL === 0)
+    return 'It crosses a major and clears no Critical: the review gate passes it as `major`, which nobody adds to the merge queue for you yet. Read what the new major changes, and add it to the queue if nothing else needs to change with it; otherwise close it, and the move becomes an issue.';
   if (move.lane === 'cluster')
-    return 'k3s moves with your cluster, so the review gate holds it for you. Approve and merge it, then run `make upgrade-cluster`, which moves the local cluster to the new pin and keeps everything in it.';
-  if (/(^|\/)(trivy|syft)$/.test(bare(move.name)))
-    return 'It moves a scanner’s own pin, which the review gate holds for you: a scanner cannot vouch for its replacement. Approve it once the scans on it read as you expect.';
-  if (move.lane !== 'approval') return undefined;
-  if (move.major)
-    return 'It crosses a major, which the review gate holds for you. Read what the new major changes, and approve it if nothing else needs to change with it; otherwise close it, and the move becomes an issue.';
-  if (/(^|[\s/])kyverno(:|\/|$)/.test(move.name))
-    return 'It moves Kyverno’s own pin, which the review gate holds for you: what enforces admission cannot vouch for its replacement. Approve it once the platform check’s cluster ran with it.';
-  if (move.pins.length > 1)
-    return 'It moves one chart at each Application that pins it, which the review gate holds for you: it proves a chart’s move from one Application’s rendering. Approve it once the platform check’s cluster ran with it.';
-  return 'The review gate holds it for you. Approve it if nothing else needs to change with it; otherwise close it, and the move becomes an issue.';
+    return 'k3s moves with your cluster. The review gate passes it as a move, and the worker adds it to the merge queue once its checks are green; once it merges, run `make upgrade-cluster`, which moves the local cluster to the new pin and keeps everything in it.';
+  return undefined;
 }
 
 /** A pull request's description, the factory's own. */
@@ -312,7 +305,7 @@ export function pullBody(move: ReadMove, edits: readonly PinEdit[], moves: Moves
   lines.push(
     waits
       ? `**It waits for you.** ${waits}`
-      : 'The review gate passes it as `pin-move` when it proves the move from this pull request alone, and the worker then adds it to the merge queue once its checks are green. If it cannot, its `review` check says why it waits for you: your approval of its head passes it, and adding it to the queue is yours.',
+      : 'The review gate passes it as `move` when it is exactly the scan’s move, which the gate makes itself on main and compares with this pull request, and the worker then adds it to the merge queue once its checks are green. If anything differs, its `review` check says what: your approval of its head passes it, and adding it to the queue is yours.',
     '',
     `<!-- factory: pin-edits ${editsHash(edits)} -->`,
   );
