@@ -36,7 +36,7 @@ describe('Patching, projected from the samples', () => {
       'example/sbom-tool',
       'example/debug-shell:1.4',
       'example/scanner-proxy',
-      '(withheld) the-roganator/cv-worlds-worst-website lockfile 1',
+      '(withheld) the-roganator/cv-worlds-worst-website-scratch lockfile 1',
       'example-dashboards',
       'example/sidecar',
       'example/node-base',
@@ -63,7 +63,7 @@ describe('Patching, projected from the samples', () => {
   });
 
   it('withholds a lockfile’s package from the public events until its pull request is open', () => {
-    const withheld = view.rows.find((row) => row.key === 'the-roganator/cv-worlds-worst-website lockfile 1');
+    const withheld = view.rows.find((row) => row.key === 'the-roganator/cv-worlds-worst-website-scratch lockfile 1');
     expect(withheld).toMatchObject({ name: undefined, from: undefined, to: undefined, pins: [] });
     // The factory's, whose Dependabot pull request is open, is named, as its diff names it.
     expect(view.rows.find((row) => row.name === '@example/tokens')).toMatchObject({ from: '3.0.1', to: '3.0.2' });
@@ -212,8 +212,8 @@ describe('an empty day', () => {
     expect(shown.day.failed).toEqual(['other']);
     expect(shown.day.unjudged).toEqual([
       {
-        repository: 'the-roganator/cv-software-factory',
-        url: 'https://github.com/the-roganator/cv-software-factory/actions/runs/1834977',
+        repository: 'the-roganator/cv-software-factory-scratch',
+        url: 'https://github.com/the-roganator/cv-software-factory-scratch/actions/runs/1834977',
       },
     ]);
     expect(shown.compared).toBe(false);
@@ -232,8 +232,8 @@ describe('an empty day', () => {
     expect(shown.day.passed).toBe(false);
     expect(shown.day.broken).toEqual([
       {
-        repository: 'the-roganator/cv-worlds-worst-website',
-        url: 'https://github.com/the-roganator/cv-worlds-worst-website/actions/runs/1834981',
+        repository: 'the-roganator/cv-worlds-worst-website-scratch',
+        url: 'https://github.com/the-roganator/cv-worlds-worst-website-scratch/actions/runs/1834981',
       },
     ]);
     // A run that judged no moves and failed in itself says nothing was cleared.
@@ -290,7 +290,7 @@ describe('a pin the cluster does not run yet', () => {
       rows: [
         {
           row: 'not-running',
-          repository: 'the-roganator/cv-software-factory',
+          repository: 'the-roganator/cv-software-factory-scratch',
           item: 'example/db:17.6',
           image: 'example/db:17.6',
           pin,

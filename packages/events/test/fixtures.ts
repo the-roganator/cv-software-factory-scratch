@@ -102,7 +102,7 @@ export const gate: NewEvent<'gate.finished'> = {
  * advisories no publisher wrote (a GHSA id uses none of 0 and 1, and 2099 has no CVEs yet).
  */
 export const MOVE: NonNullable<PayloadOf<'signal.received'>['move']> = {
-  repository: 'the-roganator/cv-worlds-worst-website',
+  repository: 'the-roganator/cv-worlds-worst-website-scratch',
   name: 'ghcr.io/invented/base',
   ecosystem: 'docker',
   from: '1.4.2-slim',
