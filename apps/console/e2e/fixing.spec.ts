@@ -344,7 +344,10 @@ test.describe('tool marks', () => {
     if (!wayBox || !answerBox) throw new Error('the way or the answer under it is not drawn');
     expect(wayBox.x).toBeCloseTo(answerBox.x, 0);
     expect(wayBox.width).toBeCloseTo(answerBox.width, 0);
-    await expect(way).toHaveAttribute('href', 'https://github.com/the-roganator/cv-worlds-worst-website/pull/1312');
+    await expect(way).toHaveAttribute(
+      'href',
+      'https://github.com/the-roganator/cv-worlds-worst-website-scratch/pull/1312',
+    );
     await expect(way).toHaveAttribute('target', '_blank');
     await expect(way).toHaveAttribute('rel', 'noopener');
     await expect(way.locator('.toolmark-github')).toHaveAttribute('aria-hidden', 'true');

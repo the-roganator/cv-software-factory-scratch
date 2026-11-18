@@ -60,7 +60,7 @@ spec:
             # The app's address as a browser reaches it, the local cluster's, which a flag's "Preview it" opens with
             # ?preview=. The server writes its origin alone into the page; unset, there is no eye.
             - name: APP_URL
-              value: http://website.localhost:8080
+              value: http://website.localhost:9080
           readinessProbe:
             httpGet:
               path: /health
