@@ -222,7 +222,7 @@ function clusterStage(o){
    ['score','Scoreboard','reads the answer key','Matches tickets to defect fingerprints. The only thing that can read the private answer key.']];
   const nodes=[
    {id:'people',x:20,y:78,w:150,t:o.people[0],s:o.people[1],n:o.people[2]},
-   {id:'repos',x:220,y:72,w:220,t:'Public repos',s:'factory · worst website',n:'cv-software-factory and cv-worlds-worst-website. Code, manifests with one overlay per profile, specs and curated event logs. Rulesets, CODEOWNERS and secret scanning.'},
+   {id:'repos',x:220,y:72,w:220,t:'Public repos',s:'factory · worst website',n:'cv-software-factory-scratch and cv-worlds-worst-website-scratch. Code, manifests with one overlay per profile, specs and curated event logs. Rulesets, CODEOWNERS and secret scanning.'},
    {id:'actions',x:220,y:132,w:220,t:'Actions',s:'one pipeline · hosted runners',n:'Builds, tests and scans once, for every profile. GitHub-hosted runners are free for public repos, and there are no self-hosted runners.'},
    {id:'ghcr',x:220,y:196,w:220,t:'GHCR',s:'signed images · free',n:'Every profile pulls the same images, signed keylessly by the release workflow’s OIDC identity.'},
    {id:'models',x:220,y:340,w:220,t:o.models[0],s:o.models[1],n:o.models[2]},
@@ -284,7 +284,7 @@ const STAGES={
     {kind:'k8s',x:200,y:330,w:885,h:270,label:'IN THE VISITOR’S BROWSER'}],
    nodes:[
     {id:'people',x:20,y:78,w:150,t:'Recruiters',s:'one minute',n:'They open the link from the CV or README. No key needed.'},
-    {id:'repos',x:220,y:72,w:220,t:'cv-software-factory repo',s:'curated event logs',n:'Exported work items, with their screenshots, committed like any other change.'},
+    {id:'repos',x:220,y:72,w:220,t:'cv-software-factory-scratch repo',s:'curated event logs',n:'Exported work items, with their screenshots, committed like any other change.'},
     {id:'actions',x:220,y:152,w:220,t:'Actions',s:'build static console',n:'Builds the same console code in static mode and publishes it.'},
     {id:'pages',x:520,y:152,w:220,t:'GitHub Pages',s:'replay site',n:'Static hosting, free for public repos.'},
     {id:'events',x:830,y:72,w:225,t:'Event store',s:'real work items',n:'Where the recordings come from: any instance that did the real work.'},

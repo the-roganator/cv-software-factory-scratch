@@ -7,7 +7,7 @@
 import { commitFor, Item } from '../build.ts';
 import { WITHHELD } from '../patching-withheld.ts';
 
-const APP = 'the-roganator/cv-worlds-worst-website';
+const APP = 'the-roganator/cv-worlds-worst-website-scratch';
 const MOVE = { repository: APP, ...WITHHELD, ecosystem: 'npm' as const };
 
 /** The scan's findings on the move, as the dependency sense's signal carries them. The advisories are invented. */

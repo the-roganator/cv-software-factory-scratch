@@ -74,7 +74,7 @@ const move = (findings: Finding[], overrides: Partial<NonNullable<InboxSignal['m
   version: 'a'.repeat(40),
   symptom: 'vulnerable-dependency',
   move: {
-    repository: 'the-roganator/cv-worlds-worst-website',
+    repository: 'the-roganator/cv-worlds-worst-website-scratch',
     name: 'left-pad',
     ecosystem: 'npm',
     from: '1.2.3',
