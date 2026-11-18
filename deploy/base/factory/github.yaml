@@ -10,8 +10,8 @@ metadata:
   labels: &labels
     app.kubernetes.io/name: github
     app.kubernetes.io/part-of: software-factory
-    # Not `worker`: that would give the pod with the App's key and the internet a path to Postgres, which it never
-    # uses. Its own policy gives it the collector (network-policies.yaml).
+    # Not `worker`: that would give the pod with the App's key and the internet the workers' path to Postgres. Its own
+    # policy gives it the collector, and Postgres for the autonomy level alone (network-policies.yaml).
     app.kubernetes.io/component: github
   annotations:
     # With the other workers, after the artifacts volume it records dry runs to.
@@ -116,6 +116,21 @@ spec:
             # request Martin merged, as CODEOWNERS gives him deploy/.
             - name: PIN_WATCH_ONLY
               value: "*"
+            # The store, as factory_github, which reads Martin's controls and nothing else
+            # (0053_github-reads-the-level.sql): the autonomy level decides which moves the pin queue adds. Optional:
+            # without the Secret the worker cannot read the level, and queues no move, as at Supervised.
+            - name: PGHOST
+              value: postgres
+            - name: PGDATABASE
+              value: factory
+            - name: PGUSER
+              value: factory_github
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-github
+                  key: password
+                  optional: true
           readinessProbe:
             httpGet:
               path: /health
