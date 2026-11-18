@@ -218,6 +218,7 @@ import { type Own, pagesFor } from './pictures.ts';
 import { type Pending, Queue, type QueueItem, type Takes, takesOf } from './queue.ts';
 import { type Carried, carried, Releases, type ReleaseWatchOptions } from './release.ts';
 import { acceptedThreads, resolveThreads } from './review.ts';
+import { PassLog } from './store-absence.ts';
 import {
   closingComment,
   closingPullComment,
@@ -748,8 +749,13 @@ export class Line {
       for (const stop of unobserved) stop();
     };
     try {
+      // A store restarting, as patching Postgres restarts it, fails a pass or two: a warning, not a fault, for a minute.
+      const passes = new PassLog(this.#o.log, this.#o.now);
       while (!abort.aborted) {
-        await this.tick().catch((error: unknown) => this.#o.log.error({ err: error }, 'a pass of the line failed'));
+        await this.tick().then(
+          () => passes.passed(),
+          (error: unknown) => passes.failed(error),
+        );
         const timer = setTimeout(nudge, 15_000);
         await wake.promise;
         clearTimeout(timer);
