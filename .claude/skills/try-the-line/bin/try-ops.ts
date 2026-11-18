@@ -41,7 +41,7 @@ interface Item {
 }
 
 const CLUSTER = 'software-factory';
-const NODE = 'k3d-software-factory-server-0';
+const NODE = 'k3d-software-factory-scratch-server-0';
 
 function run(
   command: string,
