@@ -279,7 +279,25 @@ export const UPCASTERS: Partial<Record<EventType, Record<number, Upcaster>>> = {
   },
   // Version 2 adds each repository's open findings by severity to its totals, which a scan made before it counted them
   // never wrote: a version 1 day reads as it was, with none.
-  'patching.read': { 1: (payload) => payload },
+  'patching.read': {
+    1: (payload) => payload,
+    // Version 3 has no `approval` lane: a major, what judges a move and one chart at two Applications are moves as any
+    // other, which the GitHub worker opens. A version 2 day's moves there read as the worker's, and are counted there.
+    2: (payload) => ({
+      ...payload,
+      repositories: (payload.repositories as Record<string, unknown>[]).map((repository) => {
+        const totals = repository.totals as { lanes: Record<string, number> } | null;
+        const { approval = 0, ...lanes } = totals?.lanes ?? {};
+        return {
+          ...repository,
+          moves: (repository.moves as Record<string, unknown>[]).map((move) =>
+            move.lane === 'approval' ? { ...move, lane: 'worker' } : move,
+          ),
+          totals: totals && { ...totals, lanes: { ...lanes, worker: (lanes.worker ?? 0) + approval } },
+        };
+      }),
+    }),
+  },
 };
 
 export const CATALOGUE: Catalogue = { versions: VERSIONS, upcasters: UPCASTERS };

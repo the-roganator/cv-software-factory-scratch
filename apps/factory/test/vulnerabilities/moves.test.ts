@@ -177,20 +177,19 @@ describe('the day’s moves', () => {
       // The root Dockerfile is the line's to write, though Dependabot reads it too.
       expect(laneOf(result({ pin: { file: 'Dockerfile', line: 5 } }), app)).toBe('line');
     });
-    it('approval: what judges a move, which the gate never passes', () => {
+    it('worker: what judges a move (Kyverno, Trivy, Syft) is a move as any other', () => {
       const value = (name: string) => laneOf(result({ kind: 'chart', name }));
-      expect(value('kyverno: reg.kyverno.io/kyverno/kyverno')).toBe('approval');
-      expect(value('kyverno: ghcr.io/kyverno/readiness-checker')).toBe('approval');
+      expect(value('kyverno: reg.kyverno.io/kyverno/kyverno')).toBe('worker');
+      expect(value('kyverno: ghcr.io/kyverno/readiness-checker')).toBe('worker');
+      const trivy = { name: 'ghcr.io/aquasecurity/trivy', pin: { file: 'deploy/images/trivy/Dockerfile', line: 3 } };
+      expect(laneOf(result(trivy))).toBe('worker');
+      // With nothing urgent, where Dependabot reads its pin, it is Dependabot's, as any image there is.
       expect(
-        laneOf(
-          result({ name: 'ghcr.io/aquasecurity/trivy', pin: { file: 'deploy/images/trivy/Dockerfile', line: 3 } }),
-        ),
-      ).toBe('approval');
-      expect(laneOf(result({ name: 'ghcr.io/anchore/syft' }))).toBe('approval');
-      // A name that only holds the word is no judge.
-      expect(value('grafana: quay.io/example/kyverno-exporter')).toBe('worker');
+        laneOf(result({ ...trivy, severity: 'LOW', due: undefined }), { dependabot: ['/deploy/images/trivy'] }),
+      ).toBe('dependabot');
+      expect(laneOf(result({ name: 'ghcr.io/anchore/syft' }))).toBe('worker');
     });
-    it('approval: one chart at two Applications’ pins, as one move', () => {
+    it('worker: one chart at two Applications’ pins, as one move', () => {
       const chart = { kind: 'chart' as const, name: 'opentelemetry-collector', from: '0.174.0' };
       const target = { kind: 'chart' as const, chart: 'opentelemetry-collector', version: '0.178.3', major: false };
       const list = moves(
@@ -201,9 +200,8 @@ describe('the day’s moves', () => {
         context(),
       );
       expect(list).toHaveLength(1);
-      expect(list[0]).toMatchObject({ name: 'opentelemetry-collector', lane: 'approval' });
+      expect(list[0]).toMatchObject({ name: 'opentelemetry-collector', lane: 'worker' });
       expect(list[0]?.pins).toHaveLength(2);
-      expect(laneOf(result({ ...chart, target }))).toBe('worker');
     });
     it('dependabot, or an issue: Playwright’s image, whose library in the lockfile is the same release', () => {
       const image = () =>
@@ -224,7 +222,7 @@ describe('the day’s moves', () => {
         laneOf(result({ kind: 'k3s-release', name: 'k3s', target: { kind: 'k3s', release: 'v1.37.2+k3s1' } })),
       ).toBe('cluster');
     });
-    it('approval: a major, of any kind; a chart within its major is the worker’s, even in a directory Dependabot reads', () => {
+    it('worker: a chart, a major or not, even in a directory Dependabot reads; no lane says a major waits', () => {
       const chart = (major: boolean) =>
         result({
           kind: 'chart',
@@ -234,7 +232,7 @@ describe('the day’s moves', () => {
           severity: 'MEDIUM',
           due: NOW + 20 * DAY,
         });
-      expect(laneOf(chart(true))).toBe('approval');
+      expect(laneOf(chart(true))).toBe('worker');
       expect(laneOf(chart(false), { dependabot: ['/deploy/base/telemetry'] })).toBe('worker');
       expect(moves([chart(true)], context())[0]?.major).toBe(true);
     });
@@ -394,7 +392,7 @@ describe('one pin with several targets', () => {
     expect(list[0]).toMatchObject({
       to: { kind: 'chart', version: '14.4.1', major: true },
       major: true,
-      lane: 'approval',
+      lane: 'worker',
     });
     expect(list[0]?.clears.HIGH).toBe(3);
   });
@@ -439,6 +437,7 @@ describe('a major, of any kind', () => {
       pin: { file: 'pnpm-lock.yaml', line: 9 },
       target: { kind: 'version', versions: ['4.0.1'] },
     });
-    expect(moves([npm], context())[0]).toMatchObject({ major: true, lane: 'approval' });
+    // A lockfile's major is in a lockfile's lane, as its package's any other move is.
+    expect(moves([npm], context())[0]).toMatchObject({ major: true, lane: 'issue' });
   });
 });

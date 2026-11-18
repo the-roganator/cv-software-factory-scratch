@@ -21,7 +21,7 @@ import type { PullRequestState, Reads } from '../../src/github/reads.ts';
 import { RefusalRecorder } from '../../src/github/refusals.ts';
 import { createWorkerServer } from '../../src/github/server.ts';
 import { client, quiet, type Route, type Sent } from './fake.ts';
-import { day, FACTORY, FakeRepo, FILES, factoryMoves, writes } from './pins-harness.ts';
+import { day, FACTORY, FakeRepo, FILES, factoryMoves, pinBranchOf, writes } from './pins-harness.ts';
 
 const closing: (() => void)[] = [];
 afterEach(() => {
@@ -38,7 +38,7 @@ const REQUIRED = [
   'platform',
   'review',
 ];
-const PIN = 'factory/pin/example-dashboards';
+const PIN = pinBranchOf('example-dashboards');
 const SHA = (c: string) => c.repeat(40);
 
 async function worker() {
