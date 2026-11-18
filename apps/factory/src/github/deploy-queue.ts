@@ -7,7 +7,7 @@
  * a move (`move`, or `major` for one across a major that clears no Critical) when it is exactly the scan's moves, which
  * the gate makes itself. These watches add each to the queue, so a pin the gate passed reaches `main` with nobody's hand
  * on it: the deploy pin at every autonomy level, as it runs only what Martin already merged, and a move only when the
- * level in force allows its rule (`ENQUEUES`, `policy/line.ts`, read as `level.ts` reads it), as the line's are. The app's deploy pull request is the line's, within
+ * level in force allows its rule and auto-merge is on (`enqueues`, `policy/line.ts`, read as `level.ts` reads them), as the line's are. The app's deploy pull request is the line's, within
  * Martin's autonomy level and auto-merge (`line/deploy.ts`); a pull request the gate held, even one Martin then
  * approved, a release, and anything else, is his.
  *
@@ -23,7 +23,7 @@
  *   as `guardPinBranch` has it) into main, not a draft, labelled `pin` by the App and by nobody else, every time it was
  *   labelled, its move one `PIN_WATCH_ONLY` names, by its exact name, and none Martin holds on its branch, the gate's
  *   rule is `move` or `major`, and the autonomy level in force, read just before the enqueue, queues that rule
- *   (Supervised when it cannot be read). The gate trusts no branch, label or title; the queue reads
+ *   with auto-merge on (Supervised, and off, when they cannot be read). The gate trusts no branch, label or title; the queue reads
  *   them so that nothing but the pin watch's own pull request rides the rule, and the verdict is what passes it;
  * - the review App's own `review` check on that head concluded with a verdict that passes it by that rule at that head
  *   (`merging.ts`): no other rule, and never a hold, a pending one, Martin's approval, or one for another head;
@@ -56,7 +56,7 @@ import { BranchRefused, pinBranch, type WatchedHeads } from './branches.ts';
 import { type GitHub, GitHubError } from './client.ts';
 import { DEPLOYS, type DeployTarget, deployLabel, isDeployTitle } from './deploys.ts';
 import { APP_USER, IssueRefused } from './issues.ts';
-import { type LevelReader, levelAllows } from './level.ts';
+import { type LevelReader, type Merging, mergingWait } from './level.ts';
 import { REVIEW_CHECK, type ReviewVerdict } from './merging.ts';
 import { guardPinBranch, pinBranchFor } from './pin-guard.ts';
 import { PIN_LABEL, PIN_REPOS, type PinScope, pinTitle, titleIsExact } from './pins.ts';
@@ -97,6 +97,7 @@ export type QueueWait =
   | { waits: 'verdict'; why: string }
   | { waits: 'checks'; why: string }
   | { waits: 'level'; why: string }
+  | { waits: 'auto-merge'; why: string }
   | { waits: 'failed'; why: string }
   | { waits: 'conflict'; why: string };
 
@@ -199,10 +200,15 @@ const LEVEL_NAME: Record<Autonomy, string> = {
   'lights-out': 'Lights-out',
 };
 
-/** Whether the autonomy level in force lets the worker queue a pull request the gate passed by a rule (`ENQUEUES`). */
-export function levelWait(autonomy: Autonomy, rule: QueueRule): QueueWait | undefined {
-  if (levelAllows(autonomy, rule)) return undefined;
-  return { waits: 'level', why: `at ${LEVEL_NAME[autonomy]} a ${rule} waits for Martin` };
+/**
+ * Whether the autonomy level and auto-merge in force let the worker queue a pull request the gate passed by a rule
+ * (`enqueues`, as the line asks it): the level's wait first, then the switch's.
+ */
+export function levelWait(merging: Merging, rule: QueueRule): QueueWait | undefined {
+  const waits = mergingWait(merging, rule);
+  if (waits === 'level') return { waits, why: `at ${LEVEL_NAME[merging.autonomy]} a ${rule} waits for Martin` };
+  if (waits === 'auto-merge') return { waits, why: `with auto-merge off a ${rule} waits for Martin` };
+  return undefined;
 }
 
 /**
@@ -245,7 +251,7 @@ export interface DeployQueueDependencies {
   log: Logger;
 }
 
-/** The pin queue's: the queue's, and the autonomy level in force, which decides which moves it adds (`level.ts`). */
+/** The pin queue's: the queue's, and the level and auto-merge in force, which decide which moves it adds (`level.ts`). */
 export interface PinQueueDependencies extends DeployQueueDependencies {
   level: LevelReader;
 }
@@ -345,8 +351,8 @@ async function queueOne(
     attempt.done = true;
     return;
   }
-  // The level, read now, just before the enqueue, so a level Martin changed holds from this pass: no level read is
-  // Supervised (`level.ts`).
+  // The level and auto-merge, read now, just before the enqueue, so what Martin changed holds from this pass: none
+  // read is Supervised, with auto-merge off (`level.ts`).
   if (level) {
     const allowed = levelWait(await level(), rule);
     if (allowed) return state.wait(number, head, allowed);
@@ -408,7 +414,7 @@ export function deployQueueWatch(deps: DeployQueueDependencies, target: DeployTa
     if (attempt.done) return;
     const notOne = deployPullWait(target, pull) ?? headWait(deps.heads, repo, pull, 'not-a-deploy');
     if (notOne) return state.wait(pull.number, pull.head.sha, notOne);
-    // The deploy pin runs only what Martin already merged: the level does not govern it, and it is queued at every one.
+    // The deploy pin runs only what Martin already merged: neither the level nor auto-merge governs it.
     await queueOne(deps, state, repo, 'deploy', pull, ['exact-pin'], attempt);
   };
 }
