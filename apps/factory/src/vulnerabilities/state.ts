@@ -215,13 +215,15 @@ export interface Kept {
  * The newest state a run of the scan kept, sealed still: from the scan's own workflow's runs on the default branch,
  * by schedule, push or hand and from the repository itself, finished, before the run given (its own), newest first. Each event's
  * runs are asked for by that event, so no pull request's run, a fork's from a branch of the same name among them,
- * takes a place among those looked through. Undefined when none of them kept one that is still there.
+ * takes a place among those looked through. Undefined when none of them kept one that is still there. Another of the
+ * scan's artifacts is found the same way, by its name: the review gate reads `moves` so (scripts/moves.ts).
  */
 export async function latest(
   api: StateApi,
   repository: string,
   branch: string,
   before?: string,
+  artifactName = STATE_ARTIFACT,
 ): Promise<Kept | undefined> {
   const lists = await Promise.all(
     SCAN_EVENTS.map(async (event) => {
@@ -245,13 +247,14 @@ export async function latest(
     .sort((a, b) => b.id - a.id);
   for (const run of runs) {
     const listed = (await api.json(
-      `/repos/${repository}/actions/runs/${run.id}/artifacts?name=${STATE_ARTIFACT}&per_page=10`,
+      `/repos/${repository}/actions/runs/${run.id}/artifacts?name=${artifactName}&per_page=10`,
     )) as Artifacts | null;
     const artifact = listOf(listed?.artifacts, 'artifacts').find(
-      (each) => typeof each === 'object' && each !== null && each.name === STATE_ARTIFACT && !each.expired,
+      (each) => typeof each === 'object' && each !== null && each.name === artifactName && !each.expired,
     );
     if (typeof artifact?.id !== 'number') continue;
-    if ((artifact.size_in_bytes ?? 0) > MAX_SEALED_BYTES) throw new StateError(`run ${run.id}'s state is too large`);
+    if ((artifact.size_in_bytes ?? 0) > MAX_SEALED_BYTES)
+      throw new StateError(`run ${run.id}'s ${artifactName} is too large`);
     const archive = await api.bytes(`/repos/${repository}/actions/artifacts/${artifact.id}/zip`);
     if (archive) return { run: String(run.id), archive };
   }
