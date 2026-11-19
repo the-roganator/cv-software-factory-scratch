@@ -11,14 +11,14 @@ import { WatchedHeads } from '../../src/github/branches.ts';
 import { headWait, type QueuePull } from '../../src/github/deploy-queue.ts';
 import { readPinScope } from '../../src/github/pins.ts';
 import { worker } from './pin-worker-harness6.ts';
-import { day, FACTORY, FakeRepo, FILES, factoryMoves } from './pins-harness.ts';
+import { day, FACTORY, FakeRepo, FILES, factoryMoves, pinBranchOf } from './pins-harness.ts';
 
 const closing: (() => void)[] = [];
 afterEach(() => {
   for (const close of closing.splice(0)) close();
 });
 
-const A = 'factory/pin/example-dashboards';
+const A = pinBranchOf('example-dashboards');
 const ONLY = readPinScope('example-dashboards');
 
 async function start(options: { realEnqueue?: boolean } = {}) {

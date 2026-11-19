@@ -10,6 +10,7 @@ import { createHash } from 'node:crypto';
 import { APP_LOGIN } from '../../src/github/actions.ts';
 import { DEPENDABOT } from '../../src/github/dependabot.ts';
 import { APP_USER } from '../../src/github/issues.ts';
+import { branchOf } from '../../src/github/pins.ts';
 import type { Moves, ReadMove } from '../../src/github/scanning.ts';
 import type { Route, Sent } from './fake.ts';
 
@@ -469,7 +470,7 @@ export function day(scanned: string, moves: ReadMove[], run = 42_000_000_101): M
       totals: {
         fixed: 0,
         moves: moves.length,
-        lanes: { line: 0, worker: 0, dependabot: 0, approval: 0, cluster: 0, issue: 0, none: 0 },
+        lanes: { line: 0, worker: 0, dependabot: 0, cluster: 0, issue: 0, none: 0 },
         noFix: 0,
         excepted: 0,
         overdue: 0,
@@ -573,7 +574,7 @@ export function factoryMoves(): ReadMove[] {
       to: 'chart example-logs 21.1.1 (a major)',
       major: true,
       clears: counts(1, 21, 30, 4),
-      lane: 'approval',
+      lane: 'worker',
     }),
     move({
       name: 'k3s',
@@ -638,6 +639,13 @@ export function factoryMoves(): ReadMove[] {
       lane: 'dependabot',
     }),
   ];
+}
+
+/** The branch of the pull request that carries the fixture day's move of this name: its files' (`branchOf`). */
+export function pinBranchOf(name: string): string {
+  const found = factoryMoves().find((each) => each.name === name);
+  if (!found) throw new Error(`The fixture day has no move ${name}`);
+  return branchOf(found);
 }
 
 /** Dependabot's group pull request moving the SBOM tool, as #984's shape: its branch names a group, not a pin. */
