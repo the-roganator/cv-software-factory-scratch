@@ -60,6 +60,8 @@ export class FakeRepo {
   readonly refs = new Map<string, string>();
   readonly pulls: FakePull[] = [];
   readonly issues: FakeIssue[] = [];
+  /** Each commit's parents, and who GitHub names as its author and committer: the App's are made by `createCommitOnBranch`. */
+  readonly made = new Map<string, { parents: string[]; author: string; committer: string }>();
   #next = 100;
   #commits = 0;
 
@@ -67,12 +69,13 @@ export class FakeRepo {
     const tree = new Map<string, FakeFile>();
     for (const [path, file] of Object.entries(files))
       tree.set(path, typeof file === 'string' ? { mode: '100644', text: file } : file);
-    this.refs.set('main', this.#commit(tree));
+    this.refs.set('main', this.#commit(tree, []));
   }
 
-  #commit(tree: Map<string, FakeFile>): string {
+  #commit(tree: Map<string, FakeFile>, parents: string[], author = 'mrogan', committer = author): string {
     const sha = sha1(`commit ${++this.#commits}`);
     this.commits.set(sha, tree);
+    this.made.set(sha, { parents, author, committer });
     return sha;
   }
 
@@ -84,9 +87,32 @@ export class FakeRepo {
   push(files: Record<string, string>): string {
     const tree = new Map(this.commits.get(this.main));
     for (const [path, text] of Object.entries(files)) tree.set(path, { mode: '100644', text });
-    const sha = this.#commit(tree);
+    const sha = this.#commit(tree, [this.main]);
     this.refs.set('main', sha);
     return sha;
+  }
+
+  /**
+   * A commit on another, changing files, by whoever is named: a commit pushed to a branch from a checkout, or (author
+   * the App, committer `web-flow`) one as the App's API commit is. Moves no branch.
+   */
+  commitOn(parent: string, files: Record<string, string>, author = 'mrogan', committer = author): string {
+    const tree = new Map(this.commits.get(this.refs.get(parent) ?? parent));
+    for (const [path, text] of Object.entries(files)) tree.set(path, { mode: '100644', text });
+    return this.#commit(tree, [this.refs.get(parent) ?? parent], author, committer);
+  }
+
+  /** The commits reachable from one, itself first. */
+  #ancestors(sha: string): string[] {
+    const out: string[] = [];
+    const queue = [sha];
+    while (queue.length) {
+      const next = queue.shift() as string;
+      if (out.includes(next)) continue;
+      out.push(next);
+      queue.push(...(this.made.get(next)?.parents ?? []));
+    }
+    return out;
   }
 
   /** A file as a commit or a branch has it. */
@@ -195,6 +221,39 @@ export class FakeRepo {
         },
       },
       {
+        // `base...head`, as GitHub compares: from their merge base, the commits head has, newest last, and what changed.
+        method: 'GET',
+        path: new RegExp(`^${at}/compare/[0-9a-f]{40}\\.\\.\\.[0-9a-f]{40}$`),
+        answer: ({ path }) => {
+          const [base = '', head = ''] = path.slice(`${at}/compare/`.length).split('...');
+          if (!this.made.has(base) || !this.made.has(head)) return notFound;
+          const behind = new Set(this.#ancestors(base));
+          const ahead = this.#ancestors(head).filter((sha) => !behind.has(sha));
+          const mergeBase = this.#ancestors(head).find((sha) => behind.has(sha)) ?? '';
+          const [from, to] = [this.commits.get(mergeBase), this.commits.get(head)];
+          const files = [...new Set([...(from?.keys() ?? []), ...(to?.keys() ?? [])])]
+            .filter((p) => from?.get(p)?.text !== to?.get(p)?.text || from?.get(p)?.mode !== to?.get(p)?.mode)
+            .map((p) => ({ filename: p, status: !from?.has(p) ? 'added' : !to?.has(p) ? 'removed' : 'modified' }));
+          return {
+            body: {
+              ahead_by: ahead.length,
+              merge_base_commit: { sha: mergeBase },
+              commits: ahead.reverse().map((sha) => {
+                const made = this.made.get(sha);
+                return {
+                  sha,
+                  parents: (made?.parents ?? []).map((p) => ({ sha: p })),
+                  author: { login: made?.author ?? '' },
+                  committer: { login: made?.committer ?? '' },
+                  commit: { verification: { verified: true } },
+                };
+              }),
+              files,
+            },
+          };
+        },
+      },
+      {
         method: 'GET',
         path: new RegExp(`^${at}/git/trees/[0-9a-f]{40}\\?recursive=1$`),
         answer: ({ path }) => {
@@ -262,7 +321,7 @@ export class FakeRepo {
             const was = tree.get(a.path);
             tree.set(a.path, { mode: was?.mode ?? '100644', text: Buffer.from(a.contents, 'base64').toString() });
           }
-          const sha = this.#commit(tree);
+          const sha = this.#commit(tree, [input.expectedHeadOid], APP_LOGIN, 'web-flow');
           this.refs.set(branch, sha);
           return { body: { data: { createCommitOnBranch: { commit: { oid: sha } } } } };
         },
