@@ -10,4 +10,4 @@ scrapeConfigs:
 # one the admin service's passkeys are bound to (base/factory/admin.yaml, console-ingress.yaml).
 alertmanager:
   templates:
-    profile.tmpl: '{{ define "console.origin" }}https://console.localhost:8443{{ end }}'
+    profile.tmpl: '{{ define "console.origin" }}https://console.localhost:9443{{ end }}'

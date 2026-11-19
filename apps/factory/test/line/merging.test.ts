@@ -58,7 +58,7 @@ const ready = [ticket, spec(), pushed(), ...gates(), reviewed(), summarised];
 
 const REFUSAL: PayloadOf<'action.refused'> = {
   mechanism: 'review-gate',
-  action: 'Merge pull request #12 at aaaaaaa in the-roganator/cv-worlds-worst-website',
+  action: 'Merge pull request #12 at aaaaaaa in the-roganator/cv-worlds-worst-website-scratch',
   output: '#12: held for its risk tags: dependency-change',
   guardrails: [2],
   subject: { kind: 'commit', name: HEAD },
