@@ -55,7 +55,7 @@ import { type PinCommit, type PinSource, pinChanges, pinNextBranch, treeSource }
 import { RefusalRecorder } from './refusals.ts';
 
 /** How the App appears as a pull request's author, and as whoever merged one or added it to the merge queue. */
-export const APP_LOGIN = 'mrogan-software-factory[bot]';
+export const APP_LOGIN = 'the-roganator-scratch-factory[bot]';
 
 export interface FileChanges {
   /** Files to add or replace, with their whole new contents. */

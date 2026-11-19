@@ -45,7 +45,7 @@ import type { State } from '../../src/vulnerabilities/state.ts';
 const DAY = 86_400_000;
 const NOW = Date.parse('2026-11-10T04:30:00Z');
 const at = (iso: string) => Date.parse(iso);
-const REPOSITORY = 'the-roganator/cv-software-factory';
+const REPOSITORY = 'the-roganator/cv-software-factory-scratch';
 
 const LOCKFILE: ReadTarget = {
   key: 'lockfile pnpm-lock.yaml',
@@ -1416,7 +1416,7 @@ describe('what fixes it', () => {
   });
 
   it('dates a package a tool brings into an image of ours from the tool’s release that lacks it', async () => {
-    const OURS = `ghcr.io/the-roganator/cv-software-factory/factory-runner@sha256:${'1'.repeat(64)}`;
+    const OURS = `ghcr.io/the-roganator/cv-software-factory-scratch/factory-runner@sha256:${'1'.repeat(64)}`;
     const ours: ReadTarget = {
       key: 'ours runner',
       kind: 'ours',
@@ -1454,7 +1454,7 @@ describe('what fixes it', () => {
   });
 
   it('tries an earlier tool release in the range when the newest still has the finding', async () => {
-    const OURS = `ghcr.io/the-roganator/cv-software-factory/factory-runner@sha256:${'1'.repeat(64)}`;
+    const OURS = `ghcr.io/the-roganator/cv-software-factory-scratch/factory-runner@sha256:${'1'.repeat(64)}`;
     const ours: ReadTarget = {
       key: 'ours runner',
       kind: 'ours',

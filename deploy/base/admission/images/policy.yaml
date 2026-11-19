@@ -71,9 +71,9 @@ spec:
   # of ours that a copy does not run is refused before its signature is looked at, too. These globs, the `ours`
   # variable below and scripts/admission-ready.sh must agree on what is ours.
   matchImageReferences:
-    - glob: ghcr.io/the-roganator/cv-software-factory/*@*
-    - glob: ghcr.io/the-roganator/cv-worlds-worst-website@*
-    - glob: ghcr.io/the-roganator/cv-worlds-worst-website:*@*
+    - glob: ghcr.io/the-roganator/cv-software-factory-scratch/*@*
+    - glob: ghcr.io/the-roganator/cv-worlds-worst-website-scratch@*
+    - glob: ghcr.io/the-roganator/cv-worlds-worst-website-scratch:*@*
   validationConfigurations:
     # The policy itself checks for digests, with its own words, and changes nothing.
     mutateDigest: false
@@ -87,13 +87,13 @@ spec:
         keyless:
           identities:
             - issuer: https://token.actions.githubusercontent.com
-              subject: https://github.com/the-roganator/cv-software-factory/.github/workflows/build.yml@refs/heads/main
+              subject: https://github.com/the-roganator/cv-software-factory-scratch/.github/workflows/build.yml@refs/heads/main
     - name: website
       cosign:
         keyless:
           identities:
             - issuer: https://token.actions.githubusercontent.com
-              subject: https://github.com/the-roganator/cv-worlds-worst-website/.github/workflows/build.yml@refs/heads/main
+              subject: https://github.com/the-roganator/cv-worlds-worst-website-scratch/.github/workflows/build.yml@refs/heads/main
   variables:
     # Third-party images this copy admits, each by its exact reference, digest and all. Set by each copy.
     - name: allowed
@@ -127,10 +127,10 @@ spec:
     # Images from our GHCR: the factory's repositories, and the app's one.
     - name: ours
       expression: >-
-        variables.images.filter(i, i.startsWith('ghcr.io/the-roganator/cv-software-factory/') ||
-        i == 'ghcr.io/the-roganator/cv-worlds-worst-website' ||
-        i.startsWith('ghcr.io/the-roganator/cv-worlds-worst-website:') ||
-        i.startsWith('ghcr.io/the-roganator/cv-worlds-worst-website@'))
+        variables.images.filter(i, i.startsWith('ghcr.io/the-roganator/cv-software-factory-scratch/') ||
+        i == 'ghcr.io/the-roganator/cv-worlds-worst-website-scratch' ||
+        i.startsWith('ghcr.io/the-roganator/cv-worlds-worst-website-scratch:') ||
+        i.startsWith('ghcr.io/the-roganator/cv-worlds-worst-website-scratch@'))
     - name: foreign
       expression: variables.images.filter(i, !(i in variables.ours) && !(i in variables.allowed))
     - name: misplaced

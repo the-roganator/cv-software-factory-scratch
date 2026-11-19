@@ -220,7 +220,9 @@ describe('the scan’s moves', () => {
     const sent: Sent[] = [];
     const none = await new LiveReads(client(routes(), sent).github).moves(REPO).catch((e) => e);
     expect(none).toMatchObject({ kind: 'read-only' });
-    expect(none.message).toMatch(/no key for the state .*cv-worlds-worst-website's scan keeps.*`make scan-state-key`/);
+    expect(none.message).toMatch(
+      /no key for the state .*cv-worlds-worst-website-scratch's scan keeps.*`make scan-state-key`/,
+    );
     // A key for another repository is none for this one.
     const other = await new LiveReads(client(routes()).github, undefined, {
       stateKeys: (repo) => (repo === REPO ? undefined : KEY),
