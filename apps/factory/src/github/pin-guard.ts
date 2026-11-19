@@ -9,7 +9,7 @@
  * - **Its branch** is `factory/pin/<files>`, one plain segment made from the files its moves pin (`pinBranchFor`):
  *   nothing that could reach outside it.
  * - **Its pins** are at most `MAX_PINS`, no two at one line, each in a plain path (`plainPath`), none under `.github/` or
- *   `policy/`, in a lockfile, or in mise's files, which move only when someone upgrades the toolchain.
+ *   `policy/`, in a lockfile, or in mise's files, which only the pin step writes (below).
  * - **Each pin's file** is an ordinary file in the tree of `main`'s head, as git's own tree names it (a symbolic link,
  *   a submodule or a folder is refused), and of the commit the scan read.
  * - **Each pin's line** is the same at `main`'s head as at the commit the scan read: a line that has changed since
@@ -18,6 +18,17 @@
  *   (`fixes.ts`'s `readTarget`), the same shape on both sides, and different.
  * - **The line** holds what it pins before exactly once, as a word of its own, and the commit's line is that line with
  *   that span alone replaced.
+ *
+ * A move no pin's line writes (a lockfile's package, what mise pins) is made by the pin step in the scan's run, and
+ * its commit carries the files that step wrote, whole (github/made.ts). The guard cannot make them itself, and holds
+ * what it can:
+ *
+ * - **Each such file** is one the step writes (`madeFile`): a pnpm lockfile, a manifest, or mise's two files, the only
+ *   files CODEOWNERS gives a person that a move may write; never under `.github/` or `policy/`, and never a file the
+ *   commit's edits also write.
+ * - **It is the same** at `main`'s head as at the commit the scan made it on, an ordinary file in both, and the commit
+ *   changes it. What it then holds is the scan's, which the review gate makes again on main and compares, byte for
+ *   byte, before anything merges.
  *
  * `main`'s head is read here, and a commit is made on it alone: one that moved since the watch read it is no refusal,
  * the watch tries again on its next pass.
@@ -49,7 +60,20 @@ export interface PinCommit {
   scanned: string;
   message: string;
   pins: PinEdit[];
+  /**
+   * The files the scan's pin step wrote for the moves it carries that no pin's line writes (github/made.ts), whole: a
+   * lockfile, a manifest whose range moved, mise's two files. None for a pull request of edits alone.
+   */
+  files?: { path: string; text: string }[] | undefined;
 }
+
+/**
+ * Whether a file is one the scan's pin step writes for a move: a pnpm lockfile, a manifest whose range a package's move
+ * moves, or mise's `mise.toml` and `mise.lock` at the root, which a move of what mise pins writes (the App may write
+ * them for a move, and nothing else does but `mise upgrade`).
+ */
+export const madeFile = (path: string): boolean =>
+  /(^|\/)(pnpm-lock\.yaml|package\.json)$/.test(path) || path === 'mise.toml' || path === 'mise.lock';
 
 /** A file as git's tree has it at a commit: its mode, and its text. */
 export interface TreeFile {
@@ -115,8 +139,8 @@ export function forbiddenPin(file: string): string | undefined {
   if (file.startsWith('policy/')) return 'policy/ holds the rules of the line, which no pin move writes';
   if (file === 'Makefile') return 'the Makefile’s pins move with the toolchain, by hand';
   if (/(^|\/)\.?mise(\.[\w-]+)?\.(toml|lock)$/.test(file))
-    return 'mise’s files move only when someone upgrades the toolchain';
-  if (inScope(file, LOCKFILES)) return 'a lockfile moves by its package manager, and the App writes none';
+    return 'mise’s files are written by the scan’s pin step, whole, never edited at a line';
+  if (inScope(file, LOCKFILES)) return 'a lockfile is written by the scan’s pin step, whole, never edited at a line';
   return undefined;
 }
 
@@ -186,7 +210,17 @@ export async function pinChanges(
 ): Promise<{ path: string; contents: Uint8Array }[]> {
   guardPinBranch(commit.branch);
   const { pins } = commit;
-  if (!pins.length) refuse('A pin move with no pins moves nothing.');
+  const made = commit.files ?? [];
+  if (!pins.length && !made.length) refuse('A pin move with no pins moves nothing.');
+  const madePaths = new Set<string>();
+  for (const file of made) {
+    if (!plainPath(file.path)) refuse(`${JSON.stringify(file.path)} is not a plain path in the repository.`);
+    if (file.path.startsWith('.github/') || file.path.startsWith('policy/') || !madeFile(file.path))
+      refuse(`${file.path} is not a file the scan’s pin step writes: a lockfile, a manifest, or mise’s.`);
+    if (madePaths.has(file.path)) refuse(`${file.path} is written twice in one pin move.`);
+    if (pins.some((pin) => pin.file === file.path)) refuse(`${file.path} is both edited and written whole.`);
+    madePaths.add(file.path);
+  }
   if (pins.length > MAX_PINS)
     refuse(`A commit of ${pins.length} pins is more than one pull request writes (${MAX_PINS}).`);
   const places = new Set<string>();
@@ -235,8 +269,32 @@ export async function pinChanges(
   for (const pin of pins)
     if (inScope(pin.file, owned) && !ownedPinPlace(pin.file))
       refuse(`${pin.file} is a rule of the line CODEOWNERS gives a person, and holds no pin the watch moves.`);
+  // mise's files are Martin's, and a move may write them (the scan's pin step, for what mise pins); no other.
+  for (const path of madePaths)
+    if (inScope(path, owned) && path !== 'mise.toml' && path !== 'mise.lock')
+      refuse(`${path} is a rule of the line CODEOWNERS gives a person, and the scan’s pin step writes no such file.`);
 
   const out: { path: string; contents: Uint8Array }[] = [];
+  // A file the scan's pin step wrote: the same at main's head as at the commit it was made on, so what it made is
+  // made on main's file, and different from it. Its bytes are the scan's; the review gate makes them again on main.
+  for (const file of made) {
+    const [now, then] = await Promise.all([
+      source.file(repo, commit.base, file.path),
+      source.file(repo, commit.scanned, file.path),
+    ]);
+    for (const [at, found] of [
+      ['main', now],
+      ['the commit the scan read', then],
+    ] as const) {
+      if (!found) refuse(`${file.path} is not a file in ${at}.`);
+      else if (found.mode !== '100644' && found.mode !== '100755')
+        refuse(`${file.path} is not an ordinary file in ${at} (mode ${found.mode}).`);
+    }
+    if ((now as TreeFile).text !== (then as TreeFile).text)
+      refuse(`${file.path} has changed since the scan made its moves: they are not made on main’s file.`);
+    if ((now as TreeFile).text === file.text) refuse(`${file.path} would be written as it is.`);
+    out.push({ path: file.path, contents: new TextEncoder().encode(file.text) });
+  }
   for (const file of [...new Set(pins.map((pin) => pin.file))]) {
     const [now, then] = await Promise.all([
       source.file(repo, commit.base, file),

@@ -16,28 +16,24 @@
  * moves come from.
  *
  * The pin step's derivation (`derive`) is the line's own code (apps/runner/src/pins.ts) on a checkout of main's tip,
- * with the pnpm the gate's mise.lock holds, in an environment of its own (`PATH` and a home), no script and no
- * pnpmfile: main's files alone, never the pull request's.
+ * as scripts/derive.ts runs it for the scan too: with the pnpm the gate's mise.lock holds and the mise every workflow
+ * installs, in an environment of its own (`PATH` and a home), no script and no pnpmfile: main's files alone, never the
+ * pull request's.
  *
  * A reader that fails, or runs past its time, is a refusal that says what it could not read, and never a package.
  */
-import { execFile } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { basename, dirname, join } from 'node:path';
-import { promisify } from 'node:util';
+import { join } from 'node:path';
 import { joined, MOVES_FILE, MOVES_FILE_SCHEMA, type ScanRun } from '../apps/factory/src/github/scanning.ts';
 import { APP_REPOSITORY } from '../apps/factory/src/repositories.ts';
 import type { MovesFile } from '../apps/factory/src/vulnerabilities/moves.ts';
 import { latest, openKept, readKey, realStateApi, STATE_KEY } from '../apps/factory/src/vulnerabilities/state.ts';
 import { zipEntry } from '../apps/factory/src/vulnerabilities/zip.ts';
-import { lockedPnpm } from '../apps/runner/scripts/install-pnpm.ts';
-import { type Move as PinStepMove, pnpmIn, writePins } from '../apps/runner/src/pins.ts';
+import type { Move as PinStepMove } from '../apps/runner/src/pins.ts';
+import { deriveOn, gitIn } from './derive.ts';
 import { type Changed, hunkLines, proveMove, rawEntries, type ScanMove } from './move.ts';
 import { type GitHub, type MoveAnswer, main, type PullRequest, type Run } from './review-gate.ts';
-
-const exec = promisify(execFile);
-const ROOT = join(import.meta.dirname, '..');
 
 /** When every move's reads have ended, from the job's start: inside the job's time, with room for its answers. */
 export const MOVES_MS = 12 * 60_000;
@@ -72,31 +68,6 @@ export async function scanMoves(repo: string, token: string, keyText = KEY): Pro
 
 /** Each repository's moves, read once a run. */
 const read = new Map<string, Promise<ScanMove[]>>();
-
-/**
- * The pnpm the pin step runs: the version the gate's own mise.lock holds, which is the runner image's
- * (`install-pnpm.ts`), found by mise from the gate's checkout and never from the repository's, and refused unless it
- * says it is that version.
- */
-async function pinnedPnpm(): Promise<string> {
-  const version = lockedPnpm(readFileSync(join(ROOT, 'mise.lock'), 'utf-8'), 'linux-x64').version;
-  const path = (await exec('mise', ['which', 'pnpm'], { cwd: ROOT, timeout: 60_000 })).stdout.trim();
-  if (!path.startsWith('/') || basename(path) !== 'pnpm') throw new Error(`mise names no pnpm executable: ${path}`);
-  const runs = (await exec(path, ['--version'], { cwd: ROOT, timeout: 60_000 })).stdout.trim();
-  if (runs !== version) throw new Error(`the gate's pnpm is ${runs}, and its mise.lock holds ${version}`);
-  return path;
-}
-
-/** git in a directory, with no hook and no settings of the checkout's. */
-const gitIn =
-  (dir: string) =>
-  async (...args: string[]) =>
-    (
-      await exec('git', ['-C', dir, '-c', 'core.hooksPath=/dev/null', '-c', 'core.fsmonitor=false', ...args], {
-        maxBuffer: 64 * 1024 * 1024,
-        timeout: 5 * 60 * 1000,
-      })
-    ).stdout;
 
 /** The two sides of what the merge makes, fetched as data: main's tip, and the head merged onto it. */
 async function sides(repo: string, base: string, mergeBase: string, head: string, work: string) {
@@ -133,19 +104,14 @@ async function sides(repo: string, base: string, mergeBase: string, head: string
       rewrites: hunkLines(await git('diff', '-U0', '--no-renames', '--no-ext-diff', base, tree, '--', entry.path)),
     })),
   );
-  /** The pin step's files for these moves, written on a checkout of main's tip. */
+  /** The pin step's files for these moves, written on a checkout of main's tip (scripts/derive.ts). */
   const derive = async (moves: readonly PinStepMove[]) => {
-    const [dir, aside, home] = ['main', 'aside', 'home'].map((d) => join(work, d)) as [string, string, string];
-    for (const d of [aside, home]) mkdirSync(d);
+    const dir = join(work, 'main');
     await git('worktree', 'add', '--quiet', '--detach', dir, base);
-    const pnpm = await pinnedPnpm();
-    // pnpm's environment is its own: no token, no key, and a home of its own.
-    const env = { PATH: `${dirname(pnpm)}:${process.env.PATH ?? ''}`, HOME: home };
-    for (const move of moves) await writePins(dir, move, { pnpm: pnpmIn(env), get: fetch, aside });
-    const there = gitIn(dir);
-    await there('add', '--all');
-    const paths = (await there('diff', '--cached', '--name-only', '--no-renames', '-z')).split('\0').filter(Boolean);
-    return new Map(paths.map((path) => [path, readFileSync(join(dir, path), 'utf-8')]));
+    const own = join(work, 'derive');
+    mkdirSync(own);
+    // The factory's main is a workspace whose projects name each other; the app's checkout is held to the registry.
+    return deriveOn(dir, moves, { work: own, workspace: repo !== APP_REPOSITORY });
   };
   return { changed, base: show(base), derive };
 }
