@@ -134,12 +134,19 @@ describe('the line’s merge, by the review gate’s verdict, the autonomy level
     }
   });
 
-  it('merges by Guarded’s rules at Guarded and Lights-out, Lights-out’s at Lights-out alone, and never Martin’s own', () => {
+  it('merges by Guarded’s rules at Guarded and Lights-out, Lights-out’s (a major among them) at Lights-out alone, and never Martin’s own', () => {
     const rules = (autonomy: Autonomy) =>
       RULES.filter((rule) => decide(ready, facts(merge({ autonomy, rule }))).next.do === 'enqueue');
     expect(rules('supervised')).toEqual([]);
     expect(rules('guarded')).toEqual(['martin-approved-head', 'exact-pin', 'move', 'low-risk']);
-    expect(rules('lights-out')).toEqual(['martin-approved-head', 'exact-pin', 'move', 'low-risk', 'lights-out']);
+    expect(rules('lights-out')).toEqual([
+      'martin-approved-head',
+      'exact-pin',
+      'move',
+      'major',
+      'low-risk',
+      'lights-out',
+    ]);
   });
 
   it('records the gate’s refusal of a head once, then holds it for its tags, saying Martin’s approval queues it', () => {
