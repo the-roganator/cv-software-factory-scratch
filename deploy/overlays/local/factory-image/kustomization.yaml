@@ -16,7 +16,7 @@ resources:
 - ../../../base/line-reads-admission
 - ../../../base/patching-reads-pods
 images:
-- digest: sha256:80a9f77ca1720485cdecdd9f34e5ee241df24798386fbb49fe9fc2088a31ba59
+- digest: sha256:f511b73be03f2dcd40ad4dc18b935a4a72a03f1d829cd7317d21fa5468af5112
   name: factory
   newName: ghcr.io/the-roganator/cv-software-factory-scratch/factory
 - digest: sha256:575d1f2c979dd8d05669226141d1b7590cc7c73f3dd7b3af49858b242d9f7ee4
