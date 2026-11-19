@@ -16,13 +16,13 @@ resources:
 - ../../../base/line-reads-admission
 - ../../../base/patching-reads-pods
 images:
-- digest: sha256:80a9f77ca1720485cdecdd9f34e5ee241df24798386fbb49fe9fc2088a31ba59
+- digest: sha256:94ef7e6d7e4b8761aed19b0b4c5ba027f5112bb084b127aa5494ff278d627530
   name: factory
   newName: ghcr.io/the-roganator/cv-software-factory-scratch/factory
-- digest: sha256:575d1f2c979dd8d05669226141d1b7590cc7c73f3dd7b3af49858b242d9f7ee4
+- digest: sha256:b7b8889f903d517bafd318331e9986bda628f328a7709cab9a5a609725f261dc
   name: factory-browser
   newName: ghcr.io/the-roganator/cv-software-factory-scratch/factory-browser
-- digest: sha256:5cde0c7b7f32e321cc78416d7a5de4ff4394fc854449a3f802a1d06e6a0d405e
+- digest: sha256:9c136a900f4e4dae6c67ca8437815ee3a31848a4a09caaa5febdb9b2e2cb33c0
   name: factory-runner
   newName: ghcr.io/the-roganator/cv-software-factory-scratch/factory-runner
 # The line starts runners with the runner image it is pinned to here, so its reference goes into the line's settings.
