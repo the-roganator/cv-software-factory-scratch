@@ -18,7 +18,7 @@ import { forbiddenPin, guardPinBranch, type PinCommit, pinBranchFor, treeSource 
 import { client, quiet, type Sent } from './fake.ts';
 import { digest, FakeRepo, FILES, writes } from './pins-harness.ts';
 
-const REPO = 'the-roganator/cv-software-factory';
+const REPO = 'the-roganator/cv-software-factory-scratch';
 const SIDECAR = `2.11.2@${digest('sidecar/old')}`;
 const NEWER = `2.14.3@${digest('sidecar/new')}`;
 

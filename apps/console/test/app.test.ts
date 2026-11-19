@@ -479,10 +479,10 @@ describe('the page’s settings', () => {
   it('writes the app’s origin alone, which a flag’s preview opens, and refuses an address a link should not take', () => {
     const dist = fakeBuild();
     writeFileSync(join(dist, 'index.html'), '<!doctype html><meta name="sf-app" content="">');
-    const settings = pageSettings({ APP_URL: 'http://website.localhost:8080/some/page?x="y"' });
-    expect(settings.app).toBe('http://website.localhost:8080');
+    const settings = pageSettings({ APP_URL: 'http://website.localhost:9080/some/page?x="y"' });
+    expect(settings.app).toBe('http://website.localhost:9080');
     expect(loadSite(dist, settings).page.body.toString()).toContain(
-      '<meta name="sf-app" content="http://website.localhost:8080">',
+      '<meta name="sf-app" content="http://website.localhost:9080">',
     );
     for (const app of ['javascript:alert(1)', 'http://martin:secret@website.localhost', 'website.localhost']) {
       expect(() => pageSettings({ APP_URL: app }), app).toThrow(/APP_URL/);

@@ -123,7 +123,7 @@ export async function run(args: string[]): Promise<number> {
     }
   }
   const commit = (await exec('git', ['-C', ROOT, 'rev-parse', 'HEAD'])).stdout.trim();
-  const context_ = (process.env.KUBE_CONTEXT ?? 'k3d-software-factory').trim();
+  const context_ = (process.env.KUBE_CONTEXT ?? 'k3d-software-factory-scratch').trim();
   const sql = connect(process.env.DATABASE_URL);
   const writer = new EventWriter(sql, { kind: 'real', artifacts: new DiskArtifacts('/nonexistent') });
   const tmp = await mkdtemp(join(tmpdir(), 'guardrails-'));
@@ -139,7 +139,12 @@ export async function run(args: string[]): Promise<number> {
     firstParent: async () =>
       (await exec('git', ['-C', ROOT, 'rev-list', '--first-parent', '-n', '300', 'HEAD'])).stdout.trim().split('\n'),
     appKey: async () => {
-      const { stdout } = await exec('security', ['find-generic-password', '-s', 'factory-github-app-key', '-w']);
+      const { stdout } = await exec('security', [
+        'find-generic-password',
+        '-s',
+        'scratch-factory-github-app-key',
+        '-w',
+      ]);
       return Buffer.from(stdout.trim(), 'base64').toString('utf-8');
     },
     rendered: () => {
