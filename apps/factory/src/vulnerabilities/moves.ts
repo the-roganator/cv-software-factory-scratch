@@ -14,14 +14,14 @@
  *   `dependabot.yml`'s docker entries read, whatever its deadline: nobody else can move it;
  * - `line`: the app's, which its line moves;
  * - `cluster`: k3s, which only the cluster's own command applies;
- * - `issue`: what no pull request of the App's can write: anything mise or the Makefile pins (k3d, Argo CD's chart with
- *   its CLI, a tool's release), a workflow, an indirect package of the lockfile, a direct one Dependabot has not moved within a
- *   day of its fix, an image whose other half is in the lockfile, and Playwright's image, whose library is in the
- *   lockfile, where Dependabot does not read its pin;
+ * - `issue`: what no pull request of the App's can write: what the Makefile pins (Argo CD's chart, with its CLI), a
+ *   workflow, and Playwright's image, whose library is in the lockfile, where Dependabot does not read its pin;
  * - `dependabot`: Playwright's image where Dependabot reads its pin, whose group moves it with its library; a pin
- *   `dependabot.yml`'s docker entries read, with no High or Critical on a deadline, and a direct
- *   package of the lockfile within a day of its fix, which its security update moves;
- * - `worker`: every other pin, which the GitHub worker moves: a chart among them, at one Application or several.
+ *   `dependabot.yml`'s docker entries read, with no High or Critical on a deadline, and a direct package of the
+ *   lockfile alone within a day of its fix, which its security update moves;
+ * - `worker`: every other pin, which the GitHub worker moves: a chart among them, at one Application or several; and
+ *   every other package of the lockfile, and what mise pins (k3d, a tool's release), which the pin step makes in the
+ *   scan's run for the worker to commit (github/made.ts).
  *
  * No lane says a move waits for Martin. A major is in the lane it would be in without its major: the review gate names
  * it (`major`), and the autonomy level decides whether it is queued (`ENQUEUES`, `policy/line.ts`).
@@ -167,24 +167,23 @@ export function laneOf(
     return 'line';
   }
   if (target.kind === 'k3s' || kinds.has('k3s') || kinds.has('k3s-release')) return 'cluster';
-  // What mise or the Makefile pins (Argo CD's chart with its CLI) no pull request of the App's writes.
-  if (
-    target.kind === 'tool' ||
-    kinds.has('k3d') ||
-    move.pins.some((pin) => MISE_FILES.has(pin.file) || pin.file === 'Makefile')
-  )
-    return 'issue';
+  // What the Makefile pins (Argo CD's chart with its CLI) no pull request of the App's writes.
+  if (move.pins.some((pin) => pin.file === 'Makefile')) return 'issue';
   if (move.name === PLAYWRIGHT_IMAGE) return 'issue';
   if (move.pins.some((pin) => pin.file.startsWith('.github/workflows/'))) return 'issue';
+  // What mise pins (k3d, a tool's release): the pin step's, in the scan's run, which the worker commits.
+  if (target.kind === 'tool' || kinds.has('k3d') || move.pins.some((pin) => MISE_FILES.has(pin.file))) return 'worker';
   // An Application's chart, the worker's: Dependabot's docker entries read no Application's targetRevision, though
   // they read the directory it is in.
   if (target.kind === 'chart') return 'worker';
   if (move.lockfile) {
-    // An image of ours that carries the same package: its other half is the lockfile, which no pin move writes.
-    if (move.pins.some((pin) => !isLockfile(pin.file))) return 'issue';
-    if (!context.direct.has(move.name)) return 'issue';
+    // A direct package of the lockfile alone, within a day of its fix: Dependabot's security update moves it.
     const fixed = Math.min(...members.map((each) => each.finding.fix?.day ?? context.now));
-    return context.now - fixed > DAY ? 'issue' : 'dependabot';
+    const alone = move.pins.every((pin) => isLockfile(pin.file));
+    if (alone && context.direct.has(move.name) && context.now - fixed <= DAY) return 'dependabot';
+    // Any other the pin step makes in the scan's run, and the worker commits; an image of ours that carries the same
+    // package moves with the deploy that follows the merge.
+    return 'worker';
   }
   const urgent = members.some(
     (each) => each.due !== undefined && (each.severity === 'CRITICAL' || each.severity === 'HIGH'),
