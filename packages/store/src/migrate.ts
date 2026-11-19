@@ -108,6 +108,9 @@ const codeOf = (error: unknown) => {
   return typeof code === 'string' ? code : 'unknown';
 };
 
+/** Whether an error is one of a store away for now, restarting or still coming up (`COMING_UP`), rather than a fault. */
+export const storeAway = (error: unknown): boolean => COMING_UP.has(codeOf(error));
+
 export interface WaitOptions {
   /** How long to keep trying, from the first attempt. */
   withinMs?: number;
