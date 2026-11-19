@@ -895,10 +895,14 @@ describe('platform.yml', () => {
     expect(timeline?.run).toContain('scripts/platform-timeline.sh');
     expect((timeline as { if?: string } | undefined)?.if).toBe(expression('always()'));
     expect(names.indexOf('Where the time went')).toBeGreaterThan(names.indexOf('Every pod running and ready'));
-    // What the cluster showed, kept on every outcome but success, cancellation included.
+    // What the cluster showed, kept on every outcome but success, cancellation included, but a run the merge queue let
+    // go, which the leftover report marks so, and within a limit of its own.
     const kept = steps.find((step) => step.with?.name === 'cluster');
     expect(kept?.uses).toMatch(/^actions\/upload-artifact@/);
-    expect((kept as { if?: string } | undefined)?.if).toBe(expression('failure() || cancelled()'));
+    expect((kept as { if?: string } | undefined)?.if).toBe(
+      expression("(failure() || cancelled()) && env.QUEUE_GONE != 'true'"),
+    );
+    expect((kept as { 'timeout-minutes'?: number } | undefined)?.['timeout-minutes']).toBe(5);
     expect(runs).not.toMatch(/get secrets?\b/);
     // Each record the scripts take, with its own script, uploaded beside what the change checks in.
     for (const file of readdirSync('deploy/test').filter((f) => f.endsWith('-refusals.json'))) {
