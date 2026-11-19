@@ -153,7 +153,7 @@ export async function worker(repo: FakeRepo, only: PinScope, today: () => Moves,
       head: head(number),
       check: null,
       verdict: null,
-      judged: { number, head: head(number), rule: 'pin-move', tags: [] },
+      judged: { number, head: head(number), rule: 'move', tags: [] },
       problem: null,
     }),
     checkRuns: async () =>

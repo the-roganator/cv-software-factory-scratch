@@ -154,8 +154,9 @@ describe('the pin watch', () => {
       'It clears 2 critical, 30 high, 22 medium, 6 low, and leaves nothing on the same pins.',
     );
     expect(sidecar?.body).toContain('Deadline: 2026-11-18T06:00:00Z.');
-    expect(sidecar?.body).toContain('The review gate passes it as `pin-move` when it proves the move');
-    expect(byHead('factory/pin/example-logs')?.body).toContain('**It waits for you.** It crosses a major');
+    expect(sidecar?.body).toContain('The review gate passes it as `move` when it is exactly the scan’s move');
+    // A major that clears a Critical is a move like any other; one that clears none waits for Martin.
+    expect(byHead('factory/pin/example-logs')?.body).toContain('The review gate passes it as `move`');
     expect(byHead('factory/pin/k3s')?.body).toContain('`make upgrade-cluster`');
     // Its counts and its pins, never a package or an advisory.
     for (const pull of openPins(repo)) expect(pull.body).not.toMatch(/GHSA-|CVE-|@example\/tokens/);
