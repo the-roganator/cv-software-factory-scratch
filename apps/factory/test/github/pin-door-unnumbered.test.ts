@@ -21,7 +21,7 @@ import { RefusalRecorder } from '../../src/github/refusals.ts';
 import { createWorkerServer } from '../../src/github/server.ts';
 import { GitHubWorker, type GitHubWorkerError } from '../../src/github/worker-client.ts';
 import { client, quiet, type Route, type Sent } from './fake.ts';
-import { day, digest, FACTORY, FakeRepo, FILES, factoryMoves, writes } from './pins-harness.ts';
+import { day, digest, FACTORY, FakeRepo, FILES, factoryMoves, pinBranchOf, writes } from './pins-harness.ts';
 
 let close: (() => void) | undefined;
 afterEach(() => close?.());
@@ -125,7 +125,7 @@ describe('the door, asked for actions that name no pull request', () => {
 
   it('refuses a branch at a pin pull request’s head, so no second pull request has it and the gate does not hold the move', async () => {
     const { repo, door, sent, refusals } = await worker('*');
-    const pin = repo.pulls.find((p) => p.head === 'factory/pin/ghcr.io-example-scanner-proxy');
+    const pin = repo.pulls.find((p) => p.head === pinBranchOf('ghcr.io/example/scanner-proxy'));
     if (!pin) throw new Error('the pin watch opened no pull request for the scanner');
     const head = repo.refs.get(pin.head) as string;
     const before = sent.length;
@@ -143,7 +143,7 @@ describe('the door, asked for actions that name no pull request', () => {
 
   it('refuses a check run named as the review gate’s, or as a check main requires, at any head', async () => {
     const { repo, door, sent, refusals } = await worker('*');
-    const pin = repo.pulls.find((p) => p.head === 'factory/pin/ghcr.io-example-scanner-proxy');
+    const pin = repo.pulls.find((p) => p.head === pinBranchOf('ghcr.io/example/scanner-proxy'));
     const head = repo.refs.get(pin?.head ?? '') as string;
     const asked = { headSha: head, status: 'completed', conclusion: 'success', title: 't', summary: 's' } as const;
     for (const name of ['review', ' Review ']) {

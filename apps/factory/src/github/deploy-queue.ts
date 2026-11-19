@@ -1,9 +1,9 @@
 /**
  * The App's own pin pull requests in this repository, added to the merge queue by the worker itself (ADR 0017): the
- * local profile's deploy pin, and each of the pin watch's moves the gate passed as a move. The deploy watch (`deploys.ts`) opens and
+ * local profile's deploy pin, and each of the pin watch's pull requests the gate passed as a move. The deploy watch (`deploys.ts`) opens and
  * moves the factory's own deploy pull request, which the review gate passes as an exact pin (`exact-pin`: every changed
  * line a digest under `deploy/`, each image signed by `build.yml` on main, from a commit ahead of the pin it replaces);
- * the pin watch (`pins.ts`) opens one pull request for each move of the vulnerability scan's, which the gate passes as
+ * the pin watch (`pins.ts`) opens one pull request for the vulnerability scan's moves at each file, which the gate passes as
  * a move (`move`, or `major` for one across a major that clears no Critical) when it is exactly the scan's moves, which
  * the gate makes itself. These watches add each to the queue, so a pin the gate passed reaches `main` with nobody's hand
  * on it: the deploy pin at every autonomy level, as it runs only what Martin already merged, and a move only when the
@@ -19,9 +19,9 @@
  * - **the deploy pin**: it is the App's (`APP_USER`), from this repository's deploy branch into main, not a draft, with
  *   the profile's label (`deploy: local`) and a title the deploy watch writes (`chore(deploy): run … on the local
  *   cluster`), and the gate's rule is `exact-pin`;
- * - **a pin move**: it is the App's, from this repository's `factory/pin/<move>` (the pin watch's branch, one segment,
+ * - **a pin move**: it is the App's, from this repository's `factory/pin/<files>` (the pin watch's branch, one segment,
  *   as `guardPinBranch` has it) into main, not a draft, labelled `pin` by the App and by nobody else, every time it was
- *   labelled, its move one `PIN_WATCH_ONLY` names, by its exact name, and none Martin holds on its branch, the gate's
+ *   labelled, and none Martin holds on its branch, the gate's
  *   rule is `move` or `major`, and the autonomy level in force, read just before the enqueue, queues that rule
  *   with auto-merge on (Supervised, and off, when they cannot be read). The gate trusts no branch, label or title; the queue reads
  *   them so that nothing but the pin watch's own pull request rides the rule, and the verdict is what passes it;
@@ -66,8 +66,8 @@ import { DEPLOYS, type DeployTarget, deployLabel, isDeployTitle } from './deploy
 import { APP_USER, IssueRefused } from './issues.ts';
 import { type LevelReader, type Merging, mergingWait } from './level.ts';
 import { failedChecks, type MergeQueue, REVIEW_CHECK, type ReviewVerdict } from './merging.ts';
-import { guardPinBranch, pinBranchFor } from './pin-guard.ts';
-import { PIN_LABEL, PIN_REPOS, type PinScope, pinTitle, titleIsExact } from './pins.ts';
+import { guardPinBranch } from './pin-guard.ts';
+import { PIN_LABEL, PIN_REPOS, type PinScope } from './pins.ts';
 import type { Watch } from './poller.ts';
 import { type CheckRun, outcomeOf, type Reads } from './reads.ts';
 import type { RefusalRecorder } from './refusals.ts';
@@ -125,7 +125,7 @@ export function deployPullWait(target: DeployTarget, pull: QueuePull): QueueWait
 
 /**
  * Whether a pull request is the pin watch's own in a repository, by what GitHub's list shows of it: the App's, from
- * `factory/pin/<move>` of that repository into main, not a draft, labelled `pin`. Who labelled it is read apart
+ * `factory/pin/<files>` of that repository into main, not a draft, labelled `pin`. Who labelled it is read apart
  * (`labelWait`), from its events.
  */
 export function pinPullWait(repo: string, pull: QueuePull): QueueWait | undefined {
@@ -467,7 +467,7 @@ export function deployQueueWatch(deps: DeployQueueDependencies, target: DeployTa
   };
 }
 
-/** How many pages of a hundred open pull requests a pass reads: the pin watch opens one for each move. */
+/** How many pages of a hundred open pull requests a pass reads: the pin watch opens one for each file's moves. */
 const OPEN_PAGES = 5;
 
 const MATCHING_REFS = z.array(z.object({ ref: z.string(), object: z.object({ sha: z.string() }) }));
@@ -490,25 +490,6 @@ export const pinHeadsOf =
     }
     return refs.filter((ref) => pinBranch(ref.ref.replace(/^refs\/heads\//, ''))).map((ref) => ref.object.sha);
   };
-
-/** Whether a title is the one the pin watch gives a move of this name: the name, then one version, and nothing else. */
-const titleNames = (title: string, name: string): boolean => {
-  const prefix = `chore(pin): move ${name} to `;
-  if (!title.startsWith(prefix)) return false;
-  const to = title.slice(prefix.length);
-  // The name and version whole, as the watch writes them: one it would alter or cut gets an issue, so none is it.
-  return /^\S+$/.test(to) && titleIsExact(name, to) && pinTitle(name, to) === title;
-};
-
-/** Whether a pin branch is that of a move the pin watch is told to take (`PIN_WATCH_ONLY`), by the branch it opens. */
-export function toldWait(only: PinScope, pull: Pick<QueuePull, 'title' | 'head'>): QueueWait | undefined {
-  if (only === '*') return undefined;
-  // The move by its exact name, as the watch reads the setting: the branch the watch opens for that name, and the
-  // title it gives it, which no worker that asks can change (the door refuses any action on a pin pull request).
-  const told = only.some((name) => pinBranchFor(name) === pull.head.ref && titleNames(pull.title, name));
-  if (told) return undefined;
-  return { waits: 'not-a-pin', why: 'its move is not one the pin watch is told to take (PIN_WATCH_ONLY)' };
-}
 
 /** Whether anyone but the App ever took the `pin` label off a pull request, by its events: Martin's hold of it. */
 export function heldByLabel(events: LabelEvents): boolean {
@@ -537,10 +518,11 @@ const CLOSED = z.array(
 
 /**
  * Watches the pin watch's open pull requests in a repository, and adds each to the merge queue once the gate passed
- * its head as a move the autonomy level queues and its checks are green. Only a move the watch is told to take (`only`, `PIN_WATCH_ONLY`) is
- * queued, as the watch opens only those: one left open from an earlier setting, or opened by hand on a pin branch,
- * waits; told none, it reads nothing. A pull request on a pin branch or labelled `pin` that is not the pin watch's own
- * waits, and says why; every other open pull request is not read further.
+ * its head as a move the autonomy level queues and its checks are green. Only what the watch wrote is queued: the
+ * watch commits only the moves it is told to take (`PIN_WATCH_ONLY`), and a head it did not write, one left open from
+ * an earlier setting or opened by hand on a pin branch among them, waits (`headWait`); told none (`only`), it reads
+ * nothing. A pull request on a pin branch or labelled `pin` that is not the pin watch's own waits, and says why; every
+ * other open pull request is not read further.
  */
 export function pinQueueWatch(deps: PinQueueDependencies, repo: string, only: PinScope = []): Watch {
   const { github } = deps;
@@ -642,7 +624,7 @@ export function pinQueueWatch(deps: PinQueueDependencies, repo: string, only: Pi
       const head = pull.head.sha;
       const attempt = state.attempt(number, head);
       if (attempt.done) continue;
-      const notOne = pinPullWait(repo, pull) ?? toldWait(only, pull) ?? headWait(deps.heads, repo, pull, 'not-a-pin');
+      const notOne = pinPullWait(repo, pull) ?? headWait(deps.heads, repo, pull, 'not-a-pin');
       if (notOne) {
         state.wait(number, head, notOne);
         continue;
