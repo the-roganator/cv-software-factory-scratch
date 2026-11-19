@@ -4,7 +4,9 @@
  * the enqueue, or the dry run's own. The pin queue watch beside it adds the pin watch's pull requests the gate passed
  * as pin moves, each condition tested alone against one that passes.
  */
+import type { Autonomy } from '@software-factory/events';
 import { describe, expect, it } from 'vitest';
+import { ENQUEUES } from '../../../../policy/line.ts';
 import { DryRunActions } from '../../src/github/actions.ts';
 import { GitHubError } from '../../src/github/client.ts';
 import {
@@ -24,6 +26,7 @@ import {
 } from '../../src/github/deploy-queue.ts';
 import { DEPLOYS, type DeployTarget } from '../../src/github/deploys.ts';
 import { APP_USER, IssueGuard } from '../../src/github/issues.ts';
+import { type LevelReader, noLevel, storeLevel } from '../../src/github/level.ts';
 import type { MergeQueue, ReviewVerdict } from '../../src/github/merging.ts';
 import type { PinScope } from '../../src/github/pins.ts';
 import type { CheckRun } from '../../src/github/reads.ts';
@@ -246,7 +249,7 @@ describe('the deploy queue watch', () => {
       { ...verdict(HEAD), judged: { number: 973, head: NEWER, rule: 'exact-pin' as const, tags: [] } },
     ];
     for (const v of verdicts) {
-      expect(verdictWait(v, HEAD, 'exact-pin')?.waits).toBe('verdict');
+      expect(verdictWait(v, HEAD, ['exact-pin'])?.waits).toBe('verdict');
       const { pass, enqueued } = harness({ verdict: () => v });
       await pass();
       expect(enqueued, JSON.stringify(v.judged)).toEqual([]);
@@ -453,6 +456,8 @@ const pinVerdict = (
   problem: judged === null ? 'the review App has posted no review check' : null,
 });
 
+const guarded: LevelReader = async () => 'guarded';
+
 /** A worker's pin queue watch against a repository with these open pull requests and each one's events. */
 function pinHarness(o: {
   pulls?: () => QueuePull[];
@@ -465,6 +470,8 @@ function pinHarness(o: {
   heads?: DeployQueueDependencies['heads'];
   /** The closed pull requests GitHub lists from a branch, as the queue reads them for an earlier hold. */
   closed?: (branch: string) => unknown[];
+  /** The autonomy level in force, read before each enqueue: Guarded unless a test says. */
+  level?: LevelReader;
 }) {
   const sent: Sent[] = [];
   /** GitHub's requests and the merge queue's reads, in the order they were made. */
@@ -521,7 +528,7 @@ function pinHarness(o: {
     },
   };
   const pass = pinQueueWatch(
-    { github, reads, actions, heads: o.heads ?? vouching(pulls), log: quiet },
+    { github, reads, actions, heads: o.heads ?? vouching(pulls), log: quiet, level: o.level ?? guarded },
     REPO,
     o.only ?? '*',
   );
@@ -530,9 +537,83 @@ function pinHarness(o: {
 }
 
 describe('the pin queue watch', () => {
+  it('queues a move at Guarded and Lights-out, a major only at Lights-out, and nothing at Supervised', async () => {
+    const at = (autonomy: Autonomy, rule: 'move' | 'major') =>
+      pinHarness({ level: async () => autonomy, verdict: (n) => pinVerdict(PIN_HEAD, { rule }, n) });
+    const cases: [Autonomy, 'move' | 'major', boolean][] = [
+      ['supervised', 'move', false],
+      ['supervised', 'major', false],
+      ['guarded', 'move', true],
+      ['guarded', 'major', false],
+      ['lights-out', 'move', true],
+      ['lights-out', 'major', true],
+    ];
+    for (const [autonomy, rule, queues] of cases) {
+      const h = at(autonomy, rule);
+      await h.pass();
+      expect(h.enqueued, `${rule} at ${autonomy}`).toEqual(queues ? [[1040, PIN_HEAD]] : []);
+      // As the one table says, and the line reads it too.
+      expect(ENQUEUES[autonomy].includes(rule), `${rule} at ${autonomy}`).toBe(queues);
+    }
+  });
+
+  it('reads the level afresh each pass, so a level Martin changes holds from the next, with nothing restarted', async () => {
+    let autonomy: Autonomy = 'guarded';
+    let reads = 0;
+    const h = pinHarness({
+      level: async () => {
+        reads++;
+        return autonomy;
+      },
+      verdict: (n) => pinVerdict(PIN_HEAD, { rule: 'major' }, n),
+    });
+    await h.pass();
+    expect(h.enqueued).toEqual([]);
+    autonomy = 'lights-out';
+    await h.pass();
+    expect(h.enqueued).toEqual([[1040, PIN_HEAD]]);
+    expect(reads).toBe(2);
+  });
+
+  it('queues no move when it cannot read the level, as at Supervised, and says so once', async () => {
+    const warned: unknown[] = [];
+    const log = { info: () => {}, warn: (...args: unknown[]) => void warned.push(args) };
+    const failing = storeLevel({} as never, log);
+    // A store that is not there: `latestControls` throws on its first query.
+    expect(await failing()).toBe('supervised');
+    expect(await failing()).toBe('supervised');
+    expect(warned).toHaveLength(1);
+    const h = pinHarness({ level: failing });
+    await h.pass();
+    expect(h.enqueued).toEqual([]);
+    const none = pinHarness({ level: noLevel(log) });
+    await none.pass();
+    expect(none.enqueued).toEqual([]);
+  });
+
+  it('reads the level last but for who labelled it, once the gate and the checks pass it', async () => {
+    let reads = 0;
+    const h = pinHarness({
+      level: async () => {
+        reads++;
+        return 'guarded';
+      },
+      verdict: (n) => pinVerdict(PIN_HEAD, null, n),
+    });
+    await h.pass();
+    expect(reads).toBe(0);
+  });
+
   it('queues pin moves in this repository alone, never the app’s', () => {
     const { github } = client([]);
-    const deps = { github, reads: {} as never, actions: {} as never, heads: { get: () => undefined }, log: quiet };
+    const deps = {
+      github,
+      reads: {} as never,
+      actions: {} as never,
+      heads: { get: () => undefined },
+      log: quiet,
+      level: guarded,
+    };
     expect(() => pinQueueWatch(deps, APP.repo)).toThrow(/does not queue/);
   });
 
@@ -555,7 +636,7 @@ describe('the pin queue watch', () => {
         get: (_t, name) => async () => void sent.push(String(name)),
       });
       const actions = { enqueuePullRequest: async () => ({ position: 1, state: 'QUEUED' }) };
-      const deps = { github, reads, actions, heads: { get: () => undefined }, log: quiet };
+      const deps = { github, reads, actions, heads: { get: () => undefined }, log: quiet, level: guarded };
       await (none === undefined ? pinQueueWatch(deps, REPO) : pinQueueWatch(deps, REPO, none))();
       expect(sent).toEqual([]);
     }
@@ -899,15 +980,15 @@ describe('the pin queue watch', () => {
   ];
   for (const [what, v] of verdicts) {
     it(`never queues a pin move whose verdict at its head is ${what}`, async () => {
-      expect(verdictWait(v, PIN_HEAD, 'move')?.waits).toBe('verdict');
+      expect(verdictWait(v, PIN_HEAD, ['move'])?.waits).toBe('verdict');
       const { pass, enqueued } = pinHarness({ verdict: () => v });
       await pass();
       expect(enqueued).toEqual([]);
     });
   }
   it('never takes a pin move as a deploy pin, nor a deploy pin as a pin move', () => {
-    expect(verdictWait(pinVerdict(PIN_HEAD), PIN_HEAD, 'exact-pin')?.waits).toBe('verdict');
-    expect(verdictWait(verdict(HEAD), HEAD, 'move')?.waits).toBe('verdict');
+    expect(verdictWait(pinVerdict(PIN_HEAD), PIN_HEAD, ['exact-pin'])?.waits).toBe('verdict');
+    expect(verdictWait(verdict(HEAD), HEAD, ['move'])?.waits).toBe('verdict');
   });
 
   const checks: [string, CheckRun[]][] = [
