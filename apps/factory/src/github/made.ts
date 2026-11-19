@@ -1,6 +1,8 @@
 /**
  * The factory's moves no pin's line can write, made by its scan for the pin watch to commit: a lockfile's package,
- * which pnpm moves, and a tool mise pins, which mise locks. Each is the pin step's own move (apps/runner/src/pins.ts),
+ * which pnpm moves, a tool mise pins, which mise locks, and an image that brings another pin with it (`bringsPins`: the
+ * Node it runs, or Playwright's library), whose `FROM`s the step moves with what it brings. Each is the pin step's own
+ * move (apps/runner/src/pins.ts),
  * made by scripts/derive.ts on the commit the scan read, in the scan's run (scripts/pins.ts), and sealed with the
  * scan's key beside its state, since what it writes names a package the public list withholds: the artifact `pins`.
  *
@@ -16,6 +18,7 @@
 import type { Move as PinStepMove } from '../../../runner/src/pins.ts';
 import { moveOf } from '../patching/sends.ts';
 import { readTarget } from '../vulnerabilities/fixes.ts';
+import { bringsPins, libraryOf } from '../vulnerabilities/registry.ts';
 import { openJson, StateError, sealJson } from '../vulnerabilities/state.ts';
 import type { ReadMove } from './scanning.ts';
 
@@ -68,7 +71,7 @@ export const namedMajor = (move: Pick<ReadMove, 'major' | 'clears'>): boolean =>
   move.major && move.clears.CRITICAL === 0;
 
 /** The group a move the step makes is in: the files it writes, and whether it is named `major`. */
-export const groupOf = (move: Pick<ReadMove, 'lockfile' | 'pins' | 'major' | 'clears'>) => ({
+export const groupOf = (move: Pick<ReadMove, 'lockfile' | 'pins' | 'major' | 'clears' | 'name'>) => ({
   files: writtenBy(move),
   major: namedMajor(move),
 });
@@ -80,15 +83,24 @@ export const groupKey = (group: { files: readonly string[]; major: boolean }) =>
 const MISE = /(^|\/)mise\.(toml|lock)$/;
 const LOCKFILE = /(^|\/)pnpm-lock\.yaml$/;
 
-/** Whether a move of the factory's is made by the pin step, not by a pin's edit: a lockfile's, or one mise pins. */
-export const madeByStep = (move: Pick<ReadMove, 'lockfile' | 'pins'>): boolean =>
-  move.lockfile || move.pins.some((pin) => MISE.test(pin.file));
+/**
+ * Whether a move of the factory's is made by the pin step, not by a pin's edit: a lockfile's, one mise pins, or an
+ * image's that brings another pin with it (`bringsPins`), whose `FROM`s alone would leave what it brings behind.
+ */
+export const madeByStep = (move: Pick<ReadMove, 'lockfile' | 'pins' | 'name' | 'to'>): boolean =>
+  move.lockfile ||
+  move.pins.some((pin) => MISE.test(pin.file)) ||
+  (readTarget(move.to)?.kind === 'image' && bringsPins(move.name));
 
 /**
  * The files a move the step makes writes, by which it is grouped: a lockfile's, where the scan found its package (its
- * pin at an image of ours that carries the package is moved by a deploy, after the merge), or mise's.
+ * pin at an image of ours that carries the package is moved by a deploy, after the merge), mise's, or an image's
+ * Dockerfiles, beside which it writes the Node it brings. An image with a library is grouped by the lockfile, as the
+ * day's lockfile moves are: it writes the lockfile too, and one pull request for the lockfile's moves leaves none to
+ * wait for another's merge.
  */
-export function writtenBy(move: Pick<ReadMove, 'lockfile' | 'pins'>): string[] {
+export function writtenBy(move: Pick<ReadMove, 'lockfile' | 'pins' | 'name'>): string[] {
+  if (!move.lockfile && libraryOf(move.name)) return ['pnpm-lock.yaml'];
   const files = move.pins.map((pin) => pin.file).filter((file) => (move.lockfile ? LOCKFILE.test(file) : true));
   return [...new Set(files)].sort();
 }
@@ -107,12 +119,14 @@ export function toolAt(lock: string, line: number): string | undefined {
 
 /**
  * The pin step's move for one of the scan's, made so (`madeByStep`), or why it cannot be: a lockfile's package, from
- * what the state withholds; Node, where mise pins it; any other tool mise pins, at the entry its pin is in, moved to
- * the scan's target (a tool's release, or the image's tag for an image mise's tool pins, k3d's), read from `mise.lock`
- * as it is where the move is made.
+ * what the state withholds; Node, where mise pins it, or Node's image to a tag of another release; an image that brings
+ * another pin, to the scan's tag and digest; any other tool mise pins, at the entry its pin is in, moved to the scan's
+ * target (a tool's release, or the image's tag for an image mise's tool pins, k3d's), read from `mise.lock` as it is
+ * where the move is made.
  */
 export function stepOf(move: ReadMove, lock: string | undefined): PinStepMove | string {
-  if (move.lockfile || move.name === 'node') {
+  const image = readTarget(move.to)?.kind === 'image' && !move.pins.some((pin) => MISE.test(pin.file));
+  if (move.lockfile || move.name === 'node' || (image && bringsPins(move.name))) {
     const made = moveOf(move.repository, move);
     if (typeof made === 'string') return made;
     return { ecosystem: made.ecosystem, name: made.name, from: made.from, to: made.to };

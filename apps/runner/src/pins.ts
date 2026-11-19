@@ -48,6 +48,7 @@ import { promisify } from 'node:util';
 import {
   digestOf,
   type Get,
+  libraryOf,
   nodeInImage,
   PinsRefused,
   releaseAge,
@@ -56,8 +57,10 @@ import {
 import { git, gitInput } from './git.ts';
 
 export {
+  bringsPins,
   digestOf,
   type Get,
+  libraryOf,
   nodeInImage,
   nodeInTar,
   PinsRefused,
@@ -428,6 +431,8 @@ async function dockerfilesOf(dir: string): Promise<string[]> {
     '--',
     'Dockerfile',
     '**/Dockerfile',
+    'Dockerfile.*',
+    '**/Dockerfile.*',
     '*.Dockerfile',
     '**/*.Dockerfile',
   );
@@ -544,6 +549,42 @@ export async function moveImage(dir: string, move: Move, get: Get, now = Date.no
   if (!moved) throw new PinsRefused(`No FROM pins ${move.name} at ${move.from}.`);
 }
 
+/**
+ * Moves an image's library to the release its tag names (`v1.65.1-noble` is 1.65.1), the image's other half: every
+ * package of it a manifest names, with `pnpm update <package>@<release>`, which moves its range there too and the rest of
+ * the library with it, in every project of a workspace. Every copy the lockfile then resolves of any of its packages
+ * must be at that release, or the move is refused. A lockfile that resolves none of them has nothing to move, and one
+ * whose every copy is at the release has the move already.
+ */
+export async function moveLibrary(dir: string, image: string, tag: string, pnpm: Pnpm): Promise<void> {
+  const library = libraryOf(image);
+  if (!library) return;
+  const release = /^v?(\d+\.\d+\.\d+)(?![\d.])/.exec(tag)?.[1];
+  if (!release) throw new PinsRefused(`${image}:${tag} names no release of its library, ${library.join(', ')}.`);
+  const lockPath = join(dir, 'pnpm-lock.yaml');
+  const copies = (lock: string) => library.flatMap((name) => lockedVersions(lock, name).map((v) => ({ name, v })));
+  const before = copies(await readFile(lockPath, 'utf8').catch(() => ''));
+  if (before.every(({ v }) => v === release)) return;
+  const named = new Set(
+    (await manifestsOf(dir)).flatMap(({ json }) =>
+      PINNED_FIELDS.flatMap((field) => library.filter((name) => typeof json[field]?.[name] === 'string')),
+    ),
+  );
+  if (!named.size)
+    throw new PinsRefused(`No manifest names ${library.join(', ')}, so ${image}'s library cannot move to ${release}.`);
+  const workspace = /^packages:/m.test(await readFile(join(dir, 'pnpm-workspace.yaml'), 'utf8').catch(() => ''));
+  await pnpm(dir, [
+    'update',
+    ...(workspace ? ['--recursive'] : []),
+    ...[...named].sort().map((n) => `${n}@${release}`),
+  ]);
+  const left = copies(await readFile(lockPath, 'utf8')).filter(({ v }) => v !== release);
+  if (left.length)
+    throw new PinsRefused(
+      `${image}:${tag} is ${release}, and the lockfile keeps ${left.map(({ name, v }) => `${name}@${v}`).join(', ')}.`,
+    );
+}
+
 /** Runs mise in a checkout, as the factory's scan and review gate do. Injected so tests need no mise. */
 export type Mise = (dir: string, args: string[]) => Promise<void>;
 
@@ -640,12 +681,23 @@ export interface PinTools {
  */
 export async function writePins(dir: string, move: Move, tools: PinTools): Promise<void> {
   if (move.ecosystem === 'node') return moveNode(dir, move, tools.get, tools.now);
-  if (move.ecosystem === 'docker') return moveImage(dir, move, tools.get, tools.now);
   if (move.ecosystem === 'tool') return moveTool(dir, move, tools.mise);
   const workspace = tools.workspace ?? false;
-  await refuseUnlessRegistry(dir, workspace);
-  await withoutNpmrc(dir, join(tools.aside, 'checkout.npmrc'), () => movePackage(dir, move, tools.pnpm));
-  await refuseUnlessRegistryLock(dir, workspace);
+  const withPnpm = async (work: () => Promise<void>) => {
+    await refuseUnlessRegistry(dir, workspace);
+    await withoutNpmrc(dir, join(tools.aside, 'checkout.npmrc'), work);
+    await refuseUnlessRegistryLock(dir, workspace);
+  };
+  if (move.ecosystem === 'docker') {
+    await moveImage(dir, move, tools.get, tools.now);
+    // An image one release with a library brings it: the lockfile's copies, to the release its tag names.
+    if (libraryOf(move.name)) {
+      const tag = move.to.split('@')[0] ?? '';
+      await withPnpm(() => moveLibrary(dir, move.name, tag, tools.pnpm));
+    }
+    return;
+  }
+  await withPnpm(() => movePackage(dir, move, tools.pnpm));
 }
 
 async function refuseUnlessRegistry(dir: string, workspace = false): Promise<void> {

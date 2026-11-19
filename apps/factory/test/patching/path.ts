@@ -18,15 +18,7 @@ import { joined, markOf, type ScanRun } from '../../src/github/scanning.ts';
 import { sendsOf } from '../../src/patching/sends.ts';
 import { assess, type Sources, stateOf, verdict } from '../../src/vulnerabilities/deadlines.ts';
 import { type MoveTag, targetText } from '../../src/vulnerabilities/fixes.ts';
-import {
-  APP,
-  type Context,
-  dependabotDirectories,
-  directPackages,
-  type MovesFile,
-  moves,
-  movesFile,
-} from '../../src/vulnerabilities/moves.ts';
+import { APP, type Context, type MovesFile, moves, movesFile } from '../../src/vulnerabilities/moves.ts';
 import { type Finding, fingerprint } from '../../src/vulnerabilities/sarif.ts';
 import type { Handoff, ReadTarget, TrivyReport } from '../../src/vulnerabilities/scan.ts';
 import { newKey, open, readKey, seal } from '../../src/vulnerabilities/state.ts';
@@ -218,10 +210,6 @@ export async function carry(findings: Finding[], targets: ReadTarget[], world: W
   const context: Context = {
     repository: APP,
     app: true,
-    dependabot: dependabotDirectories(fileOf('.github/dependabot.yml')),
-    direct: new Set(
-      targets.filter((target) => target.kind === 'lockfile').flatMap((t) => [...directPackages(fileOf(t.file))]),
-    ),
     now: NOW,
   };
   const list = moves(judged.judged, context);
