@@ -146,8 +146,7 @@ export const PLAYWRIGHT_IMAGE = 'mcr.microsoft.com/playwright';
 
 /**
  * What judges a move, by its name and pins: Kyverno (its chart, and each image of it a values file pins), Trivy and
- * Syft. The review gate never passes one as a pin move (scripts/pin-move.ts, condition 2), so it waits for Martin from
- * the start.
+ * Syft. Their moves are in the `approval` lane, whose pull requests the pin watch opens as any other's.
  */
 export const JUDGES: Record<string, (move: Pick<Move, 'name' | 'pins'>) => boolean> = {
   Kyverno: (move) => /^kyverno(:|$)/.test(move.name) || /(^|[\s/])kyverno\//.test(move.name),
@@ -189,14 +188,13 @@ export function laneOf(
   )
     return 'issue';
   if (move.name === PLAYWRIGHT_IMAGE) return 'issue';
-  // What judges a move is Martin's to move, as the review gate holds it (scripts/pin-move.ts's `JUDGES`).
+  // What judges a move.
   if (Object.values(JUDGES).some((judge) => judge(move))) return 'approval';
   // A major, of any kind: the one move the scan can tell needs more than its pins' lines written. Whether a chart on its
   // major changes more than its images is the gate's to prove from the pull request, not the scan's to assume.
   if (move.major) return 'approval';
   if (move.pins.some((pin) => pin.file.startsWith('.github/workflows/'))) return 'issue';
-  // One chart two Applications run: the gate proves a chart's move from one Application's rendering (pin-move.ts),
-  // so it holds a move of two, and Martin approves it.
+  // One chart two Applications run.
   if (target.kind === 'chart' && move.pins.length > 1) return 'approval';
   // An Application's chart within its major, the worker's: Dependabot's docker entries read no Application's
   // targetRevision, though they read the directory it is in.

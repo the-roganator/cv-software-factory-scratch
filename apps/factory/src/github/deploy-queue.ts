@@ -1,10 +1,10 @@
 /**
  * The App's own pin pull requests in this repository, added to the merge queue by the worker itself (ADR 0017): the
- * local profile's deploy pin, and each pin move the gate proved (ADR 0019). The deploy watch (`deploys.ts`) opens and
+ * local profile's deploy pin, and each of the pin watch's moves the gate passed as a move. The deploy watch (`deploys.ts`) opens and
  * moves the factory's own deploy pull request, which the review gate passes as an exact pin (`exact-pin`: every changed
  * line a digest under `deploy/`, each image signed by `build.yml` on main, from a commit ahead of the pin it replaces);
  * the pin watch (`pins.ts`) opens one pull request for each move of the vulnerability scan's, which the gate passes as
- * a pin move (`pin-move`) when it can prove the move from the pull request itself. These watches add each to the queue,
+ * a move (`move`) when it is exactly the scan's moves, which the gate makes itself. These watches add each to the queue,
  * so a pin the gate passed reaches `main` with nobody's hand on it. The app's deploy pull request is the line's, within
  * Martin's autonomy level and auto-merge (`line/deploy.ts`); a pull request the gate held, even one Martin then
  * approved, a release, and anything else, is his.
@@ -20,7 +20,7 @@
  * - **a pin move**: it is the App's, from this repository's `factory/pin/<move>` (the pin watch's branch, one segment,
  *   as `guardPinBranch` has it) into main, not a draft, labelled `pin` by the App and by nobody else, every time it was
  *   labelled, its move one `PIN_WATCH_ONLY` names, by its exact name, and none Martin holds on its branch, and the gate's
- *   rule is `pin-move`. The gate trusts no branch, label or title (ADR 0019); the queue reads
+ *   rule is `move`. The gate trusts no branch, label or title; the queue reads
  *   them so that nothing but the pin watch's own pull request rides the rule, and the verdict is what passes it;
  * - the review App's own `review` check on that head concluded with a verdict that passes it by that rule at that head
  *   (`merging.ts`): no other rule, and never a hold, a pending one, Martin's approval, or one for another head;
@@ -161,8 +161,8 @@ export function labelWait(events: LabelEvents, whole: boolean): QueueWait | unde
   return undefined;
 }
 
-/** The gate's rules a pull request the worker queues may pass by: a deploy pin's and a pin move's. */
-export type QueueRule = 'exact-pin' | 'pin-move';
+/** The gate's rules a pull request the worker queues may pass by: a deploy pin's and a move's. Never `major`. */
+export type QueueRule = 'exact-pin' | 'move';
 
 /** Whether the gate passed a head by a rule: its own verdict on that head, by that rule alone, and not pending. */
 export function verdictWait(
@@ -442,7 +442,7 @@ const CLOSED = z.array(
 
 /**
  * Watches the pin watch's open pull requests in a repository, and adds each to the merge queue once the gate passed
- * its head as a pin move and its checks are green. Only a move the watch is told to take (`only`, `PIN_WATCH_ONLY`) is
+ * its head as a move and its checks are green. Only a move the watch is told to take (`only`, `PIN_WATCH_ONLY`) is
  * queued, as the watch opens only those: one left open from an earlier setting, or opened by hand on a pin branch,
  * waits; told none, it reads nothing. A pull request on a pin branch or labelled `pin` that is not the pin watch's own
  * waits, and says why; every other open pull request is not read further.
@@ -558,7 +558,7 @@ export function pinQueueWatch(deps: DeployQueueDependencies, repo: string, only:
         return labelWait(events, whole) ?? (await heldBefore(pull));
       };
       // One pull request that cannot be read (closed since the list, an answer that does not parse) holds only itself.
-      await queueOne(deps, state, repo, 'pin', pull, 'pin-move', attempt, labelled).catch((error: unknown) => {
+      await queueOne(deps, state, repo, 'pin', pull, 'move', attempt, labelled).catch((error: unknown) => {
         deps.log.warn({ repo, number, head, err: error }, 'could not read the pin pull request: tries again next pass');
       });
     }
