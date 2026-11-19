@@ -16,7 +16,8 @@
  *     Node's own `SHASUMS256.txt`, and each `FROM` of a Node image, its tag moved where it names the version and its
  *     digest the registry's for that tag. Not before the release is as old as `mise.toml`'s `minimum_release_age`.
  *   - a base image (`docker`): each `FROM` of the image at the move's `from`, given its `to`, once the registry says
- *     the tag is that digest.
+ *     the tag is that digest. An image that runs Node brings its Node: where the image at that digest runs another
+ *     release than `mise.toml` pins, Node moves to it as above, and the image to the move's digest.
  * - **After a coder's step** that changed a `package.json` (`writeLockfile`), it applies the pins and the coder's
  *   patch to a fresh checkout and writes the lockfile with `pnpm install --lockfile-only`, printing only the
  *   lockfile's change.
@@ -36,7 +37,26 @@ import { execFile } from 'node:child_process';
 import { copyFile, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
+import {
+  digestOf,
+  type Get,
+  nodeInImage,
+  PinsRefused,
+  releaseAge,
+  runsNode,
+} from '../../factory/src/vulnerabilities/registry.ts';
 import { git, gitInput } from './git.ts';
+
+export {
+  digestOf,
+  type Get,
+  nodeInImage,
+  nodeInTar,
+  PinsRefused,
+  registryOf,
+  releaseAge,
+  runsNode,
+} from '../../factory/src/vulnerabilities/registry.ts';
 
 const exec = promisify(execFile);
 
@@ -46,11 +66,6 @@ export interface Move {
   name: string;
   from: string;
   to: string;
-}
-
-/** The step will not write this move, and says why: the work item fails its step, as any other failure. */
-export class PinsRefused extends Error {
-  override name = 'PinsRefused';
 }
 
 /** The move needs a file only Martin may change: the work item waits for him, told the file and why. */
@@ -332,9 +347,6 @@ async function writeJson(path: string, json: unknown): Promise<void> {
   await writeFile(path, `${JSON.stringify(json, null, 2)}${text.endsWith('\n') ? '\n' : ''}`);
 }
 
-/** How the step reaches a registry: `fetch`, or a test's. */
-export type Get = (url: string, init?: RequestInit) => Promise<Response>;
-
 /** The platforms' file names a `SHASUMS256.txt` gives, with each checksum. */
 export function shasums(text: string): Map<string, string> {
   const sums = new Map<string, string>();
@@ -365,13 +377,6 @@ export function nodeLockMoved(lock: string, from: string, to: string, sums: Map<
     return section.replace(/^checksum = "sha256:[0-9a-f]{64}"$/m, `checksum = "sha256:${sum}"`);
   });
   return lock.replace(entry[0], moved.join(''));
-}
-
-/** `mise.toml`'s `minimum_release_age`, in milliseconds: none when it sets none. */
-export function releaseAge(miseToml: string): number {
-  const m = /^minimum_release_age\s*=\s*"(\d+)([dhm])"\s*$/m.exec(miseToml);
-  if (!m) return 0;
-  return Number(m[1]) * { d: 86_400_000, h: 3_600_000, m: 60_000 }[m[2] as 'd' | 'h' | 'm'];
 }
 
 /** A `FROM` line of a Dockerfile that pins an image by its tag and digest, in parts. */
@@ -426,14 +431,19 @@ async function moveFroms(
   return moved;
 }
 
+/** The exact Node release `mise.toml` pins, or nothing where it pins none, or a range. */
+const pinnedNode = (miseToml: string) => /^node\s*=\s*"(\d+\.\d+\.\d+)"\s*$/m.exec(miseToml)?.[1];
+
 /**
  * Moves Node: `mise.toml`, `mise.lock`, and each `FROM` of a Node image, the build's to the version's own tag and the
- * runtime's, whose tag names no version, to the digest its tag has now.
+ * runtime's, whose tag names no version, to the digest its tag has now; but `except`'s, which a base image's move pins
+ * itself (`moveImage`). A checkout whose `mise.toml` pins the move's target already has the move, and writes nothing.
  */
-export async function moveNode(dir: string, move: Move, get: Get, now = Date.now()): Promise<void> {
+export async function moveNode(dir: string, move: Move, get: Get, now = Date.now(), except?: string): Promise<void> {
   if (!VERSION.test(move.from) || !VERSION.test(move.to))
     throw new PinsRefused('Node moves from a version to a version.');
   const miseToml = await readFile(join(dir, 'mise.toml'), 'utf8');
+  if (pinnedNode(miseToml) === move.to) return;
   const pin = new RegExp(`^node\\s*=\\s*"${escaped(move.from)}"\\s*$`, 'm');
   if (!pin.test(miseToml)) throw new PinsRefused(`mise.toml does not pin node at ${move.from}.`);
   const releases = (await json(get, 'https://nodejs.org/dist/index.json')) as { version: string; date: string }[];
@@ -453,7 +463,7 @@ export async function moveNode(dir: string, move: Move, get: Get, now = Date.now
   await moveFroms(
     dir,
     (image, tag) => {
-      if (!/^node/.test(image.split('/').at(-1) ?? '')) return undefined;
+      if (!runsNode(image) || image === except) return undefined;
       return { tag: tag.includes(move.from) ? tag.replace(move.from, move.to) : tag };
     },
     get,
@@ -464,14 +474,27 @@ export async function moveNode(dir: string, move: Move, get: Get, now = Date.now
  * Moves a base image: each `FROM` of it at `from` to `to`, a tag and its digest, once its registry agrees. `from` is
  * what the image is pinned at now: a tag with its digest, or the tag alone, as the daily scan names a pin
  * (`moves.json`'s `from`), which then moves each `FROM` of the image at that tag, whatever its digest.
+ *
+ * An image that runs Node brings its Node with it, where `mise.toml` pins one release for every image of Node: when the
+ * image at `to` runs another, Node moves to it first (`moveNode`), and the image is pinned at `to`. A Node behind the
+ * one pinned is refused: a move goes forward.
  */
-export async function moveImage(dir: string, move: Move, get: Get): Promise<void> {
+export async function moveImage(dir: string, move: Move, get: Get, now = Date.now()): Promise<void> {
   const [toTag, toDigest] = move.to.split('@');
   if (!toTag || !toDigest || !DIGEST.test(toDigest))
     throw new PinsRefused(`${move.to} is not a tag with its digest, so ${move.name} cannot move to it.`);
   const registry = await digestOf(move.name, toTag, get);
   if (registry !== toDigest) {
     throw new PinsRefused(`${move.name}:${toTag} is ${registry} in its registry, not ${toDigest}.`);
+  }
+  const pinned = runsNode(move.name)
+    ? await readFile(join(dir, 'mise.toml'), 'utf8').then(pinnedNode, () => undefined)
+    : undefined;
+  if (pinned) {
+    const runs = await nodeInImage(move.name, toDigest, get);
+    if (compareVersions(runs, pinned) < 0)
+      throw new PinsRefused(`${move.name}@${toDigest} runs Node ${runs}, behind the ${pinned} mise.toml pins.`);
+    await moveNode(dir, { ecosystem: 'node', name: 'node', from: pinned, to: runs }, get, now, move.name);
   }
   const moved = await moveFroms(
     dir,
@@ -483,56 +506,6 @@ export async function moveImage(dir: string, move: Move, get: Get): Promise<void
     get,
   );
   if (!moved) throw new PinsRefused(`No FROM pins ${move.name} at ${move.from}.`);
-}
-
-const MANIFESTS = [
-  'application/vnd.oci.image.index.v1+json',
-  'application/vnd.docker.distribution.manifest.list.v2+json',
-  'application/vnd.oci.image.manifest.v1+json',
-  'application/vnd.docker.distribution.manifest.v2+json',
-].join(', ');
-
-/** An image's registry and repository there: Docker Hub's, by its own names, when the first part names no host. */
-export function registryOf(image: string): { host: string; repository: string } {
-  const [first = '', ...rest] = image.split('/');
-  const hub = (path: string) => ({
-    host: 'registry-1.docker.io',
-    repository: path.includes('/') ? path : `library/${path}`,
-  });
-  // Docker Hub by the names it goes by, whose API is at registry-1.docker.io alone.
-  if (['docker.io', 'index.docker.io', 'registry-1.docker.io'].includes(first) && rest.length)
-    return hub(rest.join('/'));
-  if (rest.length && (first.includes('.') || first.includes(':') || first === 'localhost'))
-    return { host: first, repository: rest.join('/') };
-  return hub(image);
-}
-
-/**
- * The digest a tag of an image has in its registry now, as the registry's API gives it, asking for a token where the
- * registry asks for one, as an anonymous reader. A digest that is not a SHA-256's is refused.
- */
-export async function digestOf(image: string, tag: string, get: Get): Promise<string> {
-  const { host, repository } = registryOf(image);
-  const url = `https://${host}/v2/${repository}/manifests/${tag}`;
-  const headers: Record<string, string> = { accept: MANIFESTS };
-  let response = await get(url, { method: 'HEAD', headers });
-  if (response.status === 401) {
-    const challenge = response.headers.get('www-authenticate') ?? '';
-    const fields = Object.fromEntries([...challenge.matchAll(/(\w+)="([^"]*)"/g)].map((m) => [m[1], m[2]]));
-    if (!/^Bearer /i.test(challenge) || !fields.realm?.startsWith('https://'))
-      throw new PinsRefused(`${host} asks for a sign-in the pin step does not make.`);
-    const query = new URLSearchParams({
-      ...(fields.service ? { service: fields.service } : {}),
-      scope: `repository:${repository}:pull`,
-    });
-    const answer = (await json(get, `${fields.realm}?${query}`)) as { token?: string; access_token?: string };
-    headers.authorization = `Bearer ${answer.token ?? answer.access_token ?? ''}`;
-    response = await get(url, { method: 'HEAD', headers });
-  }
-  if (!response.ok) throw new PinsRefused(`${image}:${tag} is not in its registry (${response.status}).`);
-  const digest = response.headers.get('docker-content-digest') ?? '';
-  if (!DIGEST.test(digest)) throw new PinsRefused(`${image}:${tag}'s registry gives no SHA-256 digest.`);
-  return digest;
 }
 
 async function text(get: Get, url: string): Promise<string> {
@@ -594,7 +567,7 @@ export interface PinTools {
  */
 export async function writePins(dir: string, move: Move, tools: PinTools): Promise<void> {
   if (move.ecosystem === 'node') return moveNode(dir, move, tools.get, tools.now);
-  if (move.ecosystem === 'docker') return moveImage(dir, move, tools.get);
+  if (move.ecosystem === 'docker') return moveImage(dir, move, tools.get, tools.now);
   await refuseUnlessRegistry(dir);
   await withoutNpmrc(dir, join(tools.aside, 'checkout.npmrc'), () => movePackage(dir, move, tools.pnpm));
   await refuseUnlessRegistryLock(dir);

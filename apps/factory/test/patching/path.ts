@@ -62,6 +62,8 @@ export interface World {
   remains?: Record<string, { package: string; advisory: string }[]>;
   /** Node's releases, newest first, as nodejs.org's index lists them. */
   node?: { version: string; date: string }[];
+  /** The Node release the image at `<repository>@<digest>` runs, as its configuration's `NODE_VERSION` says. */
+  runs?: Record<string, string>;
   /** When npm published `<name>@<version>`. */
   published?: Record<string, string>;
   /** pnpm's update of the checkout's lockfile: each `<name>@<from>` it moves, to what. A copy not named stays. */
@@ -122,6 +124,7 @@ function sourcesOf(world: World): Sources {
     toolReleases: async () => [],
     tool: async () => undefined,
     k3s: async () => undefined,
+    node: async (image, digest) => world.runs?.[`${image}@${digest}`],
     file: fileOf,
     alerts: async () => [],
   };
@@ -129,7 +132,7 @@ function sourcesOf(world: World): Sources {
 
 /** The registries as the pin step asks them: each image's manifest by its tag, nodejs.org's index and checksums. */
 function getOf(world: World) {
-  return async (url: string): Promise<Response> => {
+  return async (url: string, init?: RequestInit): Promise<Response> => {
     if (url === 'https://nodejs.org/dist/index.json') return Response.json(world.node ?? []);
     const sums = /^https:\/\/nodejs\.org\/dist\/v([^/]+)\/SHASUMS256\.txt$/.exec(url);
     if (sums) {
@@ -138,6 +141,17 @@ function getOf(world: World) {
         (m[1] as string).replaceAll(from, sums[1] as string),
       );
       return new Response(names.map((name) => `${'e'.repeat(64)}  ${name}`).join('\n'));
+    }
+    // An image at a digest, read for the Node it runs: its manifest names itself as its configuration.
+    const read = /^https:\/\/([^/]+)\/v2\/(.+)\/(manifests|blobs)\/(sha256:[0-9a-f]{64})$/.exec(url);
+    if (read && init?.method !== 'HEAD') {
+      const [, host, path, kind, digest] = read as unknown as [string, string, string, string, string];
+      const repository = host === 'registry-1.docker.io' ? path.replace(/^library\//, '') : `${host}/${path}`;
+      const runs = world.runs?.[`${repository}@${digest}`];
+      if (!runs) return new Response(null, { status: 404 });
+      return kind === 'manifests'
+        ? Response.json({ config: { digest }, layers: [] })
+        : Response.json({ config: { Env: [`NODE_VERSION=${runs}`] } });
     }
     const manifest = /^https:\/\/([^/]+)\/v2\/(.+)\/manifests\/([^/]+)$/.exec(url);
     if (manifest) {
