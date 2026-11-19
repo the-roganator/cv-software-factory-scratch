@@ -194,8 +194,8 @@ describe('the comparison with the list', () => {
           ...FACTORY_SCANNED,
           {
             kind: 'ours',
-            item: `ghcr.io/the-roganator/cv-software-factory/factory-runner@${digest(15)}`,
-            image: `ghcr.io/the-roganator/cv-software-factory/factory-runner@${digest(15)}`,
+            item: `ghcr.io/the-roganator/cv-software-factory-scratch/factory-runner@${digest(15)}`,
+            image: `ghcr.io/the-roganator/cv-software-factory-scratch/factory-runner@${digest(15)}`,
             digests: [digest(15)],
             pin: { file: 'deploy/example/images.yaml', line: 23 },
           },
