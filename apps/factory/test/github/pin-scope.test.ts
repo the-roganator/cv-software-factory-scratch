@@ -96,7 +96,7 @@ function queue(repo: FakeRepo, only: PinScope) {
       head: head(number),
       check: null,
       verdict: null,
-      judged: { number, head: head(number), rule: 'pin-move', tags: [] },
+      judged: { number, head: head(number), rule: 'move', tags: [] },
       problem: null,
     }),
     checkRuns: async () =>
