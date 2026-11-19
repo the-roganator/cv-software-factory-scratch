@@ -276,7 +276,7 @@ export function newestOnLine(tag: string, tags: string[]) {
 /**
  * What a pin's tag names now: for a version, the newest tag on its line (`newestOnLine`), and for any other tag, that
  * tag, whose image is what it names today; undefined for a pin with no tag. The one way a target is resolved: the scan
- * takes a fix from it, and the review gate (scripts/pin-move.ts) holds a pin move to it.
+ * takes a fix from it, and the pin watch writes the target it names.
  */
 export async function newestOf(pin: string, listTags: (repository: string) => Promise<string[]>) {
   const { repository, tag } = nameAndTag(pin);
