@@ -222,8 +222,9 @@ const CASES: Case[] = [
     findings: () => [
       found(T.syft, { type: 'gobinary', package: 'github.com/example/jose', installed: 'v4.1.5', fixed: '4.1.6' }),
     ],
-    // Where the line may not write, and Dependabot reads: Dependabot's, and never sent.
-    ends: [{ ends: 'not the line’s', lane: 'dependabot' }],
+    // The line's, as an image at the root is: the pin step moves its FROM, which is all a patch may change under
+    // deploy/, and the review gate tags it code-owned, as CODEOWNERS gives deploy/ to Martin (test 12).
+    ends: [{ ends: 'pull request', tags: ['code-owned'], wrote: ['deploy/images/syft/Dockerfile'] }],
   },
   {
     name: '.devcontainer/Dockerfile: its base, built again',

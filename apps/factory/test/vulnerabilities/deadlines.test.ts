@@ -1542,7 +1542,7 @@ describe('what fixes it', () => {
       images: { [NEWEST]: imageReport('2026-11-01T00:00:00Z') },
     });
     const { rows, judged } = await assess(handoff, sources, NOW);
-    const list = moves(judged, { repository: REPOSITORY, app: false, dependabot: [], direct: new Set(), now: NOW });
+    const list = moves(judged, { repository: REPOSITORY, app: false, now: NOW });
     const { lines, passes } = verdict(rows, false, list);
     expect(passes).toBe(false);
     expect(lines.at(-1)).toBe('Due within a day: 1, held by node 24.22.1-trixie-slim.');
@@ -1636,7 +1636,7 @@ describe('what fixes it, kept and checked', () => {
       tags,
       images: { 'node:24.23.0-trixie-slim': imageReport('2026-11-01T00:00:00Z') },
     });
-    const list = moves(judged, { repository: REPOSITORY, app: false, dependabot: [], direct: new Set(), now: NOW });
+    const list = moves(judged, { repository: REPOSITORY, app: false, now: NOW });
     expect(list).toHaveLength(1);
     expect(list[0]).toMatchObject({ name: 'node', to: { kind: 'image', tag: '24.23.0-trixie-slim' } });
     expect(list[0]?.clears.HIGH).toBe(2);
@@ -1747,7 +1747,7 @@ describe('the day’s counts, in moves.json’s totals', () => {
       tags,
       images: { 'node:24.23.0-trixie-slim': imageReport('2026-07-01T00:00:00Z') },
     });
-    const list = moves(judged, { repository: REPOSITORY, app: false, dependabot: [], direct: new Set(), now: NOW });
+    const list = moves(judged, { repository: REPOSITORY, app: false, now: NOW });
     const { lines, counts, bySeverity } = verdict(rows, false, list);
     const number = (pattern: RegExp) => Number(lines.join('\n').match(pattern)?.[1]);
     expect(counts).toEqual({

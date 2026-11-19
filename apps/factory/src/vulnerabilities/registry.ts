@@ -1,6 +1,7 @@
 /**
  * An image's registry, read as data by an anonymous reader: what a tag's digest is now, and which release of Node an
- * image at a digest runs; and which images run Node, and how long mise waits for a release. The daily scan reads it
+ * image at a digest runs; and which images run Node or are one release with a library, and how long mise waits for a
+ * release. The daily scan reads it
  * (deadlines.ts), and the line's pin step (apps/runner/src/pins.ts, whose image copies this file alone), so the two
  * read one answer the same way. Node runs this with no dependencies, from a sparse checkout of this repository.
  */
@@ -22,6 +23,26 @@ const DIGEST = /^sha256:[0-9a-f]{64}$/;
  * (`nodejs24-debian13`), by the last part of its name; never one that only begins so, such as `node-exporter`.
  */
 export const runsNode = (image: string) => /^node(js\d*(-[\w.-]*)?)?$/.test(image.split('/').at(-1) ?? '');
+
+/**
+ * The library an image is one release with, by the image's name: the packages of a lockfile that must be at the
+ * release its tag names (`v1.65.1-noble` is 1.65.1). Playwright's browsers refuse a library of another release, and the
+ * library refuses theirs (scripts/image-pins.test.ts).
+ */
+export const LIBRARIES: Readonly<Record<string, readonly string[]>> = {
+  'mcr.microsoft.com/playwright': ['playwright', 'playwright-core', '@playwright/test'],
+};
+
+/** The library an image's move brings with it, if it brings one. */
+export const libraryOf = (image: string): readonly string[] | undefined =>
+  Object.hasOwn(LIBRARIES, image) ? LIBRARIES[image] : undefined;
+
+/**
+ * Whether an image's move brings another pin with it, which the pin step moves in the same change (apps/runner/src/
+ * pins.ts's `moveImage`): the Node it runs, or its library. The one test of a move the pin step makes whole rather than
+ * a pin's line alone.
+ */
+export const bringsPins = (image: string): boolean => runsNode(image) || libraryOf(image) !== undefined;
 
 /** `mise.toml`'s `minimum_release_age`, in milliseconds: none when it sets none. */
 export function releaseAge(miseToml: string): number {
