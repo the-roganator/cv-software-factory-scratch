@@ -284,6 +284,7 @@ export async function worker(
         },
       },
       heads,
+      level: async () => 'guarded' as const,
       log: quiet,
     },
     FACTORY,

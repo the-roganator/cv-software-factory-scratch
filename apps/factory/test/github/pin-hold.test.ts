@@ -146,6 +146,7 @@ function worker(repo: FakeRepo, only: PinScope, today: () => Moves) {
         },
       },
       heads,
+      level: async () => 'guarded' as const,
       log: quiet,
     },
     FACTORY,
