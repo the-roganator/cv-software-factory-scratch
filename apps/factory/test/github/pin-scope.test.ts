@@ -135,7 +135,7 @@ function queue(repo: FakeRepo, only: PinScope) {
         reads,
         actions,
         heads: { get: (_r: string, branch: string) => headOf(branch) },
-        level: async () => 'guarded' as const,
+        level: async () => ({ autonomy: 'guarded', autoMerge: true }) as const,
         log: quiet,
       },
       FACTORY,
