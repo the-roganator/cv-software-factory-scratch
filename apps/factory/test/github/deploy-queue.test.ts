@@ -5,8 +5,9 @@
  * as pin moves, each condition tested alone against one that passes.
  */
 import type { Autonomy } from '@software-factory/events';
+import { type Logger, pino } from 'pino';
 import { describe, expect, it } from 'vitest';
-import { ENQUEUES } from '../../../../policy/line.ts';
+import { ENQUEUES, enqueues } from '../../../../policy/line.ts';
 import { DryRunActions } from '../../src/github/actions.ts';
 import { GitHubError } from '../../src/github/client.ts';
 import {
@@ -456,7 +457,13 @@ const pinVerdict = (
   problem: judged === null ? 'the review App has posted no review check' : null,
 });
 
-const guarded: LevelReader = async () => 'guarded';
+/** A log whose lines a test reads: what the queue said of each wait. */
+function capture() {
+  const lines: { msg: string; waits?: string; why?: string }[] = [];
+  return { lines, log: pino({ level: 'info' }, { write: (line: string) => void lines.push(JSON.parse(line)) }) };
+}
+
+const guarded: LevelReader = async () => ({ autonomy: 'guarded', autoMerge: true });
 
 /** A worker's pin queue watch against a repository with these open pull requests and each one's events. */
 function pinHarness(o: {
@@ -470,8 +477,9 @@ function pinHarness(o: {
   heads?: DeployQueueDependencies['heads'];
   /** The closed pull requests GitHub lists from a branch, as the queue reads them for an earlier hold. */
   closed?: (branch: string) => unknown[];
-  /** The autonomy level in force, read before each enqueue: Guarded unless a test says. */
+  /** The level and auto-merge in force, read before each enqueue: Guarded, with auto-merge on, unless a test says. */
   level?: LevelReader;
+  log?: Logger;
 }) {
   const sent: Sent[] = [];
   /** GitHub's requests and the merge queue's reads, in the order they were made. */
@@ -528,7 +536,7 @@ function pinHarness(o: {
     },
   };
   const pass = pinQueueWatch(
-    { github, reads, actions, heads: o.heads ?? vouching(pulls), log: quiet, level: o.level ?? guarded },
+    { github, reads, actions, heads: o.heads ?? vouching(pulls), log: o.log ?? quiet, level: o.level ?? guarded },
     REPO,
     o.only ?? '*',
   );
@@ -539,7 +547,10 @@ function pinHarness(o: {
 describe('the pin queue watch', () => {
   it('queues a move at Guarded and Lights-out, a major only at Lights-out, and nothing at Supervised', async () => {
     const at = (autonomy: Autonomy, rule: 'move' | 'major') =>
-      pinHarness({ level: async () => autonomy, verdict: (n) => pinVerdict(PIN_HEAD, { rule }, n) });
+      pinHarness({
+        level: async () => ({ autonomy, autoMerge: true }),
+        verdict: (n) => pinVerdict(PIN_HEAD, { rule }, n),
+      });
     const cases: [Autonomy, 'move' | 'major', boolean][] = [
       ['supervised', 'move', false],
       ['supervised', 'major', false],
@@ -563,7 +574,7 @@ describe('the pin queue watch', () => {
     const h = pinHarness({
       level: async () => {
         reads++;
-        return autonomy;
+        return { autonomy, autoMerge: true };
       },
       verdict: (n) => pinVerdict(PIN_HEAD, { rule: 'major' }, n),
     });
@@ -575,13 +586,50 @@ describe('the pin queue watch', () => {
     expect(reads).toBe(2);
   });
 
+  it('queues no move with auto-merge off, at any level, says why once, and queues it once the switch is on again', async () => {
+    for (const [autonomy, rule] of [
+      ['guarded', 'move'],
+      ['lights-out', 'move'],
+      ['lights-out', 'major'],
+    ] as const) {
+      let autoMerge = false;
+      const { lines, log } = capture();
+      const h = pinHarness({
+        level: async () => ({ autonomy, autoMerge }),
+        verdict: (n) => pinVerdict(PIN_HEAD, { rule }, n),
+        log,
+      });
+      await h.pass();
+      await h.pass();
+      expect(h.enqueued, `${rule} at ${autonomy}`).toEqual([]);
+      expect(lines.filter((l) => l.waits !== undefined)).toEqual([
+        expect.objectContaining({ waits: 'auto-merge', why: `with auto-merge off a ${rule} waits for Martin` }),
+      ]);
+      // As the line asks it: the same table, and the same switch.
+      expect(enqueues({ autonomy, autoMerge }, rule)).toBe(false);
+      autoMerge = true;
+      await h.pass();
+      expect(h.enqueued, `${rule} at ${autonomy}`).toEqual([[1040, PIN_HEAD]]);
+    }
+  });
+
+  it('says the level, not the switch, of a move neither allows', async () => {
+    const { lines, log } = capture();
+    const h = pinHarness({ level: async () => ({ autonomy: 'supervised', autoMerge: false }), log });
+    await h.pass();
+    expect(h.enqueued).toEqual([]);
+    expect(lines.filter((l) => l.waits !== undefined)).toEqual([
+      expect.objectContaining({ waits: 'level', why: 'at Supervised a move waits for Martin' }),
+    ]);
+  });
+
   it('queues no move when it cannot read the level, as at Supervised, and says so once', async () => {
     const warned: unknown[] = [];
     const log = { info: () => {}, warn: (...args: unknown[]) => void warned.push(args) };
     const failing = storeLevel({} as never, log);
     // A store that is not there: `latestControls` throws on its first query.
-    expect(await failing()).toBe('supervised');
-    expect(await failing()).toBe('supervised');
+    expect(await failing()).toEqual({ autonomy: 'supervised', autoMerge: false });
+    expect(await failing()).toEqual({ autonomy: 'supervised', autoMerge: false });
     expect(warned).toHaveLength(1);
     const h = pinHarness({ level: failing });
     await h.pass();
@@ -596,7 +644,7 @@ describe('the pin queue watch', () => {
     const h = pinHarness({
       level: async () => {
         reads++;
-        return 'guarded';
+        return { autonomy: 'guarded', autoMerge: true };
       },
       verdict: (n) => pinVerdict(PIN_HEAD, null, n),
     });
