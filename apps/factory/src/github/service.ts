@@ -4,7 +4,7 @@
  */
 
 import type { Server } from 'node:http';
-import { DiskArtifacts } from '@software-factory/store';
+import { connect, DiskArtifacts } from '@software-factory/store';
 import type { Logger } from 'pino';
 import { listenOn } from '../listen.ts';
 import { type Actions, contentsReader, DryRunActions, LiveActions, queueCandidate } from './actions.ts';
@@ -16,6 +16,7 @@ import { deployQueueWatch, pinHeadsOf, pinQueueWatch, QUEUED_DEPLOYS } from './d
 import { DEPLOYS, DeployProposals, deployWatch } from './deploys.ts';
 import { DryRunReads } from './dry-run-reads.ts';
 import { IssueGuard, openedBy, outsideIssuesWatch } from './issues.ts';
+import { noLevel, storeLevel } from './level.ts';
 import { treeSource } from './pin-guard.ts';
 import { PIN_REPOS, pinWatch } from './pins.ts';
 import { Poller } from './poller.ts';
@@ -70,6 +71,7 @@ export async function startGitHubWorker(config: GitHubConfig, log: Logger) {
   );
   const dryRunReads = dryRun ? new DryRunReads(dryRun, liveReads, config.dryRunTimes) : undefined;
   const poller = new Poller({ intervalMs: config.pollMs, log });
+  const store = config.readsLevel ? connect(undefined, { max: 1 }) : undefined;
 
   const mode = config.dryRun ? 'dry-run' : github.writable ? 'live' : 'read-only';
   if (mode === 'read-only') {
@@ -96,6 +98,9 @@ export async function startGitHubWorker(config: GitHubConfig, log: Logger) {
         deployQueueWatch({ github, reads: liveReads, actions, recorder, heads, log }, target),
       );
     }
+    // The autonomy level, which decides which moves the pin queue adds: read from the store as `factory_github`, which
+    // reads Martin's controls and nothing else, or, with no store, Supervised. One connection is all it needs.
+    const level = store ? storeLevel(store, log) : noLevel(log);
     // This repository's moves: one pull request of the App's for each it can write, one issue for each it cannot, each
     // recorded instead in a dry run. Its reads are the live ones: a dry run acts on the day as GitHub has it.
     for (const repo of PIN_REPOS.filter((r) => config.repositories.includes(r))) {
@@ -109,7 +114,7 @@ export async function startGitHubWorker(config: GitHubConfig, log: Logger) {
       // those. One the gate held is Martin's, as is all else.
       poller.watch(
         `queue pins in ${repo}`,
-        pinQueueWatch({ github, reads: liveReads, actions, recorder, heads, log }, repo, only),
+        pinQueueWatch({ github, reads: liveReads, actions, recorder, heads, log, level }, repo, only),
       );
     }
     // Each issue opened by anyone but Martin or the App gets one reply, recorded instead in a dry run.
@@ -157,6 +162,7 @@ export async function startGitHubWorker(config: GitHubConfig, log: Logger) {
   const stop = async () => {
     if (watching) await poller.stop();
     for (const s of [patchingDoor, attackDoor?.server, server]) if (s?.listening) await close(s);
+    await store?.end({ timeout: 5 });
   };
   try {
     if (patchingDoor && config.patchingPort !== undefined) {
