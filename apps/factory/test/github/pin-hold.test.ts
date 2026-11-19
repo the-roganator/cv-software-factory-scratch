@@ -20,7 +20,7 @@ import { PASS_MS, type PinScope, pinWatch, readPinScope } from '../../src/github
 import { RefusalRecorder } from '../../src/github/refusals.ts';
 import type { Moves } from '../../src/github/scanning.ts';
 import { client, quiet, type Route } from './fake.ts';
-import { day, FACTORY, FakeRepo, FILES, factoryMoves } from './pins-harness.ts';
+import { day, FACTORY, FakeRepo, FILES, factoryMoves, pinBranchOf } from './pins-harness.ts';
 
 const REQUIRED = ['lint, types, tests', 'image builds', 'review'];
 
@@ -171,7 +171,7 @@ describe('Martin’s hold of a pin move, by its label', () => {
     let moves = factoryMoves();
     const only = readPinScope('example-dashboards');
     const w = worker(repo, only, () => day(scanned, moves));
-    const open = () => repo.pulls.filter((p) => p.head === 'factory/pin/example-dashboards' && p.state === 'open');
+    const open = () => repo.pulls.filter((p) => p.head === pinBranchOf('example-dashboards') && p.state === 'open');
 
     // Martin takes the label off the watch's pull request before the queue's first pass.
     await pinFirst(repo, only, scanned);
