@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "repository": "the-roganator/cv-worlds-worst-website",
+  "repository": "the-roganator/cv-worlds-worst-website-scratch",
   "judged": "2026-11-10T06:15:00Z",
   "run": "42000000001",
   "totals": {
@@ -23,7 +23,7 @@
   },
   "moves": [
     {
-      "repository": "the-roganator/cv-worlds-worst-website",
+      "repository": "the-roganator/cv-worlds-worst-website-scratch",
       "name": "ghcr.io/example/base",
       "pins": [
         {
@@ -54,7 +54,7 @@
       "lockfile": false
     },
     {
-      "repository": "the-roganator/cv-worlds-worst-website",
+      "repository": "the-roganator/cv-worlds-worst-website-scratch",
       "name": "a package in `pnpm-lock.yaml`",
       "pins": [
         {

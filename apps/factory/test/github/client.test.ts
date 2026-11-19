@@ -27,7 +27,7 @@ describe('the App', () => {
     const [a, b] = await Promise.all([tokens.token(REPO), tokens.token(REPO)]);
     expect([a, b]).toEqual(['t1', 't1']);
     expect(made).toEqual([
-      { path: '/app/installations/42/access_tokens', body: { repositories: ['cv-worlds-worst-website'] } },
+      { path: '/app/installations/42/access_tokens', body: { repositories: ['cv-worlds-worst-website-scratch'] } },
     ]);
     now += 54 * 60_000;
     expect(await tokens.token(REPO)).toBe('t1');
