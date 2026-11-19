@@ -284,7 +284,7 @@ export async function worker(
         },
       },
       heads,
-      level: async () => 'guarded' as const,
+      level: async () => ({ autonomy: 'guarded', autoMerge: true }) as const,
       log: quiet,
     },
     FACTORY,
