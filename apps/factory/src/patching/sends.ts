@@ -1,7 +1,7 @@
 /**
  * What the dependency sense sends triage (milestone 7, task 35): one `dependency` signal for each of the app's moves in
  * the lane `line` that has a target, which triage makes a ticket of. A move with no target sends nothing, and nor does
- * any other lane's: those are the GitHub worker's, Dependabot's or Martin's.
+ * any other lane's: those are the GitHub worker's or Martin's.
  *
  * A pure function of the read, the same read always giving the same signals under the same ids. **The same send** is
  * one move of one repository from one run of the scan: its id is derived from those three (`sendId`), so a sense
