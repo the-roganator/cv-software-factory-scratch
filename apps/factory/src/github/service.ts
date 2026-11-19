@@ -137,8 +137,8 @@ export async function startGitHubWorker(config: GitHubConfig, log: Logger) {
     pinHeads: pinHeadsOf(github),
     log,
   });
-  // The dependency sense's door (`factory patching`), on a port of its own: the scan's moves and Dependabot's pull
-  // requests, read as a live worker reads them, and no action. A NetworkPolicy opens the port to the sense's pod alone,
+  // The dependency sense's door (`factory patching`), on a port of its own: the scan's moves, read as a live worker reads
+  // them, and no action. A NetworkPolicy opens the port to the sense's pod alone,
   // so the sense reaches the worker's reads and cannot act in GitHub.
   let patchingDoor: Server | undefined;
   if (config.patchingPort !== undefined) {

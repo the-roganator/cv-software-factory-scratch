@@ -12,7 +12,6 @@ import { listenLocal } from '@software-factory/testing';
 import { afterEach, describe, expect, it } from 'vitest';
 import { APP_LOGIN, LiveActions } from '../../src/github/actions.ts';
 import { GitHubError } from '../../src/github/client.ts';
-import { dependencyPulls } from '../../src/github/dependabot.ts';
 import { type DeployQueueDependencies, pinHeadsOf, pinQueueWatch } from '../../src/github/deploy-queue.ts';
 import { IssueGuard, openedBy } from '../../src/github/issues.ts';
 import { PASS_MS, type PinScope, pinWatch, readPinScope } from '../../src/github/pins.ts';
@@ -82,7 +81,6 @@ async function worker(only: PinScope) {
       github,
       reads: {
         moves: async () => day(scanned, factoryMoves()),
-        dependencyPulls: (r: string) => dependencyPulls(github, r, async () => 'version: 2\nupdates: []\n'),
       },
       actions,
       recorder,

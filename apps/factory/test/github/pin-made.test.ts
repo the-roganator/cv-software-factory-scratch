@@ -1,6 +1,6 @@
 /**
- * The pin watch and the moves the scan made with the pin step (github/made.ts): a lockfile's packages and what mise
- * pins, committed whole as the scan made them, one pull request for each group, and the review gate's rule passing it
+ * The pin watch and the moves the scan made with the pin step (github/made.ts): a lockfile's packages, what mise
+ * pins, and Playwright's image with its library in the lockfile, committed whole as the scan made them, one pull request for each group, and the review gate's rule passing it
  * by asking the same step for the same moves on main.
  */
 import { mkdtempSync } from 'node:fs';
@@ -12,9 +12,8 @@ import { describe, expect, it } from 'vitest';
 import { type Changed, proveMove } from '../../../../scripts/move.ts';
 import type { Move as PinStepMove } from '../../../runner/src/pins.ts';
 import { LiveActions } from '../../src/github/actions.ts';
-import { dependencyPulls } from '../../src/github/dependabot.ts';
 import { IssueGuard, openedBy } from '../../src/github/issues.ts';
-import { groupOf, type MadeGroup, stepOf, toolAt, writtenBy } from '../../src/github/made.ts';
+import { groupOf, type MadeGroup, madeByStep, stepOf, toolAt, writtenBy } from '../../src/github/made.ts';
 import { pinBranchFor } from '../../src/github/pin-guard.ts';
 import { carriedBy, PASS_MS, PIN_LABEL, type PinScope, pinWatch } from '../../src/github/pins.ts';
 import { RefusalRecorder } from '../../src/github/refusals.ts';
@@ -118,10 +117,7 @@ function harness(repo: FakeRepo, today: () => Moves, only: PinScope = '*') {
   const lines: Record<string, unknown>[] = [];
   const log = pino({ level: 'info' }, { write: (line: string) => lines.push(JSON.parse(line)) });
   let clock = Date.parse('2026-11-11T07:00:00Z');
-  const reads = {
-    moves: async () => today(),
-    dependencyPulls: (r: string) => dependencyPulls(github, r, async () => ''),
-  };
+  const reads = { moves: async () => today() };
   const watch = pinWatch(
     { github, reads, actions, recorder, log, now: () => clock, only },
     day(repo.main, []).repository,
@@ -310,5 +306,96 @@ describe('the moves the scan made with the pin step', () => {
     await w.pass();
     expect(repo.refs.get(LOCK_BRANCH)).not.toBe(first);
     expect(openPins(repo)).toHaveLength(1);
+  });
+
+  describe('Playwright’s image, which brings its library (test 6)', () => {
+    const BROWSER = 'apps/factory/Dockerfile.browser';
+    const MANIFEST = 'apps/factory/package.json';
+    const PLAYWRIGHT = 'mcr.microsoft.com/playwright';
+    const browser = (tag: string, at: string) =>
+      `FROM node:24.22.2-trixie-slim AS node\nFROM ${PLAYWRIGHT}:${tag}@${at} AS browsers\n`;
+    const manifest = (range: string) => `{\n  "dependencies": {\n    "playwright": "${range}"\n  }\n}\n`;
+    const LIBRARY = `${LOCK}  playwright@1.65.0:\n    resolution: {integrity: sha512-p}\n`;
+    const withBrowser = () => ({
+      ...files(),
+      'pnpm-lock.yaml': LIBRARY,
+      [BROWSER]: browser('v1.65.0-noble', digest('playwright/old')),
+      [MANIFEST]: manifest('^1.65.0'),
+    });
+    const image = (index: number): ReadMove =>
+      move({
+        index,
+        name: PLAYWRIGHT,
+        pins: [{ file: BROWSER, line: 2 }],
+        from: 'v1.65.0-noble',
+        to: `image v1.65.1-noble@${digest('playwright/new')}`,
+        lane: 'worker',
+      });
+    const changed = (lock: string) => [
+      { path: BROWSER, text: browser('v1.65.1-noble', digest('playwright/new')) },
+      { path: MANIFEST, text: manifest('^1.65.1') },
+      { path: 'pnpm-lock.yaml', text: lock.replace('playwright@1.65.0', 'playwright@1.65.1') },
+    ];
+    const step = { move: 3, ecosystem: 'docker' as const, name: PLAYWRIGHT, before: ['v1.65.0-noble'] };
+
+    it('is made by the step, in the lockfile’s group, as the day’s lockfile moves are', () => {
+      expect(madeByStep(image(3))).toBe(true);
+      expect(writtenBy(image(3))).toEqual(['pnpm-lock.yaml']);
+      expect(groupOf(image(3))).toEqual(groupOf(scan()[0] as ReadMove));
+      expect(stepOf(image(3), undefined)).toEqual({
+        ecosystem: 'docker',
+        name: PLAYWRIGHT,
+        from: 'v1.65.0-noble',
+        to: `v1.65.1-noble@${digest('playwright/new')}`,
+      });
+      // An image that brings nothing is a pin's edit, as it was.
+      expect(madeByStep({ ...image(3), name: 'postgres' })).toBe(false);
+    });
+
+    it('opens one pull request with the day’s lockfile moves: the image, its library and their ranges together', async () => {
+      const repo = new FakeRepo(withBrowser());
+      const scanned = repo.main;
+      const moves = [...scan().slice(0, 2), image(3)];
+      const group = lockGroup({
+        moves: [1, 2, 3],
+        changed: changed(
+          MOVED.replace(
+            'example-b@2.0.3:\n    resolution: {integrity: sha512-b}\n',
+            'example-b@2.0.3:\n    resolution: {integrity: sha512-b}\n  playwright@1.65.0:\n    resolution: {integrity: sha512-p}\n',
+          ),
+        ),
+        steps: [...lockGroup().steps, { ...step, after: [`v1.65.1-noble@${digest('playwright/new')}`] }],
+      });
+      await harness(repo, () => made(scanned, moves, [group])).pass();
+      const pulls = openPins(repo);
+      expect(pulls.map((p) => p.head)).toEqual([LOCK_BRANCH]);
+      const head = repo.refs.get(LOCK_BRANCH) as string;
+      for (const { path, text } of group.changed) expect(repo.file(head, path)).toBe(text);
+      expect(pulls[0]?.title).toBe('chore(pin): move 3 pins in pnpm-lock.yaml');
+      expect(carriedBy(pulls[0]?.body)).toEqual([
+        ...scan()
+          .slice(0, 2)
+          .map((m) => m.name),
+        PLAYWRIGHT,
+      ]);
+      expect(pulls[0]?.body).toContain(
+        '`mcr.microsoft.com/playwright` is one release with its library, `playwright`, `playwright-core`, `@playwright/test`',
+      );
+      expect(repo.issues).toEqual([]);
+    });
+
+    it('titles the image’s pull request alone by its tag, without its digest', async () => {
+      const repo = new FakeRepo(withBrowser());
+      const scanned = repo.main;
+      const group = lockGroup({
+        moves: [1],
+        changed: changed(LIBRARY),
+        steps: [{ ...step, move: 1, after: [`v1.65.1-noble@${digest('playwright/new')}`] }],
+      });
+      await harness(repo, () => made(scanned, [image(1)], [group])).pass();
+      expect(openPins(repo).map((p) => p.title)).toEqual([
+        'chore(pin): move mcr.microsoft.com/playwright to v1.65.1-noble',
+      ]);
+    });
   });
 });

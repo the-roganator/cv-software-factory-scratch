@@ -297,6 +297,22 @@ export const UPCASTERS: Partial<Record<EventType, Record<number, Upcaster>>> = {
         };
       }),
     }),
+    // Version 4 has no `dependabot` lane and names no pull request of Dependabot's: the App makes every move. A version 3
+    // day's moves there read as the worker's, and are counted there, and the pull request each named is left out.
+    3: (payload) => ({
+      ...payload,
+      repositories: (payload.repositories as Record<string, unknown>[]).map((repository) => {
+        const totals = repository.totals as { lanes: Record<string, number> } | null;
+        const { dependabot = 0, ...lanes } = totals?.lanes ?? {};
+        return {
+          ...repository,
+          moves: (repository.moves as Record<string, unknown>[]).map(({ pullRequest: _, ...move }) =>
+            move.lane === 'dependabot' ? { ...move, lane: 'worker' } : move,
+          ),
+          totals: totals && { ...totals, lanes: { ...lanes, worker: (lanes.worker ?? 0) + dependabot } },
+        };
+      }),
+    }),
   },
 };
 
