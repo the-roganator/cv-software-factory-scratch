@@ -532,11 +532,6 @@ function CanaryCard({ need, admin, onOpen }: { need: CanaryNeed; admin: Admin } 
  * words or a visitor's (`his`: "your" or "Martin’s"). Kept short: every page that has the bottom row loads them.
  */
 const PATCH_WORDS: Record<PatchNeed['kind'], [whose: string, title: (name: string) => string, why: string]> = {
-  approval: [
-    '{his} approval',
-    (name) => `${name} waits for a review`,
-    'It changes more than a pin, or its fix is a major one, so the review gate passes its pull request only with {his} approval.',
-  ],
   cluster: [
     '{his} cluster',
     (name) => `${name} needs the cluster moved`,
