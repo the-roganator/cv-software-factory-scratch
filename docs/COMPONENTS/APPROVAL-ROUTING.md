@@ -89,7 +89,7 @@ The tags it passes are `dependency-change`, and `code-owned` on `Dockerfile`, `m
 
 ## The worker's part
 
-The GitHub worker adds this repository's local deploy pull request to the merge queue itself, at any autonomy level and whether the line runs or not ([ADR 0017](../architecture/adr/0017-the-worker-queues-the-local-deploy-pins.md), `github/deploy-queue.ts`), once for each head, when all of these hold:
+The GitHub worker adds this repository's local deploy pull request to the merge queue itself, at any autonomy level and whether the line runs or not ([ADR 0017](../architecture/adr/0017-the-worker-queues-the-local-deploy-pins.md), `github/deploy-queue.ts`), when all of these hold:
 
 - the App opened it, from `deploy/local` into `main`, not a draft, labelled `deploy: local`, with the title the deploy watch writes;
 - the review App's `review` check on that head passed it as `exact-pin`: no other rule, and never a hold, a pending one, or a verdict for another head;
@@ -101,7 +101,11 @@ It adds the pin watch's pull request for a move ([the pins](GITHUB-WORKER.md#pin
 - the App opened it, from this repository's `factory/pin/<move>` (one segment) into `main`, not a draft, labelled `pin`, and nobody but the App ever gave it that label or took it off, by its events (Martin holds one by taking the label off): the gate trusts no branch, so a pin move's content on any other branch passes the gate and is still not queued;
 - the review App's `review` check on that head passed it as `pin-move`: never another rule, so never a hold, and never `martin-approved-head`, his approval of a head the gate held, which leaves adding it his.
 
-It enqueues at that head, through the line's action and guards (`enqueuePullRequest`). A failure that may pass (the head moved, a rate limit, an outage) is tried again on the next pass, up to five times; a refusal, the guard's or GitHub's 403, is kept, signed and logged as the worker keeps its others, and it or any other failure leaves the head for Martin, as does the queue taking it out. In a dry run the watches write nothing to GitHub, so no head there is one they wrote, and the worker adds and records no enqueue. The app's deploy pull request stays the line's, a release and anything else Martin's.
+It enqueues at that head, through the line's action and guards (`enqueuePullRequest`). A failure that may pass (the head moved, a rate limit, an outage) is tried again on the next pass, up to five times; a refusal, the guard's or GitHub's 403, is kept, signed and logged as the worker keeps its others, and it or any other failure leaves the head for Martin.
+
+It adds a head once, unless the queue takes it out because a check failed on the queue's commit. That may be a flake, so the worker adds the head again on its next pass, while all of the above still holds, three times in all (`QUEUE_TRIES`). It does not judge why the check failed: a change that breaks `main` fails every time. After the third failure at one head, counted from GitHub's record of the pull request, it stops and says so in a comment on the pull request, naming the checks that failed last, and that head is Martin's. A head that left the queue any other way (he took it out, or it conflicted) is his too, with no second try.
+
+In a dry run the watches write nothing to GitHub, so no head there is one they wrote, and the worker adds and records no enqueue. The app's deploy pull request stays the line's, a release and anything else Martin's.
 
 ## The verdict
 
