@@ -15,8 +15,8 @@
  * from, and whether its pipeline signed it; and the open deploy pull request, as the deploy watch last saw it.
  *
  * For patching, the factory learns of vulnerabilities only through the worker: the scan's moves, from its `moves`
- * artifact and the state it kept, checked one against the other (`scanning.ts`), and the open Dependabot pull
- * requests, each with the pin its branch names (`dependabot.ts`).
+ * artifact and the state it kept, checked one against the other (`scanning.ts`); and the open Dependabot pull
+ * requests, each with the pin its branch names (`dependabot.ts`), which a line's move names as the one it replaces.
  *
  * Every read is a conditional request (an artifact, which never changes, is downloaded once), so asking again about
  * something that has not changed costs nothing against the rate limit, and every answer is read through a Zod schema.

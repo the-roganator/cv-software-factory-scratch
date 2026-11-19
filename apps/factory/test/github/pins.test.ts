@@ -1,7 +1,7 @@
 /**
  * The pin watch (`pins.ts`) against the fake GitHub, through the live actions and the pin guard as the worker runs
  * them: one pull request for the moves at one file and never two, a moved target, a move gone, each refusal of the
- * guard, each case of Dependabot's, and one issue for each move the App cannot write.
+ * guard, Dependabot's pull request for the same pin left alone, and one issue for each move the App cannot write.
  */
 import { mkdtempSync, readdirSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -11,13 +11,11 @@ import { type Logger, pino } from 'pino';
 import { describe, expect, it } from 'vitest';
 import { type Changed, proveMove } from '../../../../scripts/move.ts';
 import { DryRunActions, LiveActions } from '../../src/github/actions.ts';
-import { type DependencyPull, dependencyPulls } from '../../src/github/dependabot.ts';
 import { IssueGuard, openedBy } from '../../src/github/issues.ts';
 import { treeSource } from '../../src/github/pin-guard.ts';
 import {
   branchOf,
   carriedBy,
-  dependabotHas,
   PASS_MS,
   PIN_LABEL,
   type PinScope,
@@ -26,7 +24,6 @@ import {
 } from '../../src/github/pins.ts';
 import { RefusalRecorder } from '../../src/github/refusals.ts';
 import type { Moves, ReadMove } from '../../src/github/scanning.ts';
-import { readTarget, type Target } from '../../src/vulnerabilities/fixes.ts';
 import { client, quiet, type Sent } from './fake.ts';
 import {
   day,
@@ -40,14 +37,6 @@ import {
   pinBranchOf,
   writes,
 } from './pins-harness.ts';
-
-const DEPENDABOT_YML = `version: 2
-updates:
-  - package-ecosystem: docker
-    directories:
-      - /deploy/images/sbom-tool
-    schedule: { interval: weekly }
-`;
 
 /** A watch over the fake repository, whose day is what `today` gives, and a clock a test moves on. */
 function harness(
@@ -64,10 +53,7 @@ function harness(
     ? new DryRunActions(artifacts, quiet, undefined, undefined, guard, undefined, treeSource(github))
     : new LiveActions(github, { guard });
   let clock = Date.parse('2026-11-11T07:00:00Z');
-  const reads = {
-    moves: async () => today(),
-    dependencyPulls: (r: string) => dependencyPulls(github, r, async () => DEPENDABOT_YML),
-  };
+  const reads = { moves: async () => today() };
   const watch = pinWatch(
     { github, reads, actions, recorder, log: options.log ?? quiet, now: () => clock, only: options.only ?? '*' },
     FACTORY,
@@ -336,88 +322,56 @@ describe('the pin watch', () => {
 });
 
 describe('the pin watch beside Dependabot', () => {
-  const urgent = (tag: string, seed = 'sbom-tool/new'): ReadMove[] => [
+  const sbom = (
+    tag: string,
+    seed = 'sbom-tool/new',
+    clears = { CRITICAL: 0, HIGH: 7, MEDIUM: 12, LOW: 3, UNKNOWN: 0 },
+  ) => [
     move({
       name: 'ghcr.io/example/sbom-tool',
       pins: [{ file: 'deploy/images/sbom-tool/Dockerfile', line: 2 }],
       from: 'v1.54.0',
       to: `image ${tag}@${digest(seed)}`,
-      clears: { CRITICAL: 0, HIGH: 7, MEDIUM: 12, LOW: 3, UNKNOWN: 0 },
+      clears,
       lane: 'worker',
     }),
   ];
 
-  it('opens nothing when a group’s pull request of Dependabot’s, as #984’s, moves the pin to the same target', async () => {
-    const repo = new FakeRepo(FILES);
-    const scanned = repo.main;
-    const theirs = dependabotGroup(repo, 'v1.55.1');
-    const w = harness(repo, () => day(scanned, urgent('v1.55.1')));
-    await w.pass();
-    expect(appPulls(repo)).toEqual([]);
-    expect(theirs.state).toBe('open');
-    expect(writes(w.sent)).toEqual([]);
-  });
+  const sbomBranch = () => branchOf(sbom('v1.55.1')[0] as ReadMove);
 
-  it('opens nothing when Dependabot’s moves it further, by a branch that names its pin', async () => {
-    const repo = new FakeRepo(FILES);
-    const scanned = repo.main;
-    repo.addPull({
-      head: 'dependabot/docker/deploy/images/sbom-tool/ghcr.io/example/sbom-tool-v1.56.0',
-      user: 'dependabot[bot]',
-    });
-    const w = harness(repo, () => day(scanned, urgent('v1.55.1')));
-    await w.pass();
-    expect(appPulls(repo)).toEqual([]);
-  });
-
-  it('opens its own beside Dependabot’s at an older target when the move has a High on a deadline, and never touches Dependabot’s', async () => {
-    const repo = new FakeRepo(FILES);
-    const scanned = repo.main;
-    const theirs = dependabotGroup(repo, 'v1.54.1', 'sbom-tool/older');
-    const w = harness(repo, () => day(scanned, urgent('v1.55.1')));
-    await w.pass();
-    expect(openPins(repo).map((p) => p.head)).toEqual([pinBranchOf('ghcr.io/example/sbom-tool')]);
-    expect(theirs.state).toBe('open');
-    expect(repo.refs.get(theirs.head)).toBeUndefined();
-    for (const s of writes(w.sent)) {
-      expect(s.path).not.toContain(`/${theirs.number}`);
-      expect(s.path).not.toContain('dependabot');
+  it('makes the move whatever Dependabot has open for the pin, at the same target or another, and never touches Dependabot’s', async () => {
+    for (const [tag, seed] of [
+      ['v1.55.1', 'sbom-tool/new'],
+      ['v1.54.1', 'sbom-tool/older'],
+    ] as const) {
+      const repo = new FakeRepo(FILES);
+      const scanned = repo.main;
+      const theirs = dependabotGroup(repo, tag, seed);
+      // A routine move, with no High or Critical on a deadline, as much as one that has.
+      const w = harness(repo, () =>
+        day(scanned, sbom('v1.55.1', 'sbom-tool/new', { CRITICAL: 0, HIGH: 0, MEDIUM: 2, LOW: 1, UNKNOWN: 0 })),
+      );
+      await w.pass();
+      expect(openPins(repo).map((p) => p.head)).toEqual([sbomBranch()]);
+      expect(theirs.state).toBe('open');
+      expect(repo.refs.get(theirs.head)).toBeUndefined();
+      for (const s of writes(w.sent)) {
+        expect(s.path).not.toContain(`/${theirs.number}`);
+        expect(s.path).not.toContain('dependabot');
+      }
     }
   });
 
-  it('closes its own once Dependabot’s moves the pin as far, and leaves Dependabot’s open', async () => {
+  it('keeps its own open when Dependabot’s opens later at the same target', async () => {
     const repo = new FakeRepo(FILES);
     const scanned = repo.main;
-    const w = harness(repo, () => day(scanned, urgent('v1.55.1')));
+    const w = harness(repo, () => day(scanned, sbom('v1.55.1')));
     await w.pass();
     const [ours] = openPins(repo);
     const theirs = dependabotGroup(repo, 'v1.55.1');
     await w.pass();
-    expect(ours?.state).toBe('closed');
+    expect(ours?.state).toBe('open');
     expect(theirs.state).toBe('open');
-  });
-
-  it('opens nothing for a move in Dependabot’s lane', async () => {
-    const repo = new FakeRepo(FILES);
-    const scanned = repo.main;
-    const w = harness(repo, () =>
-      day(
-        scanned,
-        factoryMoves().filter((m) => m.lane === 'dependabot'),
-      ),
-    );
-    await w.pass();
-    expect(writes(w.sent)).toEqual([]);
-  });
-
-  it('holds when a group’s patch of the pin’s file is one GitHub did not send', async () => {
-    const repo = new FakeRepo(FILES);
-    const scanned = repo.main;
-    const theirs = dependabotGroup(repo, 'v1.55.1');
-    theirs.files = [{ filename: 'deploy/images/sbom-tool/Dockerfile' }];
-    const w = harness(repo, () => day(scanned, urgent('v1.55.1')));
-    await w.pass();
-    expect(appPulls(repo)).toEqual([]);
   });
 });
 
@@ -534,37 +488,6 @@ describe('the pin watch, as review found it', () => {
     expect(writes(w.sent)).toEqual([]);
   });
 
-  it('leaves a lockfile’s move to Dependabot on its first day, opening nothing', async () => {
-    const repo = new FakeRepo(FILES);
-    const scanned = repo.main;
-    const lockfile = factoryMoves().find((m) => m.lockfile) as ReadMove;
-    const w = harness(repo, () => day(scanned, [{ ...lockfile, lane: 'dependabot' }]));
-    await w.pass();
-    expect(writes(w.sent)).toEqual([]);
-  });
-
-  it('opens again a target whose pull request it closed itself, once Dependabot’s that it gave way to is gone', async () => {
-    const repo = new FakeRepo(FILES);
-    const scanned = repo.main;
-    const urgent = [
-      move({
-        name: 'ghcr.io/example/sbom-tool',
-        pins: [{ file: 'deploy/images/sbom-tool/Dockerfile', line: 2 }],
-        from: 'v1.54.0',
-        to: `image v1.55.1@${digest('sbom-tool/new')}`,
-        lane: 'worker',
-      }),
-    ];
-    const w = harness(repo, () => day(scanned, urgent));
-    await w.pass();
-    const theirs = dependabotGroup(repo, 'v1.55.1');
-    await w.pass();
-    expect(openPins(repo)).toEqual([]);
-    theirs.state = 'closed';
-    await w.pass();
-    expect(openPins(repo).map((p) => p.head)).toEqual([pinBranchOf('ghcr.io/example/sbom-tool')]);
-  });
-
   it('opens again an issue it closed itself when the same move comes back to it', async () => {
     const repo = new FakeRepo({
       ...FILES,
@@ -636,62 +559,6 @@ describe('the pin watch, as review found it', () => {
     expect(appPulls(repo)).toEqual([]);
     expect(repo.issues[0]?.body).toContain('is not a file the watch can read');
     expect(w.records().filter((r) => r.payload?.mechanism === 'github-guard')).toEqual([]);
-  });
-});
-
-describe('a group’s pull request of Dependabot’s that has a move', () => {
-  const file = 'apps/factory/Dockerfile.browser';
-  const pin = { file, line: 26 };
-  const [old, now, other] = [digest('playwright/old'), digest('playwright/new'), digest('playwright/other')];
-  const group = (before: string, after: string): DependencyPull => ({
-    number: 1035,
-    head: { ref: 'dependabot/docker/playwright-7f6daadee5', sha: 'a'.repeat(40) },
-    draft: false,
-    createdAt: '2026-11-12T00:00:00Z',
-    ecosystem: 'docker',
-    directory: null,
-    dependency: null,
-    version: null,
-    changed: [
-      {
-        file,
-        line: 26,
-        before: `FROM mcr.microsoft.com/playwright:${before}`,
-        after: `FROM mcr.microsoft.com/playwright:${after}`,
-      },
-    ],
-    unread: [],
-  });
-  const has = (to: string, pull: DependencyPull) =>
-    dependabotHas({ name: 'mcr.microsoft.com/playwright', pins: [pin] }, readTarget(`image ${to}`) as Target, [pull]);
-
-  it('moves only the digest, to the move’s', () => {
-    expect(has(`v1.65.0-noble@${now}`, group(`v1.65.0-noble@${old}`, `v1.65.0-noble@${now}`))?.number).toBe(1035);
-  });
-
-  it('moves only the digest, to another than the move’s: not the move', () => {
-    expect(has(`v1.65.0-noble@${now}`, group(`v1.65.0-noble@${old}`, `v1.65.0-noble@${other}`))).toBeUndefined();
-  });
-
-  it('moves only the tag, to the move’s or further', () => {
-    expect(has(`v1.66.0-noble@${now}`, group('v1.65.0-noble', 'v1.66.0-noble'))?.number).toBe(1035);
-    expect(has(`v1.66.0-noble@${now}`, group('v1.65.0-noble', 'v1.65.1-noble'))).toBeUndefined();
-  });
-
-  it('moves the digest to the move’s under a tag that is no version, or one older than the move’s', () => {
-    expect(has(`noble@${now}`, group(`noble@${old}`, `noble@${now}`))?.number).toBe(1035);
-    expect(has(`v1.66.0-noble@${now}`, group(`v1.65.0-noble@${old}`, `v1.65.1-noble@${now}`))?.number).toBe(1035);
-  });
-
-  it('gives a pin the move’s digest where it had none, or among two new ones', () => {
-    expect(has(`v1.65.0-noble@${now}`, group('v1.65.0-noble', `v1.65.0-noble@${now}`))?.number).toBe(1035);
-    expect(
-      has(`v1.65.0-noble@${now}`, group(`v1.65.0-noble@${old} # ${old}`, `v1.65.0-noble@${other} # ${now}`))?.number,
-    ).toBe(1035);
-  });
-
-  it('moves both, to the move’s', () => {
-    expect(has(`v1.66.0-noble@${now}`, group(`v1.65.0-noble@${old}`, `v1.66.0-noble@${now}`))?.number).toBe(1035);
   });
 });
 

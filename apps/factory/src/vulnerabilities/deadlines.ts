@@ -63,8 +63,6 @@ import {
   type Context,
   type Counts,
   type DayCounts,
-  dependabotDirectories,
-  directPackages,
   type Judged,
   type Move,
   moves,
@@ -1858,12 +1856,6 @@ export async function main(args: string[]): Promise<number> {
   const context: Context = {
     repository: handoff.repository,
     app: handoff.repository === APP,
-    dependabot: dependabotDirectories(sources.file('.github/dependabot.yml')),
-    direct: new Set(
-      handoff.targets
-        .filter((target) => target.kind === 'lockfile')
-        .flatMap((target) => [...directPackages(sources.file(target.file))]),
-    ),
     now,
   };
   const list = moves(judged.judged, context);

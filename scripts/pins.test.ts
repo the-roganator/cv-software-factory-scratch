@@ -56,12 +56,37 @@ describe('the scan’s making of the moves the pin watch commits', () => {
       name: 'ghcr.io/k3d-io/k3d-tools',
       pins: [{ file: 'mise.lock', line: 2 }],
     };
-    const moves = [npm(1, 'example-a', '1.0.0', '1.0.1'), image, npm(2, 'example-b', '2.0.0', '2.0.3'), tools];
+    // Playwright's image brings its library in the lockfile: it is made with the day's lockfile moves, in their order.
+    const playwright: ReadMove = {
+      ...image,
+      index: 5,
+      name: 'mcr.microsoft.com/playwright',
+      pins: [{ file: 'apps/factory/Dockerfile.browser', line: 26 }],
+      from: 'v1.65.0-noble',
+      to: `image v1.65.1-noble@sha256:${'1'.repeat(64)}`,
+    };
+    // Node's image brings the Node it runs: its Dockerfiles' group, made by the step.
+    const node: ReadMove = {
+      ...image,
+      index: 6,
+      name: 'node',
+      pins: [{ file: 'apps/factory/Dockerfile', line: 11 }],
+      from: '24.22.2-alpine3.24',
+      to: `image 24.22.3-alpine3.24@sha256:${'2'.repeat(64)}`,
+    };
+    const moves = [
+      npm(1, 'example-a', '1.0.0', '1.0.1'),
+      image,
+      npm(2, 'example-b', '2.0.0', '2.0.3'),
+      tools,
+      playwright,
+      node,
+    ];
     const groups = [...groupsOf(moves, FACTORY_REPOSITORY).values()];
-    expect(groups.map((group) => group.map((move) => move.index))).toEqual([[1, 2], [4]]);
+    expect(groups.map((group) => group.map((move) => move.index))).toEqual([[1, 2, 5], [4], [6]]);
     expect(groupsOf(moves, APP_REPOSITORY).size).toBe(0);
-    // Dependabot's lane is not the watch's.
-    expect(groupsOf([npm(1, 'example-a', '1.0.0', '1.0.1', 'dependabot')], FACTORY_REPOSITORY).size).toBe(0);
+    // An issue's lane is not the watch's.
+    expect(groupsOf([npm(1, 'example-a', '1.0.0', '1.0.1', 'issue')], FACTORY_REPOSITORY).size).toBe(0);
   });
 
   it('keeps what each made move moved, as the diff shows it, and a refused move with the step’s words', async () => {

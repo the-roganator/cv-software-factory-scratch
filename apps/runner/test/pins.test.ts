@@ -725,6 +725,101 @@ describe('a base image’s move', () => {
   });
 });
 
+describe('an image one release with a library: Playwright’s (test 6)', () => {
+  const IMAGE = 'mcr.microsoft.com/playwright';
+  const was = `sha256:${'2'.repeat(64)}`;
+  const now = `sha256:${'5'.repeat(64)}`;
+  const get: Get = async () => new Response(null, { headers: { 'docker-content-digest': now } });
+  const playwrightLock = (version: string) => `lockfileVersion: '9.0'
+
+importers:
+
+  .:
+    devDependencies:
+      playwright:
+        specifier: ^1.65.0
+        version: ${version}
+
+packages:
+
+  playwright-core@${version}:
+    resolution: {integrity: sha512-core}
+
+  playwright@${version}:
+    resolution: {integrity: sha512-playwright}
+
+snapshots:
+
+  playwright-core@${version}: {}
+
+  playwright@${version}:
+    dependencies:
+      playwright-core: ${version}
+`;
+  const files = (version: string) => ({
+    'Dockerfile.browser': `FROM node:24.22.2-trixie-slim@sha256:${'1'.repeat(64)} AS node\nFROM ${IMAGE}:v${version}-noble@${was} AS browsers\n`,
+    'Dockerfile.dockerignore': '*\n!package.json\n',
+    'package.json': `${JSON.stringify({ name: 'factory', devDependencies: { playwright: '^1.65.0' } }, null, 2)}\n`,
+    'pnpm-lock.yaml': playwrightLock(version),
+  });
+  /** pnpm's update to the release named: every copy of the library moves, and the range with it. */
+  const updates = (leave?: string) =>
+    fakePnpm((dir, args) => {
+      const release = args.at(-1)?.split('@').at(-1) ?? '';
+      let lock = read(dir, 'pnpm-lock.yaml').replaceAll('1.65.0', release);
+      if (leave) lock = lock.replace(`playwright-core@${release}:`, `playwright-core@${leave}:`);
+      writeFileSync(join(dir, 'pnpm-lock.yaml'), lock.replace('^1.65.0', `^${release}`));
+      writeFileSync(join(dir, 'package.json'), read(dir, 'package.json').replace('^1.65.0', `^${release}`));
+    });
+  const move = (to: string) => ({
+    ecosystem: 'docker' as const,
+    name: IMAGE,
+    from: 'v1.65.0-noble',
+    to: `${to}@${now}`,
+  });
+
+  it('moves the image’s FROM, in a Dockerfile.<name>, and its library to the release its tag names', async () => {
+    const dir = checkout(files('1.65.0'));
+    const { pnpm, runs } = updates();
+    await writePins(dir, move('v1.65.1-noble'), { pnpm, get, aside: dir });
+    expect(read(dir, 'Dockerfile.browser')).toContain(`FROM ${IMAGE}:v1.65.1-noble@${now} AS browsers`);
+    // Node's image beside it is no part of the move.
+    expect(read(dir, 'Dockerfile.browser')).toContain(`FROM node:24.22.2-trixie-slim@sha256:${'1'.repeat(64)} AS node`);
+    expect(runs).toEqual([
+      [
+        'update',
+        // Only what a manifest names: the rest of the library follows it.
+        'playwright@1.65.1',
+      ],
+    ]);
+    expect(lockedVersions(read(dir, 'pnpm-lock.yaml'), 'playwright')).toEqual(['1.65.1']);
+    expect(lockedVersions(read(dir, 'pnpm-lock.yaml'), 'playwright-core')).toEqual(['1.65.1']);
+    expect(JSON.parse(read(dir, 'package.json')).devDependencies.playwright).toBe('^1.65.1');
+  });
+
+  it('runs no pnpm for a move of the digest alone: the library is at the release already', async () => {
+    const dir = checkout(files('1.65.0'));
+    const { pnpm, runs } = updates();
+    await writePins(dir, move('v1.65.0-noble'), { pnpm, get, aside: dir });
+    expect(read(dir, 'Dockerfile.browser')).toContain(`FROM ${IMAGE}:v1.65.0-noble@${now} AS browsers`);
+    expect(runs).toEqual([]);
+    expect(read(dir, 'pnpm-lock.yaml')).toBe(playwrightLock('1.65.0'));
+  });
+
+  it('refuses a move whose lockfile keeps a copy of the library at another release, and a tag that names none', async () => {
+    const dir = checkout(files('1.65.0'));
+    await expect(
+      writePins(dir, move('v1.65.1-noble'), { pnpm: updates('1.65.0').pnpm, get, aside: dir }),
+    ).rejects.toThrow(
+      'mcr.microsoft.com/playwright:v1.65.1-noble is 1.65.1, and the lockfile keeps playwright-core@1.65.0.',
+    );
+    const other = checkout(files('1.65.0'));
+    await expect(writePins(other, move('noble'), { pnpm: updates().pnpm, get, aside: other })).rejects.toThrow(
+      /names no release of its library/,
+    );
+  });
+});
+
 describe('the lockfile after a coder’s step', () => {
   const tools = (pnpm: Pnpm) => ({ pnpm, get: noRegistry, aside: mkdtempSync(join(tmpdir(), 'aside-')) });
   /** The coder's change of vitest's range, as `git diff` writes it. */

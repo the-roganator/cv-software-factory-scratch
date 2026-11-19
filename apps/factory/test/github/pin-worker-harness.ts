@@ -13,7 +13,6 @@ import { listenLocal } from '@software-factory/testing';
 import { APP_LOGIN, LiveActions } from '../../src/github/actions.ts';
 import { WatchedHeads } from '../../src/github/branches.ts';
 import { GitHubError } from '../../src/github/client.ts';
-import { dependencyPulls } from '../../src/github/dependabot.ts';
 import {
   type DeployQueueDependencies,
   type LabelEvents,
@@ -133,7 +132,6 @@ export async function worker(repo: FakeRepo, only: PinScope, today: () => Moves,
       github,
       reads: {
         moves: async () => today(),
-        dependencyPulls: (r: string) => dependencyPulls(github, r, async () => 'version: 2\nupdates: []\n'),
       },
       actions,
       recorder,
