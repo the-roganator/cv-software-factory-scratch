@@ -206,8 +206,8 @@ describe('the pin guard', () => {
     ['apps/console/pnpm-lock.yaml', /lockfile/],
     ['pnpm-lock.dev.yaml', /lockfile/],
     ['apps/console/npm-shrinkwrap.json', /lockfile/],
-    ['mise.toml', /toolchain/],
-    ['mise.lock', /toolchain/],
+    ['mise.toml', /mise’s files are written by the scan’s pin step/],
+    ['mise.lock', /mise’s files are written by the scan’s pin step/],
     ['../outside.yaml', /not a plain path/],
     ['/etc/passwd', /not a plain path/],
   ])('refuses a pin in %s by its name', async (file, words) => {
@@ -310,6 +310,90 @@ describe('the pin guard', () => {
     const sha = await dry.commitPins(REPO, asked(repo));
     expect(dry.commitMade(sha)?.files.get('deploy/base/telemetry/values/logs.yaml')).toContain(NEWER);
     expect(writes(sent)).toEqual([]);
+  });
+});
+
+describe('the pin guard, for the files the scan’s pin step wrote', () => {
+  const LOCK = 'lockfileVersion: 9.0\n\npackages:\n\n  example-a@1.0.0: {}\n';
+  const MOVED = 'lockfileVersion: 9.0\n\npackages:\n\n  example-a@1.0.1: {}\n';
+  const made = (path = 'pnpm-lock.yaml', text = MOVED) => ({
+    branch: 'factory/pin/pnpm-lock.yaml-0a1b2c3d',
+    pins: [],
+    files: [{ path, text }],
+  });
+
+  it('writes a lockfile, mise’s files and a manifest whole, as the step wrote them, and nothing else', async () => {
+    const repo = new FakeRepo({
+      ...FILES,
+      'pnpm-lock.yaml': LOCK,
+      'mise.lock': '[[tools.k3d]]\nversion = "5.8.3"\n',
+      'apps/factory/package.json': '{}\n',
+    });
+    const { actions } = live(repo);
+    const sha = await actions.commitPins(REPO, asked(repo, made()));
+    expect(repo.file(sha, 'pnpm-lock.yaml')).toBe(MOVED);
+    for (const [path, text] of Object.entries(FILES))
+      if (path !== 'pnpm-lock.yaml') expect(repo.file(sha, path)).toBe(text);
+    const mise = await live(repo).actions.commitPins(
+      REPO,
+      asked(repo, {
+        ...made('mise.lock', '[[tools.k3d]]\nversion = "5.9.0"\n'),
+        branch: 'factory/pin/mise.lock-0a1b2c3d',
+      }),
+    );
+    expect(repo.file(mise, 'mise.lock')).toBe('[[tools.k3d]]\nversion = "5.9.0"\n');
+  });
+
+  it.each([
+    ['.github/workflows/check.yml', /not a file the scan’s pin step writes/],
+    ['policy/package.json', /not a file the scan’s pin step writes/],
+    ['deploy/base/postgres/statefulset.yaml', /not a file the scan’s pin step writes/],
+    ['apps/console/mise.toml', /not a file the scan’s pin step writes/],
+    ['../pnpm-lock.yaml', /not a plain path/],
+  ])('refuses to write %s whole', async (path, words) => {
+    const repo = new FakeRepo({ ...FILES, 'pnpm-lock.yaml': LOCK });
+    await refuses(repo, made(path), PatchRefused, words);
+  });
+
+  it('refuses a file that has changed since the scan made its moves, one written as it is, and one also edited', async () => {
+    const repo = new FakeRepo({ ...FILES, 'pnpm-lock.yaml': LOCK });
+    const scanned = repo.main;
+    repo.push({ 'pnpm-lock.yaml': `${LOCK}\n` });
+    await refuses(repo, { ...made(), scanned }, PatchRefused, /has changed since the scan made its moves/);
+    await refuses(repo, made('pnpm-lock.yaml', `${LOCK}\n`), PatchRefused, /would be written as it is/);
+    await refuses(
+      repo,
+      {
+        ...made('deploy/base/telemetry/values/logs.yaml'),
+        pins: [{ file: 'deploy/base/telemetry/values/logs.yaml', line: 4, from: SIDECAR, to: NEWER }],
+      },
+      PatchRefused,
+      /not a file the scan’s pin step writes/,
+    );
+  });
+
+  it('refuses a manifest CODEOWNERS gives Martin, and takes mise’s files, which he gives a move', async () => {
+    const owners = '/mise.toml @mrogan\n/mise.lock @mrogan\n/apps/factory/src/github/ @mrogan\n';
+    const repo = new FakeRepo({
+      ...FILES,
+      '.github/CODEOWNERS': owners,
+      'apps/factory/src/github/package.json': '{}\n',
+      'mise.lock': '[[tools.k3d]]\nversion = "5.8.3"\n',
+    });
+    await refuses(
+      repo,
+      made('apps/factory/src/github/package.json', '{"a":1}\n'),
+      PatchRefused,
+      /CODEOWNERS gives a person/,
+    );
+    const sha = await live(repo).actions.commitPins(
+      REPO,
+      asked(repo, {
+        ...made('mise.lock', '[[tools.k3d]]\nversion = "5.9.0"\n'),
+        branch: 'factory/pin/mise.lock-0a1b2c3d',
+      }),
+    );
+    expect(repo.file(sha, 'mise.lock')).toContain('5.9.0');
   });
 });
 
