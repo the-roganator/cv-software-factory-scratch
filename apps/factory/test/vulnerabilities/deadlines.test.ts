@@ -131,6 +131,8 @@ interface World {
   toolReleases?: Record<string, { version: string; published: string }[]>;
   toolReports?: Record<string, TrivyReport>;
   kubeVersion?: string;
+  /** The Node release each image at `<repository>@<digest>` runs. */
+  runs?: Record<string, string>;
 }
 
 /** The sources as the world has them, and what was asked of them. */
@@ -179,6 +181,10 @@ function sourcesOf(world: World) {
     async tool(tool, version) {
       asked.push(`tool ${tool}@${version}`);
       return world.toolReports?.[`${tool}@${version}`];
+    },
+    async node(image, digest) {
+      asked.push(`node ${image}@${digest}`);
+      return world.runs?.[`${image}@${digest}`];
     },
     file: (path) => world.files?.[path],
     async alerts() {

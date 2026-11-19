@@ -81,6 +81,10 @@ const WORLD: World = {
     { version: 'v24.22.3', date: '2026-11-01' },
     { version: 'v24.22.2', date: '2026-10-01' },
   ],
+  runs: {
+    [`node@${digest('1')}`]: '24.22.3',
+    [`gcr.io/distroless/nodejs24-debian13@${digest('2')}`]: '24.22.2',
+  },
   published: {
     'example-direct@1.0.1': '2026-11-01T00:00:00Z',
     'example-indirect@3.2.1': '2026-11-01T00:00:00Z',
@@ -168,6 +172,30 @@ const CASES: Case[] = [
     name: 'the Dockerfile’s runtime stage: an operating system’s package in its image',
     findings: () => [found(T.distroless, {})],
     ends: [{ ends: 'pull request', tags: ['code-owned'] }],
+  },
+  {
+    name: 'the Dockerfile’s runtime stage: its newer image runs a newer Node, which moves with it (test 10)',
+    findings: () => [found(T.distroless, {})],
+    world: { ...WORLD, runs: { [`gcr.io/distroless/nodejs24-debian13@${digest('2')}`]: '24.22.3' } },
+    // One pull request: the runtime at its digest, and mise's pin, its lock and the build stage at the Node it runs.
+    ends: [{ ends: 'pull request', tags: ['code-owned'], wrote: ['Dockerfile', 'mise.lock', 'mise.toml'] }],
+  },
+  {
+    name: 'the Dockerfile’s runtime stage: its newer image runs a Node younger than mise.toml’s minimum_release_age',
+    findings: () => [found(T.distroless, {})],
+    world: {
+      ...WORLD,
+      node: [{ version: 'v24.22.3', date: '2026-11-14' }, ...(WORLD.node ?? []).slice(1)],
+      runs: { [`gcr.io/distroless/nodejs24-debian13@${digest('2')}`]: '24.22.3' },
+    },
+    // No fix yet, so no move: the scan lists it once mise may install that Node, and the line makes it then.
+    ends: [],
+  },
+  {
+    name: 'the Dockerfile’s runtime stage: its newer image runs a Node behind mise.toml’s',
+    findings: () => [found(T.distroless, {})],
+    world: { ...WORLD, runs: { [`gcr.io/distroless/nodejs24-debian13@${digest('2')}`]: '24.22.1' } },
+    ends: [],
   },
   {
     name: 'the Dockerfile’s runtime stage: the same, in distroless, which gives no time it was made',
