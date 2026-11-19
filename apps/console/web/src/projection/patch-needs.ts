@@ -1,6 +1,6 @@
 /**
  * The moves that wait on Martin, as Needs you shows them: one card for each move of the sense's last day whose lane only
- * he moves (his approval, his cluster's own command, or an issue, where no pull request of the App's can write it), one
+ * he moves (his cluster's own command, or an issue, where no pull request of the App's can write it), one
  * for each of Dependabot's that clears a High or a Critical on a deadline and has its pull request open, and
  * one for each row the sense made of what the cluster runs, which nothing scanned. A pure function of the events, which
  * needs no time: a card's deadline is said at t by the card.
@@ -10,8 +10,9 @@
  * Everything else of the day stays in that chunk (`patching.ts`).
  *
  * A card says only what the event gives. The sense's day names each move's lane, its pins, from and to, what it clears
- * and its deadline; the pull request the factory's App opens for a held pin, and the review gate's verdict on it, are on
- * GitHub, and no event records them yet, so a held pin's card names its move and opens its row, and links nowhere.
+ * and its deadline. The pull request the factory's App opens for a move, the review gate's verdict on it, and whether the
+ * autonomy level queues it (a major waits at any level but Lights-out) are on GitHub, and no event records them yet: a
+ * move the level holds has no card.
  */
 import type { MoveLane, PayloadOf, PublicEvent } from '@software-factory/events';
 
@@ -24,8 +25,8 @@ type Running = Day['rows'][number];
 const HOUR = 3_600_000;
 export const DAY = 24 * HOUR;
 
-/** The lanes only Martin moves: his approval, his cluster's own command, and what no pull request of the App's can write. */
-export const HIS: readonly MoveLane[] = ['approval', 'cluster', 'issue'];
+/** The lanes only Martin moves: his cluster's own command, and what no pull request of the App's can write. */
+export const HIS: readonly MoveLane[] = ['cluster', 'issue'];
 
 /**
  * Dependabot's move that clears a High or a Critical on a deadline, once its pull request is open: nothing but
@@ -99,7 +100,7 @@ export interface PatchNeed {
   /** Its row's key in Patching's sheet, which the card opens. */
   key: string;
   /** What waits: a lane only he moves, or what the sense found running. */
-  kind: 'approval' | 'cluster' | 'issue' | 'dependabot' | Running['row'];
+  kind: 'cluster' | 'issue' | 'dependabot' | Running['row'];
   /** For Dependabot's: its open pull request, which merges only with his approval. */
   pull?: number | undefined;
   /** What moves, as the event names it; undefined for a lockfile's package the public view withholds. */

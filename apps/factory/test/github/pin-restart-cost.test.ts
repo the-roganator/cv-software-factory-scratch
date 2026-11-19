@@ -8,7 +8,7 @@ import { PIN_PREFIX } from '../../src/github/branches.ts';
 import { readPinScope } from '../../src/github/pins.ts';
 import { calls } from './fake.ts';
 import { heldByMartin, worker } from './pin-worker-harness6.ts';
-import { day, FakeRepo, FILES, factoryMoves, writes } from './pins-harness.ts';
+import { day, FakeRepo, FILES, factoryMoves, pinBranchOf, writes } from './pins-harness.ts';
 
 const closing: (() => void)[] = [];
 afterEach(() => {
@@ -46,7 +46,7 @@ describe('what a restart costs', () => {
     expect(open.length).toBe(5);
 
     // Martin holds the major by its label; it stays open, as the live plan expects.
-    const major = open.find((p) => p.head === 'factory/pin/example-logs');
+    const major = open.find((p) => p.head === pinBranchOf('example-logs'));
     if (!major) throw new Error('no pull request for the major');
     first.events.set(major.number, heldByMartin());
 
@@ -74,7 +74,7 @@ describe('what a restart costs', () => {
       const sent = writes(next.sent);
       commits += sent.filter((s) => s.path === '/graphql').length;
       if (restart === 1) expect(moved.length).toBe(5);
-      expect(moved).toContain('factory/pin/example-logs');
+      expect(moved).toContain(pinBranchOf('example-logs'));
       heads = after;
       await next.queueOnly();
       // The four not held are queued again, at their new heads, once the gate and the checks pass those (stubbed here).
@@ -99,7 +99,7 @@ describe('what a restart costs', () => {
     for (let hour = 0; hour < 4; hour++) {
       for (const w of [one, two]) {
         await w.watchOnly();
-        seen.add(repo.refs.get('factory/pin/example-dashboards') as string);
+        seen.add(repo.refs.get(pinBranchOf('example-dashboards')) as string);
       }
     }
     expect(seen.size).toBe(8);
@@ -109,7 +109,7 @@ describe('what a restart costs', () => {
     const heads = new Set<string>();
     for (let hour = 0; hour < 8; hour++) {
       await solo.watchOnly();
-      heads.add(alone.refs.get('factory/pin/example-dashboards') as string);
+      heads.add(alone.refs.get(pinBranchOf('example-dashboards')) as string);
     }
     expect(heads.size).toBe(1);
   });
@@ -119,7 +119,7 @@ describe('what a restart costs', () => {
     const scanned = repo.main;
     const w = await worker(repo, readPinScope('example-logs'), () => day(scanned, factoryMoves()), closing);
     await w.watchOnly();
-    const branch = 'factory/pin/example-logs';
+    const branch = pinBranchOf('example-logs');
     // Martin's commit on the major's branch: the value the new major needs changed with it.
     const main = repo.main;
     const his = repo.push({ 'deploy/base/telemetry/values/logs.yaml': 'his: change\n' });

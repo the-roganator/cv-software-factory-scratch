@@ -1,12 +1,13 @@
 /**
- * The pin watch's guard (`pins.ts`): what lets a commit onto `factory/pin/<move>` replace the version or digest at each
- * of a move's pins, and refuses everything else. It is the guard, not the watch's good behaviour, that holds "nothing
+ * The pin watch's guard (`pins.ts`): what lets a commit onto `factory/pin/<files>` replace the version or digest at each
+ * pin of the moves it carries, and refuses everything else. It is the guard, not the watch's good behaviour, that holds "nothing
  * else": `commitPins` is the one action that writes a pin branch (`branches.ts`), and it writes only what this gives
  * back, worked out here from the repository itself, never from the file text its caller read.
  *
  * A commit is let through only when all of these hold, and refused, before GitHub is asked to write, otherwise:
  *
- * - **Its branch** is `factory/pin/<move>`, the move's name made one plain segment: nothing that could reach outside it.
+ * - **Its branch** is `factory/pin/<files>`, one plain segment made from the files its moves pin (`pinBranchFor`):
+ *   nothing that could reach outside it.
  * - **Its pins** are at most `MAX_PINS`, no two at one line, each in a plain path (`plainPath`), none under `.github/` or
  *   `policy/`, in a lockfile, or in mise's files, which move only when someone upgrades the toolchain.
  * - **Each pin's file** is an ordinary file in the tree of `main`'s head, as git's own tree names it (a symbolic link,
@@ -21,6 +22,7 @@
  * `main`'s head is read here, and a commit is made on it alone: one that moved since the watch read it is no refusal,
  * the watch tries again on its next pass.
  */
+import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import { readTarget } from '../vulnerabilities/fixes.ts';
 import { DIGEST, splitReference } from '../vulnerabilities/reference.ts';
@@ -37,9 +39,9 @@ export interface PinEdit {
   to: string;
 }
 
-/** A pin move's commit, as the watch asks for it. */
+/** A pin pull request's commit, as the watch asks for it: every pin of the moves it carries. */
 export interface PinCommit {
-  /** `factory/pin/<move>`. */
+  /** `factory/pin/<files>`. */
   branch: string;
   /** `main`'s head as the watch read it: the commit is made on it, and refused as stale if `main` has moved. */
   base: string;
@@ -61,31 +63,43 @@ export interface PinSource {
   file(repo: string, ref: string, path: string): Promise<TreeFile | null>;
 }
 
-/** The most pins one move writes: one image in every Dockerfile that runs it. */
-export const MAX_PINS = 20;
+/** The most pins one pull request writes: a few images, each in every Dockerfile that runs it. */
+export const MAX_PINS = 40;
 
-/** A move's branch: its name made one segment, lower case, of letters, digits, dots and dashes. */
+/** A pin branch's one segment: lower case, of letters, digits, dots and dashes. */
 const SEGMENT = /^[a-z0-9](?:[a-z0-9-]|\.(?!\.))*[a-z0-9]$|^[a-z0-9]$/;
 const MAX_SEGMENT = 80;
 
-/** The branch a move's pull request is on, from its name: `docker.io/library/postgres` is `factory/pin/docker-io-library-postgres`. */
-export function pinBranchFor(name: string): string {
-  const segment = name
+/** A text made a plain segment of at most `most` characters: `docker.io/library/postgres` is `docker.io-library-postgres`. */
+export function segmentOf(text: string, most = MAX_SEGMENT): string {
+  return text
     .toLowerCase()
     .replace(/[^a-z0-9.]+/g, '-')
     .replace(/\.{2,}/g, '-')
     .replace(/-+/g, '-')
     .replace(/^[-.]+|[-.]+$/g, '')
-    .slice(0, MAX_SEGMENT)
+    .slice(0, most)
     .replace(/[-.]+$/, '');
-  // A ref may not end `.lock`: the segment ends in a word of its own instead, within the length the guard takes.
-  return `${PIN_PREFIX}${segment.endsWith('.lock') ? `${segment.slice(0, MAX_SEGMENT - 4)}-pin` : segment}`;
+}
+
+/**
+ * The branch of the pull request that carries the day's moves at these files: the first file's path, for whoever reads
+ * it, and a digest of them all, so no two sets of files share a branch whatever their paths fold or are cut to.
+ * `deploy/base/postgres/statefulset.yaml` is `factory/pin/deploy-base-postgres-statefulset.yaml-<8 hex>`. The moves the
+ * review gate names `major` are on a branch of their own, marked so.
+ */
+export function pinBranchFor(files: readonly string[], major = false): string {
+  const sorted = [...new Set(files)].sort();
+  const digest = createHash('sha256').update(JSON.stringify(sorted)).digest('hex').slice(0, 8);
+  // The path is cut so the whole is one segment the guard takes, with `-major-` and the digest after it.
+  const path = segmentOf(sorted[0] ?? '', MAX_SEGMENT - 15);
+  return `${PIN_PREFIX}${[path, ...(major ? ['major'] : []), digest].filter(Boolean).join('-')}`;
 }
 
 /** Where a pin branch's commit is made before the branch moves to it. */
 export const pinNextBranch = (branch: string) => `${PIN_NEXT_PREFIX}${branch.slice(PIN_PREFIX.length)}`;
 
-/** Throws `BranchRefused` unless a branch is a pin move's own: `factory/pin/` and one plain segment. */
+/** Throws `BranchRefused` unless a branch is a pin pull request's own: `factory/pin/` and one plain segment. */
 export function guardPinBranch(branch: string): void {
   const segment = branch.startsWith(PIN_PREFIX) ? branch.slice(PIN_PREFIX.length) : undefined;
   if (segment === undefined || segment.length > MAX_SEGMENT || !SEGMENT.test(segment) || segment.endsWith('.lock')) {
@@ -173,7 +187,8 @@ export async function pinChanges(
   guardPinBranch(commit.branch);
   const { pins } = commit;
   if (!pins.length) refuse('A pin move with no pins moves nothing.');
-  if (pins.length > MAX_PINS) refuse(`A pin move of ${pins.length} pins is more than one move writes (${MAX_PINS}).`);
+  if (pins.length > MAX_PINS)
+    refuse(`A commit of ${pins.length} pins is more than one pull request writes (${MAX_PINS}).`);
   const places = new Set<string>();
   for (const pin of pins) {
     const place = `${pin.file}:${pin.line}`;
