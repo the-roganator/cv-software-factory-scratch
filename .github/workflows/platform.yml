@@ -93,10 +93,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      # The merge queue deletes an entry's branch when it ejects or removes it, and nothing cancels the runs on it: this
-      # stops the job, `make up` and the watch below included, once that branch is gone and the entry did not merge
-      # (scripts/queue-branch-gone.sh). A watcher of the whole job rather than a question in the watch's loop, so the
-      # steps after `make up` stop too.
+      # The merge queue deletes an entry's branch when it ejects or removes it, or makes its group again, and nothing
+      # cancels the runs on it: this stops the job, `make up` and the watch below included, once the entry's own record
+      # says it left the queue, or the queue made its group again (scripts/queue-branch-gone.sh). A watcher of the whole
+      # job rather than a question in the watch's loop, so the steps after `make up` stop too.
       - name: Stop if the merge queue lets this entry go
         env:
           QUEUE_BRANCH: ${{ github.event.merge_group.head_ref }}
@@ -184,6 +184,7 @@ jobs:
       - name: Take the API versions
         run: node scripts/api-versions.ts take "$RUNNER_TEMP/records/api-versions.json"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        timeout-minutes: 5
         with:
           name: refusal-records
           path: ${{ runner.temp }}/records
@@ -202,6 +203,7 @@ jobs:
       # pull, in the log and the step summary (scripts/platform-timeline.sh).
       - name: Where the time went
         if: ${{ always() }}
+        timeout-minutes: 5
         env:
           KUBECTL: kubectl --context k3d-software-factory
         run: |
@@ -210,10 +212,13 @@ jobs:
       # Kept as the run's artifact too, `cluster`, so a failure can be read when the job's log cannot be fetched.
       - name: What the cluster shows
         if: ${{ always() }}
+        timeout-minutes: 5
         run: |
-          # A run the merge queue let go shows nothing worth reading.
-          if [ -e "$RUNNER_TEMP/queue-gone" ]; then echo "The merge queue let this entry go: nothing to show."; exit 0; fi
+          # A run the merge queue let go shows nothing worth reading but why the watch stopped it, and uploads nothing.
+          if [ -e "$RUNNER_TEMP/queue-gone" ]; then echo "QUEUE_GONE=true" >> "$GITHUB_ENV"; echo "The merge queue let this entry go: the watch's log says why."; cat "$RUNNER_TEMP/queue-watch.log"; exit 0; fi
           exec > >(tee "$RUNNER_TEMP/measure/cluster.txt") 2>&1
+          echo "--- The merge queue's watch (none outside the queue)"
+          cat "$RUNNER_TEMP/queue-watch.log" 2>/dev/null || true
           echo "Peak memory in use: $(sort -n "$RUNNER_TEMP/measure/memory" | tail -1) MiB"
           df -h / | tail -1
           docker system df || true
@@ -255,12 +260,14 @@ jobs:
             grep -E '^alertmanager_notification(s|_requests)(_failed)?_total' | grep -v ' 0$' || true
           echo "--- Alertmanager's log"
           kubectl --context k3d-software-factory -n telemetry logs statefulset/prometheus-alertmanager -c alertmanager --tail=40 || true
-      # On every outcome but success, cancellation included. It holds Argo CD's, the pods' and the events' states, the
+      # On every outcome but success, cancellation included, but a run the merge queue let go, which made nothing worth
+      # reading (the step above prints the watch's log), so its job ends at once. It holds Argo CD's, the pods' and the events' states, the
       # runner's figures, every failed pod's log and Postgres's, and each pod the end found not running: its description, which shows an env value a manifest
       # writes and only the name of a Secret another is read from, and its logs. No Secret is read, and the cluster
       # holds no key: its passwords and keys are made on the runner, and go with it.
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: ${{ failure() || cancelled() }}
+        if: ${{ (failure() || cancelled()) && env.QUEUE_GONE != 'true' }}
+        timeout-minutes: 5
         with:
           name: cluster
           path: ${{ runner.temp }}/measure
