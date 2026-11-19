@@ -239,7 +239,7 @@ describe('the line’s judgement of an attack', () => {
     const recorder = new RefusalRecorder({ artifacts, key: privateKey });
     const relayed = async (mechanism: 'github-guard' | 'token-permission', by = recorder) => {
       const signed = await by.record({
-        repo: 'the-roganator/cv-worlds-worst-website',
+        repo: 'the-roganator/cv-worlds-worst-website-scratch',
         number: null,
         action: 'Commit .github/workflows/ci.yml',
         output: mechanism === 'github-guard' ? 'A protected path.' : 'Resource not accessible by integration',

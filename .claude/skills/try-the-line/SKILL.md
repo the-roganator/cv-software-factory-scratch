@@ -7,9 +7,9 @@ description: Try the line or one agent on the Mac — the bench, the local clust
 
 Three ways in, from smallest: one agent's step on the **bench**, with no cluster; the **smoke run**, a coder in the cluster on a seeded off-by-one; and **the line on the local cluster**, on images built from a branch. The commands for the host's workers, the smoke run and `soak-check` are in [`docs/ON-THE-HOST.md`](../../../docs/ON-THE-HOST.md); this skill adds how to run them safely and leave nothing behind.
 
-The local cluster is `k3d-software-factory`, and it is disposable. Unmerged code is tried there on images built locally, not merged first; merging stays Martin's call. Pushing, opening pull requests and filing issues still need his yes.
+The local cluster is `k3d-software-factory-scratch`, and it is disposable. Unmerged code is tried there on images built locally, not merged first; merging stays Martin's call. Pushing, opening pull requests and filing issues still need his yes.
 
-A try is the proof, and merging ratifies it: a change to what runs on the cluster is tried here before its review, live where the fault can only show live ([A live try](#a-live-try)), and nothing is learned from a merge and a deploy that a try could have shown. One session holds the cluster at a time, by its lock, `~/.config/software-factory/cluster.lock` (`scripts/cluster-lock.ts`), from before the first change until the undo list is ticked: `try begin` takes it and `try end` gives it back.
+A try is the proof, and merging ratifies it: a change to what runs on the cluster is tried here before its review, live where the fault can only show live ([A live try](#a-live-try)), and nothing is learned from a merge and a deploy that a try could have shown. One session holds the cluster at a time, by its lock, `~/.config/software-factory-scratch/cluster.lock` (`scripts/cluster-lock.ts`), from before the first change until the undo list is ticked: `try begin` takes it and `try end` gives it back.
 
 The helpers are in `bin/` beside this file: `try` begins and ends a try on the local cluster ([below](#try-begin-and-try-end)), `k` is kubectl on the local cluster, `argocd-core` is Argo CD's CLI on it (`--core`, with no login), `q` is psql on its store, `poll` and `watch` follow a run, and `trace.js` prints a step's conversation.
 
@@ -19,7 +19,7 @@ The helpers are in `bin/` beside this file: `try` begins and ends a try on the l
 
 Copy the checklist at the end into `scratch/` and record each value before you change it: the sync policy, every image, every env variable. Tick each line as you put it back. What `bin/try begin` changes it records itself, and `bin/try end` puts back: the list then names the try's state file for those lines, and holds by hand only what the script does not do.
 
-To change the cluster in auto mode, Martin may add `Bash(kubectl --context k3d-software-factory *)` to `.claude/settings.local.json`. Without it, ask him.
+To change the cluster in auto mode, Martin may add `Bash(kubectl --context k3d-software-factory-scratch *)` to `.claude/settings.local.json`. Without it, ask him.
 
 ## The bench: one agent's step, no cluster
 
@@ -78,9 +78,9 @@ What stays in your hands: whether the try is dry or live and what it takes (step
 1. **Build** `factory` and `factory-runner` from one commit, in a worktree, and import them:
    ```sh
    T=local-$(git rev-parse --short HEAD)
-   docker build -f apps/factory/Dockerfile -t ghcr.io/the-roganator/cv-software-factory/factory:$T .
-   docker build -f apps/runner/Dockerfile -t ghcr.io/the-roganator/cv-software-factory/factory-runner:$T .
-   k3d image import -c software-factory ghcr.io/the-roganator/cv-software-factory/factory:$T ghcr.io/the-roganator/cv-software-factory/factory-runner:$T
+   docker build -f apps/factory/Dockerfile -t ghcr.io/the-roganator/cv-software-factory-scratch/factory:$T .
+   docker build -f apps/runner/Dockerfile -t ghcr.io/the-roganator/cv-software-factory-scratch/factory-runner:$T .
+   k3d image import -c software-factory ghcr.io/the-roganator/cv-software-factory-scratch/factory:$T ghcr.io/the-roganator/cv-software-factory-scratch/factory-runner:$T
    ```
    Build `console` too if its code changed.
 2. **Pause Argo CD** on `root` only, which owns every factory deployment: `bin/argocd-core app set root --sync-policy manual`. If an operation on `root` sticks, on a hook its own sync must fix, end it with `bin/argocd-core app terminate-op root`, which returns before the operation has ended, wait for it with `bin/argocd-core app wait root --operation`, and sync only what it needs with `bin/argocd-core app sync root --resource <group>:<kind>:<namespace>/<name>` for each resource (a core kind's group is empty: `:ConfigMap:factory/<name>`); never write `operation` or `status` by hand.
@@ -89,10 +89,10 @@ What stays in your hands: whether the try is dry or live and what it takes (step
 5. **Point** `line` (its container, its `runner-image` initContainer and `RUNNER_IMAGE`), `gateway` and `github` at the new images with `kubectl set image` and `set env`. Point `admin` at the `factory` image too when the branch changes a route the admin service serves, such as `POST /admin/attacks/:attack`, which the console's Guardrails panel calls: the console reaches whatever image `admin` runs, and `main`'s answers a route it lacks "Not found". For a try of the red-team harness, point `red-team` as well: its container on `factory`, and its runner image by digest (step 6). Every `set env` in these steps names its container: `-c line`, `-c gateway`, `-c github`, `-c console`, `-c admin`, `-c red-team`. Without `-c` it writes every container, the line's `runner-image` init container included, and Argo CD never removes a field it does not own, so a `RUNNER_IMAGE` or `LINE_MODE` left there outlives the run and fails `make admission-ready`. Undoing one takes the same `-c`: `bin/k -n factory set env deployment/line -c line NAME-`.
 6. **An image by digest.** Some of admission's rules admit an image only as a digest reference, and an image imported with `k3d image import` has only its tag in the node's containerd. `factory-red-team-pods` (`deploy/base/admission/factory/red-team-pods.yaml`) is one: it admits the harness's pods on the runner image only as `factory-runner@sha256:…`, so `red-team`'s `RUNNER_IMAGE` and its `runner-image` initContainer take a digest reference. Give the local image one on the node, from the digest containerd lists for its tag, and point at that; the undo removes it:
    ```sh
-   R=ghcr.io/the-roganator/cv-software-factory/factory-runner T=local-$(git rev-parse --short HEAD)
-   D=$(docker exec k3d-software-factory-server-0 ctr -n k8s.io images ls "name==$R:$T" | awk 'NR>1 {print $3}')
+   R=ghcr.io/the-roganator/cv-software-factory-scratch/factory-runner T=local-$(git rev-parse --short HEAD)
+   D=$(docker exec k3d-software-factory-scratch-server-0 ctr -n k8s.io images ls "name==$R:$T" | awk 'NR>1 {print $3}')
    if [ -z "$D" ]; then echo "no $R:$T on the node: import it first (step 1)" >&2; else
-     docker exec k3d-software-factory-server-0 ctr -n k8s.io images tag "$R:$T" "$R@$D"
+     docker exec k3d-software-factory-scratch-server-0 ctr -n k8s.io images tag "$R:$T" "$R@$D"
      bin/k -n factory set image deployment/red-team runner-image="$R@$D"
      bin/k -n factory set env deployment/red-team -c red-team RUNNER_IMAGE="$R@$D"
    fi
@@ -119,9 +119,9 @@ What stays in your hands: whether the try is dry or live and what it takes (step
    The render pins `main`'s images, so applying a Deployment the branch changes takes it off the local images: point it again after (steps 5 and 6). Record each one for the undo, which checks that the added ones are gone and the changed ones are `main`'s again.
 9. **Alert rules.** When the branch adds or changes an alert, its rules (`deploy/base/telemetry/values/prometheus-rules.yaml`, generated from `apps/factory/src/alerts/rules.ts`) are tried too, so a page goes end to end: the alert reaches Alertmanager, and Martin's phone through Pushover once "Alerts to your phone (Pushover)" is on in the console's Controls. Otherwise nothing pages during the try. They reach Prometheus as Helm values of the `prometheus` Application, read from this repository at `main`, which `root` owns and so leaves alone while paused. Point its values source at the branch: `bin/argocd-core app set prometheus --source-position 2 --revision <branch>`. Argo CD reads only GitHub, so the branch must be pushed, which needs Martin's yes unless the run already pushes its branches (the implement skill's build-only workers do). The source carries every values file the Application reads, not only the rules: note in the undo list anything else the branch changes there (`git diff origin/main...<branch> --stat -- deploy/base/telemetry/values deploy/overlays/local/values`), since the try runs with it too. The Application syncs itself, writing the rules into the `prometheus-server` ConfigMap in `telemetry`, and Prometheus reloads them itself within half a minute of the file changing (`config.auto-reload`); `bin/k -n telemetry get cm prometheus-server -o yaml | grep <alert>` shows them there: wait for it before the run starts. `root`'s sync puts `main` back as its revision.
 10. **The model:** none of them has `ALL_LOCAL` for Claude, a try's model; `ALL_LOCAL=true` on `gateway`, `line` and `console` for Qwen, a soak's. The gateway and the line must match, since the line sets a step's bounds from it; the console's settings page says from it that every agent is on the local model. Stop the line before switching, so no step straddles the change.
-11. **The work item:** `make take-the-line ONLY=<number> KUBECTL="kubectl --context k3d-software-factory"`, which sets Martin's take to Just one, as Controls would, chosen by the line's own rule (the oldest open ticket of the highest severity not yet on the line), skipping duplicates of a defect already fixed. Note the take it replaced, for the undo (`make take-the-line EVERY=1`, or `NEXT=<n>`, puts one back; the next few count again from then). On a new cluster, set it before `make start-the-line`, so the line takes only that one from its first pass. Never answer a hold in Martin's name to get one moving: take the next ticket instead. The one exception is below, a fix tried on the work item held for it.
+11. **The work item:** `make take-the-line ONLY=<number> KUBECTL="kubectl --context k3d-software-factory-scratch"`, which sets Martin's take to Just one, as Controls would, chosen by the line's own rule (the oldest open ticket of the highest severity not yet on the line), skipping duplicates of a defect already fixed. Note the take it replaced, for the undo (`make take-the-line EVERY=1`, or `NEXT=<n>`, puts one back; the next few count again from then). On a new cluster, set it before `make start-the-line`, so the line takes only that one from its first pass. Never answer a hold in Martin's name to get one moving: take the next ticket instead. The one exception is below, a fix tried on the work item held for it.
 
-Run one work item at a time: two steps on one LM Studio halve its speed. The dry-run GitHub worker keeps its pull requests in memory, so a restart forgets them and reuses their numbers, issues included. `make stop-the-line` and `make start-the-line` need `KUBECTL="kubectl --context k3d-software-factory"`, and a stopped line also stops triage.
+Run one work item at a time: two steps on one LM Studio halve its speed. The dry-run GitHub worker keeps its pull requests in memory, so a restart forgets them and reuses their numbers, issues included. `make stop-the-line` and `make start-the-line` need `KUBECTL="kubectl --context k3d-software-factory-scratch"`, and a stopped line also stops triage.
 
 **The smoke run** posts to the line's step API ([the smoke run](../../../docs/ON-THE-HOST.md#runners-and-the-smoke-run)) with `"round"`: a job's name, and so its token, is used once, so each smoke run on the same commit needs a new round.
 
@@ -196,7 +196,7 @@ Copy this into `scratch/` at the start:
 - [ ] Manifests applied by hand: each one the branch added gone (`bin/k -n <namespace> get <kind> <name>` finds none, without `-n` for a cluster-scoped one), each one it changed `main`'s again; which, with its namespace: …
 - [ ] The `prometheus` Application's values source back on `main` (`bin/argocd-core app get prometheus`), and its rules `main`'s; anything else the branch changed in its values: …
 - [ ] Any copied `migrate` Job deleted (migrations stay applied).
-- [ ] Digest references made on the node removed: `docker exec k3d-software-factory-server-0 ctr -n k8s.io images rm <repo>@<digest>` for each; which: …
+- [ ] Digest references made on the node removed: `docker exec k3d-software-factory-scratch-server-0 ctr -n k8s.io images rm <repo>@<digest>` for each; which: …
 - [ ] Local images removed: `docker rmi` each `local-*` tag.
 - [ ] The line started (`make start-the-line`), so triage takes work again, only once Martin knows which work items it will reopen and has said so, and no held work item answered for the try waits on him. After a live try, not before the images have merged and deployed: `main`'s line cannot read what they wrote.
 - [ ] After a live try: each work item it moved, with its seq, and each pull request, merge, deploy and issue it made in GitHub, listed for Martin; the cluster given back (`try end`, or `bin/try status` says it is held by no one).

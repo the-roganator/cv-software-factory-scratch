@@ -135,7 +135,7 @@ test('a row opens in place, one at a time: why it waits, what to do, what it cle
   await expect(more).toContainText('21 High, 44 Medium, 9 Low');
   await expect(more.getByRole('link', { name: /Code scanning/ })).toHaveAttribute(
     'href',
-    'https://github.com/the-roganator/cv-software-factory/security/code-scanning',
+    'https://github.com/the-roganator/cv-software-factory-scratch/security/code-scanning',
   );
   await expect(more.locator('.pins')).toContainText('k3d/cluster.yaml:8');
 
@@ -301,7 +301,9 @@ test('each move that waits on Martin is a card in Needs you, which opens its row
 });
 
 test('the address opens the sheet at a row: opened, scrolled to and focused', async ({ page }) => {
-  await page.goto(`${consoleUrl()}&move=${encodeURIComponent('the-roganator/cv-software-factory example/sidecar')}`);
+  await page.goto(
+    `${consoleUrl()}&move=${encodeURIComponent('the-roganator/cv-software-factory-scratch example/sidecar')}`,
+  );
   await expect(sheet(page)).toBeVisible();
   await expect(row(page, 'example/sidecar')).toHaveAttribute('aria-expanded', 'true');
   await expect(row(page, 'example/sidecar')).toBeInViewport();

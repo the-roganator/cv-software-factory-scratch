@@ -33,8 +33,8 @@ describe("the day's moves", () => {
   it('reads the sample day, with a row of each kind', () => {
     const day = schema.parse(DAY);
     expect(day.repositories.map((r) => r.repository)).toEqual([
-      'the-roganator/cv-software-factory',
-      'the-roganator/cv-worlds-worst-website',
+      'the-roganator/cv-software-factory-scratch',
+      'the-roganator/cv-worlds-worst-website-scratch',
     ]);
     expect(day.rows.map((r) => r.row)).toEqual(['unscanned-digest', 'unlisted-image', 'not-running']);
   });

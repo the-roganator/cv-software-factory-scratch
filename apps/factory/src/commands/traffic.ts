@@ -5,7 +5,7 @@
  *     factory traffic [--walk]
  *
  * `--walk` prints the round it would walk, and sends nothing more. Settings, from the environment: APP_URL, the app's
- * public address, such as http://website.localhost:8080; and INGRESS_URL, the ingress to connect to instead, sending
+ * public address, such as http://website.localhost:9080; and INGRESS_URL, the ingress to connect to instead, sending
  * APP_URL's host, where that name does not resolve (in the cluster, http://traefik.kube-system); and SHARE_KEY_FILE,
  * the generator's private key (PEM), from its Secret, with which it signs an id on each request for a flag's share
  * stage. With no key there, or one it cannot use, it says so once and sends no id. Run with the preload, it sends its
@@ -26,7 +26,7 @@ export async function run(args: string[]): Promise<number> {
   const { values } = parseArgs({ args, options: { walk: { type: 'boolean', default: false } } });
   const { APP_URL, INGRESS_URL, SHARE_KEY_FILE } = process.env;
   if (!APP_URL) {
-    console.error('Set APP_URL to the app’s public address, such as http://website.localhost:8080.');
+    console.error('Set APP_URL to the app’s public address, such as http://website.localhost:9080.');
     return 2;
   }
   // The instrumentation goes in before the modules it patches are imported.

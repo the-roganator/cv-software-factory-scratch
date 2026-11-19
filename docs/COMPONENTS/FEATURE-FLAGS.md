@@ -132,7 +132,7 @@ The app sets the cookie exactly as this says, and the `/device` check holds ever
 | `Max-Age` | `86400`: a day from the latest ask. No ask, no renewal. |
 | `HttpOnly` | Always: only the app's server reads it |
 | `SameSite` | `Lax`, so following a link to the app, as from the console, carries it |
-| `Secure` | Exactly when the request reached the app over HTTPS: its own scheme, or `X-Forwarded-Proto: https` from Traefik. The app is served over plain HTTP on every profile today (`website.localhost:8080` through Traefik, `http://website.website` for the probes), so it sets none. A browser drops a `Secure` cookie set over plain HTTP but on a `localhost` name, so one set always would reach a browser through Traefik and never the probes' Chromium, which could not then see it. |
+| `Secure` | Exactly when the request reached the app over HTTPS: its own scheme, or `X-Forwarded-Proto: https` from Traefik. The app is served over plain HTTP on every profile today (`website.localhost:9080` through Traefik, `http://website.website` for the probes), so it sets none. A browser drops a `Secure` cookie set over plain HTTP but on a `localhost` name, so one set always would reach a browser through Traefik and never the probes' Chromium, which could not then see it. |
 
 The cookie names flags and decides nothing: flagd does, so a flag turned off is off for a browser whose cookie names it. Nothing removes it but its `Max-Age` or the browser's own settings.
 
