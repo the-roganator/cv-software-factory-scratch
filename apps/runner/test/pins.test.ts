@@ -12,6 +12,7 @@ import {
   digestOf,
   type Get,
   lockedVersions,
+  type Mise,
   movedRange,
   nodeInImage,
   nodeInTar,
@@ -288,6 +289,147 @@ describe('a package’s move', () => {
   it('reads the versions and parents a lockfile gives a package', () => {
     expect(lockedVersions(LOCK('5.0.5', '4.2.1'), 'sonic-boom')).toEqual(['4.2.1']);
     expect(parentsAt(LOCK('5.0.5', '4.2.1'), 'sonic-boom', '4.2.1')).toEqual(['pino@10.4.0']);
+  });
+});
+
+describe('a package at two versions, and a workspace’s own projects (the factory’s moves)', () => {
+  const tools = (pnpm: Pnpm, workspace = false) => ({
+    pnpm,
+    get: noRegistry,
+    aside: mkdtempSync(join(tmpdir(), 'aside-')),
+    workspace,
+  });
+  // semver twice: 5.7.1 under one parent, 7.5.1 under another, each with its own fix on its own line.
+  const TWICE = (old: string, newer: string) => `lockfileVersion: '9.0'
+
+importers:
+
+  .:
+    devDependencies:
+      vitest:
+        specifier: ^5.0.5
+        version: 5.0.5
+
+packages:
+
+  semver@${old}:
+    resolution: {integrity: sha512-old}
+
+  semver@${newer}:
+    resolution: {integrity: sha512-new}
+
+  vitest@5.0.5:
+    resolution: {integrity: sha512-vitest}
+
+snapshots:
+
+  semver@${old}: {}
+
+  semver@${newer}: {}
+
+  vitest@5.0.5:
+    dependencies:
+      semver: ${newer}
+`;
+
+  it('moves each copy to the target on its line, with one update for both', async () => {
+    const dir = checkout({ 'package.json': MANIFEST('^5.0.5'), 'pnpm-lock.yaml': TWICE('5.7.1', '7.5.1') });
+    const { pnpm, runs } = fakePnpm((d) => writeFileSync(join(d, 'pnpm-lock.yaml'), TWICE('5.7.2', '7.8.6')));
+    await writePins(dir, { ecosystem: 'npm', name: 'semver', from: '5.7.1, 7.5.1', to: '5.7.2,7.5.2' }, tools(pnpm));
+    // pnpm moved both on the first; the second line's copy is already past its target.
+    expect(runs).toEqual([['update', 'semver', '--depth', 'Infinity']]);
+    expect(lockedVersions(read(dir, 'pnpm-lock.yaml'), 'semver')).toEqual(['5.7.2', '7.8.6']);
+  });
+
+  it('refuses a target with no copy on its line, and one that is not a version', async () => {
+    const dir = checkout({ 'package.json': MANIFEST('^5.0.5'), 'pnpm-lock.yaml': TWICE('5.7.1', '7.5.1') });
+    const { pnpm, runs } = fakePnpm(() => {});
+    await expect(
+      writePins(dir, { ecosystem: 'npm', name: 'semver', from: '5.7.1, 7.5.1', to: '6.0.1,7.5.2' }, tools(pnpm)),
+    ).rejects.toThrow('semver is at no version on the line of 6.0.1: 5.7.1, 7.5.1.');
+    await expect(
+      writePins(dir, { ecosystem: 'npm', name: 'semver', from: '5.7.1, 7.5.1', to: '5.7.2,latest' }, tools(pnpm)),
+    ).rejects.toThrow('latest is not a version');
+    expect(runs).toEqual([]);
+  });
+
+  it('takes a workspace’s own projects only where it is told the checkout is its own', async () => {
+    const manifest = `${JSON.stringify({ devDependencies: { vitest: '^5.0.5', '@own/testing': 'workspace:*' } }, null, 2)}\n`;
+    const lock = LOCK('5.0.5', '4.2.1').replace(
+      '        version: 5.0.5\n',
+      "        version: 5.0.5\n      '@own/testing':\n        specifier: workspace:*\n        version: link:packages/testing\n",
+    );
+    const dir = checkout({ 'package.json': manifest, 'pnpm-lock.yaml': lock });
+    const { pnpm, runs } = fakePnpm((d) =>
+      writeFileSync(
+        join(d, 'pnpm-lock.yaml'),
+        lock.replaceAll('vitest@5.0.5', 'vitest@5.1.0').replace('version: 5.0.5', 'version: 5.1.0'),
+      ),
+    );
+    const vitest = { ecosystem: 'npm' as const, name: 'vitest', from: '5.0.5', to: '5.1.0' };
+    await expect(writePins(dir, vitest, tools(pnpm))).rejects.toThrow(/Only versions from the registry/);
+    expect(runs).toEqual([]);
+    await writePins(dir, vitest, tools(pnpm, true));
+    expect(runs).toHaveLength(1);
+    // Never a link out of the tree's own folders, nor an override's workspace.
+    expect(registryOnly('        version: link:/etc\n', true)).toEqual(['version: link:/etc']);
+    expect(registryRange('workspace:*', true)).toBe(true);
+    expect(
+      notFromRegistry([{ path: 'package.json', json: { pnpm: { overrides: { a: 'workspace:*' } } } }], true),
+    ).toEqual(['package.json: the override of a "workspace:*"']);
+  });
+});
+
+describe('a tool mise pins (the factory’s moves)', () => {
+  const MISE_TOML = '[tools]\nk3d = "5"\nkubectl = "1.37"\n';
+  const lockAt = (version: string) =>
+    `[[tools.k3d]]\nversion = "${version}"\nbackend = "aqua:k3d-io/k3d"\nspecifiers = ["5"]\n\n[tools.k3d."platforms.linux-x64"]\nchecksum = "sha256:${'a'.repeat(64)}"\nurl = "https://github.com/k3d-io/k3d/releases/download/v${version}/k3d-linux-amd64"\n\n[[tools.kubectl]]\nversion = "1.37.2"\n`;
+  const tools = (mise?: Mise) => ({
+    pnpm: fakePnpm(() => {}).pnpm,
+    get: noRegistry,
+    aside: mkdtempSync(join(tmpdir(), 'aside-')),
+    ...(mise ? { mise } : {}),
+  });
+
+  it('moves its entry’s version, then has mise lock it, for each platform the lockfile keeps', async () => {
+    const dir = checkout({ 'mise.toml': MISE_TOML, 'mise.lock': lockAt('5.8.3') });
+    const asked: string[][] = [];
+    let seen = '';
+    const mise: Mise = async (d, args) => {
+      asked.push(args);
+      seen = read(d, 'mise.lock');
+      writeFileSync(join(d, 'mise.lock'), lockAt('5.9.0'));
+    };
+    await writePins(dir, { ecosystem: 'tool', name: 'k3d', from: '5.8.3', to: '5.9.0' }, tools(mise));
+    expect(asked).toEqual([['lock', 'k3d']]);
+    // mise was asked with the version moved and its downloads still the old one's, which it writes again.
+    expect(seen).toContain('version = "5.9.0"');
+    expect(seen).toContain('/v5.8.3/');
+    expect(read(dir, 'mise.lock')).toBe(lockAt('5.9.0'));
+    expect(read(dir, 'mise.toml')).toBe(MISE_TOML);
+  });
+
+  it('writes nothing where the entry pins the target, and refuses outside the range, another from, or with no mise', async () => {
+    const dir = checkout({ 'mise.toml': MISE_TOML, 'mise.lock': lockAt('5.9.0') });
+    const asked: string[][] = [];
+    const mise: Mise = async (_, args) => {
+      asked.push(args);
+    };
+    await writePins(dir, { ecosystem: 'tool', name: 'k3d', from: '5.8.3', to: '5.9.0' }, tools(mise));
+    expect(asked).toEqual([]);
+    await expect(
+      writePins(dir, { ecosystem: 'tool', name: 'k3d', from: '5.9.0', to: '6.0.0' }, tools(mise)),
+    ).rejects.toThrow('k3d 6.0.0 is outside the range mise.toml gives it, 5.');
+    await expect(
+      writePins(dir, { ecosystem: 'tool', name: 'k3d', from: '5.8.0', to: '5.9.1' }, tools(mise)),
+    ).rejects.toThrow("mise.lock's k3d is 5.9.0, not 5.8.0.");
+    await expect(
+      writePins(dir, { ecosystem: 'tool', name: 'k3d', from: '5.9.0', to: '5.9.1' }, tools()),
+    ).rejects.toThrow('The pin step runs no mise here');
+    await expect(
+      writePins(dir, { ecosystem: 'tool', name: 'helm', from: '4.3.1', to: '4.3.2' }, tools(mise)),
+    ).rejects.toThrow('mise.lock has no entry for helm.');
+    expect(asked).toEqual([]);
   });
 });
 

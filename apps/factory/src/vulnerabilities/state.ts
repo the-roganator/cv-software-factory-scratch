@@ -95,13 +95,44 @@ export function readKey(text: string) {
 /** What a seal binds besides its bytes: the repository and the run it is on. */
 const bound = (repository: string, run: string) => Buffer.from(`scan state ${STATE_VERSION}\n${repository}\n${run}`);
 
-/** A state sealed for its repository and run. */
-export function seal(state: State, key: Buffer): Buffer {
+/**
+ * JSON sealed with the key, bound to what `aad` names: a state, or another of the scan's sealed files (the moves it
+ * made, github/made.ts), each bound to its own kind, repository and run, so none opens as another.
+ */
+export function sealJson(json: unknown, key: Buffer, aad: Buffer): Buffer {
   const iv = randomBytes(IV_BYTES);
   const cipher = createCipheriv('aes-256-gcm', key, iv);
-  cipher.setAAD(bound(state.repository, state.run));
-  const sealed = Buffer.concat([cipher.update(gzipSync(JSON.stringify(state))), cipher.final()]);
+  cipher.setAAD(aad);
+  const sealed = Buffer.concat([cipher.update(gzipSync(JSON.stringify(json))), cipher.final()]);
   return Buffer.concat([MAGIC, iv, cipher.getAuthTag(), sealed]);
+}
+
+/** Sealed JSON opened with the key, for what it is bound to, or a `StateError` naming `what` and `where`. */
+export function openJson(bytes: Buffer, key: Buffer, aad: Buffer, what: string, where: string): unknown {
+  if (bytes.length > MAX_SEALED_BYTES) throw new StateError(`the ${what} is too large`);
+  const head = MAGIC.length + IV_BYTES + TAG_BYTES;
+  if (bytes.length < head || !bytes.subarray(0, MAGIC.length).equals(MAGIC))
+    throw new StateError(`the file is not a sealed ${what}`);
+  let json: string;
+  try {
+    const decipher = createDecipheriv('aes-256-gcm', key, bytes.subarray(MAGIC.length, MAGIC.length + IV_BYTES));
+    decipher.setAAD(aad);
+    decipher.setAuthTag(bytes.subarray(MAGIC.length + IV_BYTES, head));
+    const zipped = Buffer.concat([decipher.update(bytes.subarray(head)), decipher.final()]);
+    json = gunzipSync(zipped, { maxOutputLength: MAX_STATE_BYTES }).toString('utf-8');
+  } catch {
+    throw new StateError(`the ${what} does not open with this key for ${where}`);
+  }
+  try {
+    return JSON.parse(json);
+  } catch {
+    throw new StateError(`the ${what} is not JSON`);
+  }
+}
+
+/** A state sealed for its repository and run. */
+export function seal(state: State, key: Buffer): Buffer {
+  return sealJson(state, key, bound(state.repository, state.run));
 }
 
 /**
@@ -109,26 +140,7 @@ export function seal(state: State, key: Buffer): Buffer {
  * `StateError`, and nothing of it is returned.
  */
 export function open(bytes: Buffer, key: Buffer, repository: string, run: string): State {
-  if (bytes.length > MAX_SEALED_BYTES) throw new StateError('the state is too large');
-  const head = MAGIC.length + IV_BYTES + TAG_BYTES;
-  if (bytes.length < head || !bytes.subarray(0, MAGIC.length).equals(MAGIC))
-    throw new StateError('the file is not a sealed state');
-  let json: string;
-  try {
-    const decipher = createDecipheriv('aes-256-gcm', key, bytes.subarray(MAGIC.length, MAGIC.length + IV_BYTES));
-    decipher.setAAD(bound(repository, run));
-    decipher.setAuthTag(bytes.subarray(MAGIC.length + IV_BYTES, head));
-    const zipped = Buffer.concat([decipher.update(bytes.subarray(head)), decipher.final()]);
-    json = gunzipSync(zipped, { maxOutputLength: MAX_STATE_BYTES }).toString('utf-8');
-  } catch {
-    throw new StateError(`the state does not open with this key for run ${run} of ${repository}`);
-  }
-  let state: unknown;
-  try {
-    state = JSON.parse(json);
-  } catch {
-    throw new StateError('the state is not JSON');
-  }
+  const state = openJson(bytes, key, bound(repository, run), 'state', `run ${run} of ${repository}`);
   const problem = problemOf(state, repository, run);
   if (problem) throw new StateError(`the state ${problem}`);
   return state as State;

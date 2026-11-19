@@ -236,8 +236,7 @@ describe('the day’s moves', () => {
       expect(laneOf(chart(false), { dependabot: ['/deploy/base/telemetry'] })).toBe('worker');
       expect(moves([chart(true)], context())[0]?.major).toBe(true);
     });
-    it('issue: what mise pins, a workflow, a tool', () => {
-      expect(laneOf(result({ kind: 'k3d', pin: { file: 'mise.lock', line: 40 } }))).toBe('issue');
+    it('issue: what the Makefile pins, and a workflow', () => {
       expect(laneOf(result({ kind: 'chart', name: 'argocd', pin: { file: 'Makefile', line: 7 } }))).toBe('issue');
       // Argo CD's chart, which the Makefile pins, even at a major.
       expect(
@@ -253,11 +252,25 @@ describe('the day’s moves', () => {
       expect(laneOf(result({ kind: 'workflow', pin: { file: '.github/workflows/check.yml', line: 30 } }))).toBe(
         'issue',
       );
-      expect(
-        laneOf(result({ kind: 'ours', name: 'pnpm', target: { kind: 'tool', tool: 'pnpm', version: '12.17.0' } })),
-      ).toBe('issue');
     });
-    it('a lockfile’s package: Dependabot’s while direct and within its day, else an issue', () => {
+    it('worker: what mise pins, k3d’s images and a tool’s release, which the pin step makes in the scan’s run', () => {
+      expect(laneOf(result({ kind: 'k3d', pin: { file: 'mise.lock', line: 40 } }))).toBe('worker');
+      expect(
+        laneOf(
+          result({
+            kind: 'ours',
+            name: 'pnpm',
+            pin: { file: 'mise.lock', line: 90 },
+            target: { kind: 'tool', tool: 'pnpm', version: '12.17.0' },
+          }),
+        ),
+      ).toBe('worker');
+      // In the app, the line's, as every move there is.
+      expect(
+        laneOf(result({ kind: 'k3d', pin: { file: 'mise.lock', line: 40 } }), { repository: APP, app: true }),
+      ).toBe('line');
+    });
+    it('a lockfile’s package: Dependabot’s while direct, alone and within its day, else the worker’s', () => {
       const npm = (name: string, over: Partial<Judged> = {}) => {
         const each = result({
           kind: 'lockfile',
@@ -273,12 +286,12 @@ describe('the day’s moves', () => {
       if (recent.finding.fix) recent.finding.fix.day = NOW - DAY / 2;
       expect(laneOf(recent)).toBe('dependabot');
       // Dependabot has had its day.
-      expect(laneOf(npm('example-a'))).toBe('issue');
+      expect(laneOf(npm('example-a'))).toBe('worker');
       // An indirect package.
       const indirect = npm('example-b');
       if (indirect.finding.fix) indirect.finding.fix.day = NOW - DAY / 2;
-      expect(laneOf(indirect)).toBe('issue');
-      // An image of ours with the same package: its other half is the lockfile.
+      expect(laneOf(indirect)).toBe('worker');
+      // An image of ours with the same package: the lockfile moves, and the image with the deploy after the merge.
       const both = [
         recent,
         {
@@ -286,7 +299,7 @@ describe('the day’s moves', () => {
           finding: recent.finding,
         },
       ];
-      expect(moves(both, context())[0]?.lane).toBe('issue');
+      expect(moves(both, context())[0]?.lane).toBe('worker');
     });
     it('dependabot: a pin its docker entries read, with no High or Critical on a deadline; else the worker', () => {
       const postgres = (severity: Severity, due?: number) =>
@@ -438,6 +451,6 @@ describe('a major, of any kind', () => {
       target: { kind: 'version', versions: ['4.0.1'] },
     });
     // A lockfile's major is in a lockfile's lane, as its package's any other move is.
-    expect(moves([npm], context())[0]).toMatchObject({ major: true, lane: 'issue' });
+    expect(moves([npm], context())[0]).toMatchObject({ major: true, lane: 'worker' });
   });
 });
