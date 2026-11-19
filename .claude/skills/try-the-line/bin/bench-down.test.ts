@@ -66,7 +66,7 @@ afterEach(() => {
 describe('bench-down', () => {
   it("stops the bench's gateway, and removes only the bench's containers, saying what each cost", async () => {
     const { child: gateway, port } = await listener(CHECKOUT, 'apps/factory/src/cli.ts', 'gateway');
-    docker(true, ['sf-bench-pg', 'k3d-software-factory-server-0', 'other-sf-bench-pg']);
+    docker(true, ['sf-bench-pg', 'k3d-software-factory-scratch-server-0', 'other-sf-bench-pg']);
     const r = down(port);
     await new Promise((resolve) => setTimeout(resolve, 100));
     expect(r.status).toBe(0);

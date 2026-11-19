@@ -61,7 +61,7 @@ export const PROOFS: NewEvent<'guardrail.proved'>[] = (Object.keys(CATALOGUE) as
       ...(ci
         ? {
             run: {
-              url: 'https://github.com/the-roganator/cv-software-factory/actions/runs/1834402',
+              url: 'https://github.com/the-roganator/cv-software-factory-scratch/actions/runs/1834402',
               at: '2026-10-06T11:20:00.000Z',
             },
           }

@@ -169,7 +169,7 @@ describe('the console’s copies', () => {
     };
     expect(page('do', 'true')).toEqual({ profile: 'do', allLocal: true, app: undefined });
     expect(page('mars', 'yes')).toEqual({ profile: 'local', allLocal: false, app: undefined });
-    expect(page('local', 'false', 'http://website.localhost:8080').app).toBe('http://website.localhost:8080');
+    expect(page('local', 'false', 'http://website.localhost:9080').app).toBe('http://website.localhost:9080');
     expect(page('local', 'false', 'javascript:alert(1)').app).toBeUndefined();
   });
 });
