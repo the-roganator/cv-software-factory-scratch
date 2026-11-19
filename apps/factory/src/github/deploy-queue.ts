@@ -4,8 +4,10 @@
  * moves the factory's own deploy pull request, which the review gate passes as an exact pin (`exact-pin`: every changed
  * line a digest under `deploy/`, each image signed by `build.yml` on main, from a commit ahead of the pin it replaces);
  * the pin watch (`pins.ts`) opens one pull request for each move of the vulnerability scan's, which the gate passes as
- * a move (`move`) when it is exactly the scan's moves, which the gate makes itself. These watches add each to the queue,
- * so a pin the gate passed reaches `main` with nobody's hand on it. The app's deploy pull request is the line's, within
+ * a move (`move`, or `major` for one across a major that clears no Critical) when it is exactly the scan's moves, which
+ * the gate makes itself. These watches add each to the queue, so a pin the gate passed reaches `main` with nobody's hand
+ * on it: the deploy pin at every autonomy level, as it runs only what Martin already merged, and a move only when the
+ * level in force allows its rule (`ENQUEUES`, `policy/line.ts`, read as `level.ts` reads it), as the line's are. The app's deploy pull request is the line's, within
  * Martin's autonomy level and auto-merge (`line/deploy.ts`); a pull request the gate held, even one Martin then
  * approved, a release, and anything else, is his.
  *
@@ -19,8 +21,9 @@
  *   cluster`), and the gate's rule is `exact-pin`;
  * - **a pin move**: it is the App's, from this repository's `factory/pin/<move>` (the pin watch's branch, one segment,
  *   as `guardPinBranch` has it) into main, not a draft, labelled `pin` by the App and by nobody else, every time it was
- *   labelled, its move one `PIN_WATCH_ONLY` names, by its exact name, and none Martin holds on its branch, and the gate's
- *   rule is `move`. The gate trusts no branch, label or title; the queue reads
+ *   labelled, its move one `PIN_WATCH_ONLY` names, by its exact name, and none Martin holds on its branch, the gate's
+ *   rule is `move` or `major`, and the autonomy level in force, read just before the enqueue, queues that rule
+ *   (Supervised when it cannot be read). The gate trusts no branch, label or title; the queue reads
  *   them so that nothing but the pin watch's own pull request rides the rule, and the verdict is what passes it;
  * - the review App's own `review` check on that head concluded with a verdict that passes it by that rule at that head
  *   (`merging.ts`): no other rule, and never a hold, a pending one, Martin's approval, or one for another head;
@@ -43,6 +46,7 @@
  * queues add nothing and record no enqueue. A dry run's own deploy and pin pull requests, which GitHub never had, are
  * not seen here: the dry run's reads merge its deploy on their own clock (`dry-run-reads.ts`).
  */
+import type { Autonomy } from '@software-factory/events';
 import type { Logger } from 'pino';
 import { z } from 'zod';
 import { FACTORY_REPOSITORY } from '../repositories.ts';
@@ -52,6 +56,7 @@ import { BranchRefused, pinBranch, type WatchedHeads } from './branches.ts';
 import { type GitHub, GitHubError } from './client.ts';
 import { DEPLOYS, type DeployTarget, deployLabel, isDeployTitle } from './deploys.ts';
 import { APP_USER, IssueRefused } from './issues.ts';
+import { type LevelReader, levelAllows } from './level.ts';
 import { REVIEW_CHECK, type ReviewVerdict } from './merging.ts';
 import { guardPinBranch, pinBranchFor } from './pin-guard.ts';
 import { PIN_LABEL, PIN_REPOS, type PinScope, pinTitle, titleIsExact } from './pins.ts';
@@ -91,6 +96,7 @@ export type QueueWait =
   | { waits: 'not-a-pin'; why: string }
   | { waits: 'verdict'; why: string }
   | { waits: 'checks'; why: string }
+  | { waits: 'level'; why: string }
   | { waits: 'failed'; why: string }
   | { waits: 'conflict'; why: string };
 
@@ -161,22 +167,42 @@ export function labelWait(events: LabelEvents, whole: boolean): QueueWait | unde
   return undefined;
 }
 
-/** The gate's rules a pull request the worker queues may pass by: a deploy pin's and a move's. Never `major`. */
-export type QueueRule = 'exact-pin' | 'move';
+/**
+ * The gate's rules a pull request the worker queues may pass by: a deploy pin's (`exact-pin`), and a move's (`move`, or
+ * `major` for one that crosses a major and clears no Critical), which the level then decides (`ENQUEUES`).
+ */
+export type QueueRule = 'exact-pin' | 'move' | 'major';
 
-/** Whether the gate passed a head by a rule: its own verdict on that head, by that rule alone, and not pending. */
+/** The rules a pin move may pass by: which of them the worker queues is the level's (`levelWait`). */
+export const MOVE_RULES: readonly QueueRule[] = ['move', 'major'];
+
+/** Whether the gate passed a head by one of the rules: its own verdict on that head, by one of them, and not pending. */
 export function verdictWait(
   verdict: Pick<ReviewVerdict, 'head' | 'judged' | 'problem'>,
   head: string,
-  rule: QueueRule,
-) {
+  rules: readonly QueueRule[],
+): QueueWait | undefined {
   const { judged } = verdict;
   if (verdict.head !== head || judged?.head !== head) {
-    return { waits: 'verdict' as const, why: verdict.problem ?? 'the gate has not judged this head' };
+    return { waits: 'verdict', why: verdict.problem ?? 'the gate has not judged this head' };
   }
-  if (judged.pending !== undefined) return { waits: 'verdict' as const, why: `the gate waits: ${judged.pending}` };
-  if (judged.rule !== rule) return { waits: 'verdict' as const, why: `the gate's rule is ${judged.rule}, not ${rule}` };
+  if (judged.pending !== undefined) return { waits: 'verdict', why: `the gate waits: ${judged.pending}` };
+  if (!(rules as readonly string[]).includes(judged.rule)) {
+    return { waits: 'verdict', why: `the gate's rule is ${judged.rule}, not ${rules.join(' or ')}` };
+  }
   return undefined;
+}
+
+const LEVEL_NAME: Record<Autonomy, string> = {
+  supervised: 'Supervised',
+  guarded: 'Guarded',
+  'lights-out': 'Lights-out',
+};
+
+/** Whether the autonomy level in force lets the worker queue a pull request the gate passed by a rule (`ENQUEUES`). */
+export function levelWait(autonomy: Autonomy, rule: QueueRule): QueueWait | undefined {
+  if (levelAllows(autonomy, rule)) return undefined;
+  return { waits: 'level', why: `at ${LEVEL_NAME[autonomy]} a ${rule} waits for Martin` };
 }
 
 /**
@@ -217,6 +243,11 @@ export interface DeployQueueDependencies {
    */
   heads: Pick<WatchedHeads, 'get'>;
   log: Logger;
+}
+
+/** The pin queue's: the queue's, and the autonomy level in force, which decides which moves it adds (`level.ts`). */
+export interface PinQueueDependencies extends DeployQueueDependencies {
+  level: LevelReader;
 }
 
 /**
@@ -284,9 +315,10 @@ async function queueOne(
   repo: string,
   kind: string,
   pull: QueuePull,
-  rule: QueueRule,
+  rules: readonly QueueRule[],
   attempt: Attempt,
   confirm?: () => Promise<QueueWait | undefined>,
+  level?: LevelReader,
 ): Promise<void> {
   const { reads, actions, recorder, log } = deps;
   const { number } = pull;
@@ -298,8 +330,10 @@ async function queueOne(
     reads.requiredChecks(repo, 'main'),
     reads.mergeability(repo, number),
   ]);
-  const gate = verdictWait(verdict, head, rule);
+  const gate = verdictWait(verdict, head, rules);
   if (gate) return state.wait(number, head, gate);
+  // The rule it passed by, one of `rules`: the verdict was read for this head.
+  const rule = verdict.judged?.rule as QueueRule;
   const checks = checksWait(runs, required);
   if (checks) return state.wait(number, head, checks);
   if (mergeable.head !== head || mergeable.conflicts !== false) {
@@ -310,6 +344,12 @@ async function queueOne(
   if (queue.head === head && queue.queued) {
     attempt.done = true;
     return;
+  }
+  // The level, read now, just before the enqueue, so a level Martin changed holds from this pass: no level read is
+  // Supervised (`level.ts`).
+  if (level) {
+    const allowed = levelWait(await level(), rule);
+    if (allowed) return state.wait(number, head, allowed);
   }
   // Read the last thing before the enqueue, so what it confirms (who labelled a pin move) is as fresh as it can be:
   // GitHub's enqueue takes no condition on a label: a label taken off in the one request between is not seen, and
@@ -368,7 +408,8 @@ export function deployQueueWatch(deps: DeployQueueDependencies, target: DeployTa
     if (attempt.done) return;
     const notOne = deployPullWait(target, pull) ?? headWait(deps.heads, repo, pull, 'not-a-deploy');
     if (notOne) return state.wait(pull.number, pull.head.sha, notOne);
-    await queueOne(deps, state, repo, 'deploy', pull, 'exact-pin', attempt);
+    // The deploy pin runs only what Martin already merged: the level does not govern it, and it is queued at every one.
+    await queueOne(deps, state, repo, 'deploy', pull, ['exact-pin'], attempt);
   };
 }
 
@@ -442,12 +483,12 @@ const CLOSED = z.array(
 
 /**
  * Watches the pin watch's open pull requests in a repository, and adds each to the merge queue once the gate passed
- * its head as a move and its checks are green. Only a move the watch is told to take (`only`, `PIN_WATCH_ONLY`) is
+ * its head as a move the autonomy level queues and its checks are green. Only a move the watch is told to take (`only`, `PIN_WATCH_ONLY`) is
  * queued, as the watch opens only those: one left open from an earlier setting, or opened by hand on a pin branch,
  * waits; told none, it reads nothing. A pull request on a pin branch or labelled `pin` that is not the pin watch's own
  * waits, and says why; every other open pull request is not read further.
  */
-export function pinQueueWatch(deps: DeployQueueDependencies, repo: string, only: PinScope = []): Watch {
+export function pinQueueWatch(deps: PinQueueDependencies, repo: string, only: PinScope = []): Watch {
   const { github } = deps;
   if (!PIN_REPOS.includes(repo)) throw new Error(`The worker does not queue ${repo}'s pin moves.`);
   const state = queueState(deps, repo, 'pin');
@@ -558,9 +599,14 @@ export function pinQueueWatch(deps: DeployQueueDependencies, repo: string, only:
         return labelWait(events, whole) ?? (await heldBefore(pull));
       };
       // One pull request that cannot be read (closed since the list, an answer that does not parse) holds only itself.
-      await queueOne(deps, state, repo, 'pin', pull, 'move', attempt, labelled).catch((error: unknown) => {
-        deps.log.warn({ repo, number, head, err: error }, 'could not read the pin pull request: tries again next pass');
-      });
+      await queueOne(deps, state, repo, 'pin', pull, MOVE_RULES, attempt, labelled, deps.level).catch(
+        (error: unknown) => {
+          deps.log.warn(
+            { repo, number, head, err: error },
+            'could not read the pin pull request: tries again next pass',
+          );
+        },
+      );
     }
   };
 }
