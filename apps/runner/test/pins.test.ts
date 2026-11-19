@@ -2,6 +2,8 @@ import { execFileSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { Readable } from 'node:stream';
+import { gzipSync } from 'node:zlib';
 import { describe, expect, it } from 'vitest';
 import {
   admits,
@@ -11,6 +13,8 @@ import {
   type Get,
   lockedVersions,
   movedRange,
+  nodeInImage,
+  nodeInTar,
   nodeLockMoved,
   notFromRegistry,
   PinsHeld,
@@ -375,7 +379,163 @@ describe('Node’s move', () => {
     expect(releaseAge(MISE_TOML)).toBe(3 * 86_400_000);
     expect(releaseAge('[settings]\n')).toBe(0);
   });
+
+  it('writes nothing where mise.toml pins its target already: the move is made', async () => {
+    const files = {
+      'mise.toml': MISE_TOML.replace('24.22.1', '24.22.2'),
+      'mise.lock': MISE_LOCK('24.22.2', 'a'.repeat(64)),
+      Dockerfile: DOCKERFILE.replace('24.22.1', '24.22.2'),
+    };
+    const dir = checkout(files);
+    await writePins(
+      dir,
+      { ecosystem: 'node', name: 'node', from: '24.22.1', to: '24.22.2' },
+      {
+        pnpm: fakePnpm(() => {}).pnpm,
+        get: noRegistry,
+        aside: dir,
+      },
+    );
+    for (const [path, text] of Object.entries(files)) expect(read(dir, path)).toBe(text);
+  });
+
+  describe('brought by the runtime image’s move (test 10)', () => {
+    const RUNTIME = 'gcr.io/distroless/nodejs24-debian13';
+    const MOVED = `sha256:${'5'.repeat(64)}`;
+    const PLATFORM = `sha256:${'6'.repeat(64)}`;
+    const CONFIG = `sha256:${'7'.repeat(64)}`;
+    const LAYERS = [`sha256:${'8'.repeat(64)}`, `sha256:${'9'.repeat(64)}`];
+    /** The runtime at MOVED: an index, linux on amd64's manifest, a configuration with no NODE_VERSION, two layers. */
+    const runtime =
+      (release: string): Get =>
+      async (url, init) => {
+        const base = 'https://gcr.io/v2/distroless/nodejs24-debian13';
+        if (url === `${base}/manifests/nonroot`)
+          return new Response(null, { headers: { 'docker-content-digest': MOVED } });
+        if (url === `${base}/manifests/${MOVED}`)
+          return Response.json({
+            manifests: [
+              { digest: `sha256:${'0'.repeat(64)}`, platform: { os: 'linux', architecture: 'arm64' } },
+              { digest: PLATFORM, platform: { os: 'linux', architecture: 'amd64' } },
+            ],
+          });
+        if (url === `${base}/manifests/${PLATFORM}`)
+          return Response.json({
+            config: { digest: CONFIG },
+            layers: LAYERS.map((digest) => ({ digest, mediaType: 'application/vnd.oci.image.layer.v1.tar+gzip' })),
+          });
+        if (url === `${base}/blobs/${CONFIG}`) return Response.json({ config: { Env: ['PATH=/usr/bin'] } });
+        // The last layer holds Node, as distroless's does; the first is never read.
+        if (url === `${base}/blobs/${LAYERS[1]}`)
+          return new Response(
+            gzipSync(
+              tar([
+                ['nodejs/LICENSE', 'MIT'],
+                [
+                  'nodejs/bin/node',
+                  `\x7fELF…https://nodejs.org/download/release/v${release}/node-v${release}-headers.tar.gz…`,
+                ],
+              ]),
+            ),
+          );
+        return registries(url, init);
+      };
+    const move = { ecosystem: 'docker' as const, name: RUNTIME, from: 'nonroot', to: `nonroot@${MOVED}` };
+    const files = () => ({
+      'mise.toml': MISE_TOML,
+      'mise.lock': MISE_LOCK('24.22.1', 'f'.repeat(64)),
+      Dockerfile: DOCKERFILE,
+    });
+
+    it('moves Node to the release the image at the move’s digest runs, and pins the image at that digest', async () => {
+      const dir = checkout(files());
+      const tools = {
+        pnpm: fakePnpm(() => {}).pnpm,
+        get: runtime('24.22.2'),
+        aside: dir,
+        now: Date.parse('2026-11-11'),
+      };
+      await writePins(dir, move, tools);
+      expect(read(dir, 'mise.toml')).toBe(MISE_TOML.replace('24.22.1', '24.22.2'));
+      expect(read(dir, 'mise.lock')).toContain('version = "24.22.2"');
+      expect(read(dir, 'Dockerfile')).toBe(
+        `FROM node:24.22.2-alpine3.24@sha256:${'3'.repeat(64)} AS build\nRUN true\nFROM ${RUNTIME}:nonroot@${MOVED}\n`,
+      );
+    });
+
+    it('moves the image alone where it runs the Node mise.toml pins', async () => {
+      const dir = checkout(files());
+      await writePins(dir, move, { pnpm: fakePnpm(() => {}).pnpm, get: runtime('24.22.1'), aside: dir });
+      expect(read(dir, 'mise.toml')).toBe(MISE_TOML);
+      expect(read(dir, 'Dockerfile')).toBe(DOCKERFILE.replace(`sha256:${'2'.repeat(64)}`, MOVED));
+    });
+
+    it('refuses a Node behind mise.toml’s, and one younger than its minimum_release_age, writing nothing', async () => {
+      for (const [release, now, why] of [
+        ['24.21.0', '2026-11-11', 'runs Node 24.21.0, behind the 24.22.1 mise.toml pins'],
+        ['24.22.2', '2026-11-02', 'within mise.toml'],
+      ] as const) {
+        const dir = checkout(files());
+        const tools = { pnpm: fakePnpm(() => {}).pnpm, get: runtime(release), aside: dir, now: Date.parse(now) };
+        await expect(writePins(dir, move, tools)).rejects.toThrow(why);
+        for (const [path, text] of Object.entries(files())) expect(read(dir, path)).toBe(text);
+      }
+    });
+  });
 });
+
+describe('the Node an image runs', () => {
+  it('reads Node’s own images’ NODE_VERSION, with no layer fetched', async () => {
+    const asked: string[] = [];
+    const get: Get = async (url) => {
+      asked.push(url);
+      if (url.endsWith(`/manifests/sha256:${'1'.repeat(64)}`))
+        return Response.json({ config: { digest: `sha256:${'2'.repeat(64)}` }, layers: [] });
+      return Response.json({ config: { Env: ['PATH=/usr/bin', 'NODE_VERSION=24.22.3', 'YARN_VERSION=1.22.22'] } });
+    };
+    expect(await nodeInImage('node', `sha256:${'1'.repeat(64)}`, get)).toBe('24.22.3');
+    expect(asked).toHaveLength(2);
+  });
+
+  it('reads a tar’s bin/node by its ustar prefix or a GNU long name, plain or gzipped, and nothing else', async () => {
+    const binary = 'one\0two https://nodejs.org/download/release/v24.22.3/node-v24.22.3.tar.gz three';
+    const long = `${'very/'.repeat(30)}nodejs/bin/node`;
+    expect(await nodeInTar(Readable.from([tar([['opt/bin/node', binary]], 'opt')]), false)).toBe('24.22.3');
+    expect(await nodeInTar(Readable.from([gzipSync(tar([[long, binary]]))]), true)).toBe('24.22.3');
+    // Split across chunks, the URL still reads.
+    const whole = tar([['nodejs/bin/node', binary]]);
+    const at = whole.indexOf('download/release');
+    expect(await nodeInTar(Readable.from([whole.subarray(0, at), whole.subarray(at)]), false)).toBe('24.22.3');
+    expect(await nodeInTar(Readable.from([tar([['nodejs/bin/nodejs-helper', binary]])]), false)).toBeUndefined();
+  });
+});
+
+/** A tar of these files, a GNU long-name entry before any name past 100 bytes, or under a ustar prefix. */
+function tar(files: [string, string][], prefix = ''): Buffer {
+  const header = (name: string, size: number, type: string) => {
+    const block = Buffer.alloc(512);
+    block.write(name.slice(0, 100), 0, 'utf8');
+    block.write(size.toString(8).padStart(11, '0'), 124, 'latin1');
+    block.write(type, 156, 'latin1');
+    block.write('ustar\0', 257, 'latin1');
+    return block;
+  };
+  const pad = (size: number) => Buffer.alloc((512 - (size % 512)) % 512);
+  const blocks: Buffer[] = [];
+  for (const [path, text] of files) {
+    const body = Buffer.from(text, 'latin1');
+    let name = prefix && path.startsWith(`${prefix}/`) ? path.slice(prefix.length + 1) : path;
+    if (name.length > 100) {
+      const long = Buffer.from(`${name}\0`);
+      blocks.push(header('././@LongLink', long.length, 'L'), long, pad(long.length));
+      name = name.slice(0, 100);
+    }
+    const head = header(name, body.length, '0');
+    if (prefix && path.startsWith(`${prefix}/`)) head.write(prefix, 345, 'utf8');
+    blocks.push(head, body, pad(body.length));
+  }
+  return Buffer.concat([...blocks, Buffer.alloc(1024)]);
+}
 
 describe('a base image’s move', () => {
   it('takes the digest only from the registry, and refuses a target the registry does not have at that tag', async () => {
