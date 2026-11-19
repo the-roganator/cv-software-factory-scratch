@@ -37,7 +37,7 @@ describe('the local cluster', () => {
   });
 
   it('publishes the Kubernetes API on 127.0.0.1, at a fixed port', () => {
-    expect(cluster.kubeAPI).toEqual({ hostIP: '127.0.0.1', hostPort: '6550' });
+    expect(cluster.kubeAPI).toEqual({ hostIP: '127.0.0.1', hostPort: '6551' });
   });
 
   // k3d cannot change a node's image, so the cluster moves to a new k3s on the state it keeps off the node: k3s's data
@@ -150,7 +150,7 @@ describe('root, at a revision', () => {
     for (const { metadata, spec } of applications) {
       if (metadata.name === 'website') {
         expect(metadata.labels?.['software-factory/repository']).toBe('app');
-        expect(spec.source?.repoURL).toBe('https://github.com/the-roganator/cv-worlds-worst-website.git');
+        expect(spec.source?.repoURL).toBe('https://github.com/the-roganator/cv-worlds-worst-website-scratch.git');
         continue;
       }
       const values = spec.sources?.[1];
@@ -163,7 +163,7 @@ describe('root, at a revision', () => {
   });
 });
 
-const THIS_REPOSITORY = 'https://github.com/the-roganator/cv-software-factory.git';
+const THIS_REPOSITORY = 'https://github.com/the-roganator/cv-software-factory-scratch.git';
 interface Application {
   kind: string;
   metadata: { name: string; labels?: Record<string, string> };

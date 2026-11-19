@@ -668,7 +668,7 @@ describe('Verify when no sense can look', () => {
 describe('Verify by the scan', () => {
   const FIXTURES = new URL('../github/fixtures/scanning/', import.meta.url);
   const fixture = <T>(name: string): T => JSON.parse(readFileSync(new URL(name, FIXTURES), 'utf8')) as T;
-  const REPO = 'the-roganator/cv-worlds-worst-website';
+  const REPO = 'the-roganator/cv-worlds-worst-website-scratch';
   const SCANNED = 'c'.repeat(40);
   const RUNNING = `sha256:${'2'.repeat(64)}`;
   const run: ScanRun = {
@@ -677,7 +677,7 @@ describe('Verify by the scan', () => {
     conclusion: 'success',
     headSha: SCANNED,
     updatedAt: '2026-11-10T06:20:00Z',
-    url: 'https://github.com/the-roganator/cv-worlds-worst-website/actions/runs/42000000001',
+    url: 'https://github.com/the-roganator/cv-worlds-worst-website-scratch/actions/runs/42000000001',
   };
 
   /** The recorded read, or, with `fixedLockfile`, the same day once the lockfile's move has merged: its move gone. */
