@@ -93,7 +93,7 @@ function nodeMove(read: ReadMove, target: Target | undefined): { from: string; t
 }
 
 /** A read move as the signal names it, or why it cannot be sent: it has no target to move to, or no ecosystem. */
-function moveOf(repository: string, read: ReadMove): Move | string {
+export function moveOf(repository: string, read: ReadMove): Move | string {
   if (read.lockfile) {
     const withheld = read.withheld;
     if (!withheld) return 'a lockfile’s move whose package the scan’s state does not give';

@@ -449,7 +449,7 @@ const pinVerdict = (
   head,
   check: null,
   verdict: null,
-  judged: judged === null ? null : { number, head, rule: 'pin-move', tags: [], ...judged },
+  judged: judged === null ? null : { number, head, rule: 'move', tags: [], ...judged },
   problem: judged === null ? 'the review App has posted no review check' : null,
 });
 
@@ -894,12 +894,12 @@ describe('the pin queue watch', () => {
     ['a pin move at an older head', pinVerdict(OLDER)],
     [
       'judged at an older head under the current one',
-      { ...pinVerdict(PIN_HEAD), judged: { number: 1040, head: OLDER, rule: 'pin-move', tags: [] } },
+      { ...pinVerdict(PIN_HEAD), judged: { number: 1040, head: OLDER, rule: 'move', tags: [] } },
     ],
   ];
   for (const [what, v] of verdicts) {
     it(`never queues a pin move whose verdict at its head is ${what}`, async () => {
-      expect(verdictWait(v, PIN_HEAD, 'pin-move')?.waits).toBe('verdict');
+      expect(verdictWait(v, PIN_HEAD, 'move')?.waits).toBe('verdict');
       const { pass, enqueued } = pinHarness({ verdict: () => v });
       await pass();
       expect(enqueued).toEqual([]);
@@ -907,7 +907,7 @@ describe('the pin queue watch', () => {
   }
   it('never takes a pin move as a deploy pin, nor a deploy pin as a pin move', () => {
     expect(verdictWait(pinVerdict(PIN_HEAD), PIN_HEAD, 'exact-pin')?.waits).toBe('verdict');
-    expect(verdictWait(verdict(HEAD), HEAD, 'pin-move')?.waits).toBe('verdict');
+    expect(verdictWait(verdict(HEAD), HEAD, 'move')?.waits).toBe('verdict');
   });
 
   const checks: [string, CheckRun[]][] = [
