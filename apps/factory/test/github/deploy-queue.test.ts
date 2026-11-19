@@ -20,6 +20,7 @@ import {
   MAX_TRIES,
   pinPullWait,
   pinQueueWatch,
+  QUEUE_TRIES,
   QUEUED_DEPLOYS,
   type QueuePull,
   toldWait,
@@ -296,6 +297,152 @@ describe('the deploy queue watch', () => {
     const { pass, enqueued } = harness({ queued: () => queued });
     await pass();
     expect(enqueued).toEqual([]);
+  });
+
+  /** A queue that fails every head it is given: each pass after an enqueue finds it taken out for failed checks. */
+  const failing = (reason = 'failed_checks') => {
+    let outs = 0;
+    const said: [number, string][] = [];
+    const h = harness({
+      queued: () =>
+        outs === 0
+          ? queue()
+          : queue({
+              added: { at: '2026-11-18T04:47:47Z', by: 'mrogan-software-factory' },
+              removed: {
+                at: '2026-11-18T04:53:12Z',
+                by: 'github-merge-queue',
+                reason,
+                commit: 'c'.repeat(40),
+                failures: reason === 'failed_checks' ? outs : 0,
+              },
+              checks: [run('lint, types, tests', 'failure'), run('browser tests', 'skipped')],
+            }),
+      actions: {
+        enqueuePullRequest: async (_repo, number, head) => {
+          outs++;
+          h.enqueued.push([number, head]);
+          return { position: 1, state: 'QUEUED' };
+        },
+        comment: async (_repo, number, body) => {
+          said.push([number, body]);
+        },
+      },
+    });
+    return { ...h, said };
+  };
+
+  it('adds a head the queue took out for failed checks again, QUEUE_TRIES times in all, then says so once', async () => {
+    const { pass, enqueued, said } = failing();
+    for (let i = 0; i < QUEUE_TRIES; i++) await pass();
+    expect(enqueued).toEqual(Array.from({ length: QUEUE_TRIES }, () => [973, HEAD]));
+    expect(said).toEqual([]);
+    for (let i = 0; i < 3; i++) await pass();
+    expect(enqueued).toHaveLength(QUEUE_TRIES);
+    expect(said).toHaveLength(1);
+    expect(said[0]?.[0]).toBe(973);
+    expect(said[0]?.[1]).toContain(`out ${QUEUE_TRIES} times at aaaaaaa`);
+    expect(said[0]?.[1]).toContain('`lint, types, tests` failed');
+    expect(said[0]?.[1]).not.toContain('browser tests');
+  });
+
+  it('counts the queue’s failures from GitHub, so a worker that restarts neither starts again nor stops early', async () => {
+    const out = (failures: number) =>
+      queue({
+        added: { at: '2026-11-18T04:47:47Z', by: 'mrogan-software-factory' },
+        removed: {
+          at: '2026-11-18T04:53:12Z',
+          by: 'github-merge-queue',
+          reason: 'FAILED_CHECKS',
+          commit: 'c'.repeat(40),
+          failures,
+        },
+      });
+    // A worker new to the head, which another before it added: one failure short, it adds it; at the limit, never.
+    const short = harness({ queued: () => out(QUEUE_TRIES - 1) });
+    await short.pass();
+    expect(short.enqueued).toEqual([[973, HEAD]]);
+    const spent = harness({ queued: () => out(QUEUE_TRIES) });
+    await spent.pass();
+    await spent.pass();
+    expect(spent.enqueued).toEqual([]);
+    // Failures at a head it has left are not this head's: the read counts none, and the new head is added.
+    const moved = harness({ queued: () => out(0) });
+    await moved.pass();
+    expect(moved.enqueued).toEqual([[973, HEAD]]);
+  });
+
+  it('tries the comment again on the next pass when it could not be made, and adds nothing meanwhile', async () => {
+    let fails = 1;
+    const said: string[] = [];
+    const enqueued: number[] = [];
+    const { pass } = harness({
+      queued: () =>
+        queue({
+          removed: {
+            at: '2026-11-18T04:53:12Z',
+            by: 'github-merge-queue',
+            reason: 'failed_checks',
+            commit: null,
+            failures: QUEUE_TRIES,
+          },
+        }),
+      actions: {
+        enqueuePullRequest: async (_repo, number) => {
+          enqueued.push(number);
+          return { position: 1, state: 'QUEUED' };
+        },
+        comment: async (_repo, _number, body) => {
+          if (fails-- > 0) throw new GitHubError('server', 'Bad gateway', 502);
+          said.push(body);
+        },
+      },
+    });
+    await expect(pass()).rejects.toThrow('Bad gateway');
+    await pass();
+    await pass();
+    expect(said).toHaveLength(1);
+    expect(enqueued).toEqual([]);
+  });
+
+  it('never adds again a head that left the queue for any reason but failed checks', async () => {
+    for (const reason of ['dequeued', 'merge_conflict', 'queue_cleared']) {
+      const { pass, enqueued, said } = failing(reason);
+      for (let i = 0; i < 4; i++) await pass();
+      expect(enqueued, reason).toHaveLength(1);
+      expect(said, reason).toEqual([]);
+    }
+  });
+
+  it('adds a failed head again only while the gate, its checks and main still pass it', async () => {
+    let judged: Parameters<typeof verdict>[1] = {};
+    let outs = 0;
+    const h = harness({
+      verdict: () => verdict(HEAD, judged),
+      queued: () =>
+        outs === 0
+          ? queue()
+          : queue({
+              removed: {
+                at: '2026-11-18T04:53:12Z',
+                by: 'github-merge-queue',
+                reason: 'failed_checks',
+                commit: null,
+                failures: outs,
+              },
+            }),
+      enqueue: async () => {
+        outs++;
+        return { position: 1, state: 'QUEUED' };
+      },
+    });
+    await h.pass();
+    judged = { rule: 'held' };
+    await h.pass();
+    expect(h.enqueued).toHaveLength(1);
+    judged = {};
+    await h.pass();
+    expect(h.enqueued).toHaveLength(2);
   });
 
   it('keeps and signs GitHub’s refusal, and does not ask again at that head', async () => {
