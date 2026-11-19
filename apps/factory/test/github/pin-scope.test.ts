@@ -130,7 +130,14 @@ function queue(repo: FakeRepo, only: PinScope) {
   };
   return {
     pass: pinQueueWatch(
-      { github, reads, actions, heads: { get: (_r: string, branch: string) => headOf(branch) }, log: quiet },
+      {
+        github,
+        reads,
+        actions,
+        heads: { get: (_r: string, branch: string) => headOf(branch) },
+        level: async () => 'guarded' as const,
+        log: quiet,
+      },
       FACTORY,
       only,
     ),
