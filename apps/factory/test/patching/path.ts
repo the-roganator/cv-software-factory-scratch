@@ -10,7 +10,7 @@ import { execFileSync } from 'node:child_process';
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { codeOwners, type FileChange, fixTagsHold, tagsOf } from '../../../../scripts/review-routing.ts';
+import { codeOwners, type FileChange, tagsOf } from '../../../../scripts/review-routing.ts';
 import { PinsHeld, PinsRefused, writePins } from '../../../runner/src/pins.ts';
 import { filesIn } from '../../src/github/patches.ts';
 import { pinStepRefusals, protectedFrom } from '../../src/github/paths.ts';
@@ -177,9 +177,8 @@ export interface Carried {
   heldForMartin?: string;
   /** The worker's guard on the pin step's patch: its refusals, none when it passes. */
   guard?: string[];
-  /** The review gate's tags of the patch, and why a Critical fix's proof could not pass them, if it could not. */
+  /** The review gate's tags of the patch. */
   tags?: string[];
-  fixHeld?: string;
   /**
    * Set when the pins the step wrote leave the build stage's Node and mise.toml's apart, which the app's own check
    * (its test/node-pins.test.ts) fails on: the pull request opens with a required check it cannot pass.
@@ -316,8 +315,6 @@ export async function carry(findings: Finding[], targets: ReadTarget[], world: W
           excused: [],
         });
         step.tags = found.map((each) => each.tag);
-        const held = fixTagsHold(found);
-        if (held) step.fixHeld = held;
       }
     } catch (error) {
       if (error instanceof PinsHeld) step.heldForMartin = error.message;
