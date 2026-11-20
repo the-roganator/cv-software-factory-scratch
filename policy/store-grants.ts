@@ -264,8 +264,9 @@ export const STORE_GRANTS = {
   },
   factory_github: {
     for:
-      'The GitHub worker: reads the autonomy level, the latest of Martin’s controls (`controls.changed`), so it adds ' +
-      'to the merge queue only the moves the level queues (`ENQUEUES`, `policy/line.ts`), and nothing else: the ' +
+      'The GitHub worker: reads the autonomy level and auto-merge, the latest of Martin’s controls ' +
+      '(`controls.changed`), so it adds to the merge queue only the moves they queue (`enqueues`, ' +
+      '`policy/line.ts`), and nothing else: the ' +
       'columns that read needs, of the controls his roles appended. It appends nothing, and reads no other table ' +
       '(0053_github-reads-the-level.sql). Its password is in `postgres-github`.',
     on: { events: ['select (seq, type, version, payload, appended_by)'] },
