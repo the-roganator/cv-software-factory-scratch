@@ -20,7 +20,9 @@
  *   in Node's release index. For anything else in an image (an operating system's package, a binary it ships), from
  *   the creation of the newest image on the line of the pin that brings it (the runtime stage of its Dockerfile, for an
  *   image of ours), found as `scripts/ci-images.sh`'s `newest` finds it, or the tag's current image for a tag that is
- *   not a version, once that image no longer has the finding. An image that arrives only with a k3s release is
+ *   not a version, once that image no longer has the finding; in the app, an image that runs Node only once the Node it
+ *   runs is one mise may install, the release `mise.toml` pins or a later one as old as its `minimum_release_age`, as
+ *   the pin step moves Node with it. An image that arrives only with a k3s release is
  *   installable from the day the first k3s release after the pin on its Kubernetes minor (its node image's tags) was
  *   published whose `k3s-images.txt` lists a copy without the finding. In an image of ours, only what its runtime stage's image
  *   has comes that way; anything else its Dockerfile adds, but an npm package, has no fix to count from. A package in
@@ -73,6 +75,7 @@ import {
 } from './moves.ts';
 import { satisfies } from './node.ts';
 import { DIGEST, hasRegistry, repositoryOf, splitReference } from './reference.ts';
+import { nodeInImage, PinsRefused, releaseAge, runsNode } from './registry.ts';
 import {
   alertKey,
   type Finding,
@@ -185,6 +188,8 @@ export interface Sources {
   tool(tool: string, version: string): Promise<TrivyReport | undefined>;
   /** A k3s release (`v1.37.2+k3s1`): when it was published, and the images its `k3s-images.txt` lists. */
   k3s(release: string): Promise<{ published: string; images: string[] } | undefined>;
+  /** The Node release an image at a digest runs, as the pin step reads it, or undefined where it names none. */
+  node(image: string, digest: string): Promise<string | undefined>;
   /** A file of the scanned checkout, or undefined. */
   file(path: string): string | undefined;
   /** The scan's alerts: open, dismissed, and closed as fixed. Read only when there is no state to read. */
@@ -487,6 +492,8 @@ export async function installable(
   log: (line: string) => void = () => {},
   now = Date.now(),
   kubeVersion?: string,
+  /** Whether the checkout is the app's, whose line moves Node with each image that runs it. */
+  app = false,
 ) {
   const kinds = new Map(targets.map((target) => [target.key, target]));
   const at: (number | undefined)[] = findings.map(() => undefined);
@@ -630,6 +637,44 @@ export async function installable(
     if (!once) {
       once = sources.digest(reference);
       digests.set(reference, once);
+    }
+    return once;
+  };
+  // In the app, mise.toml pins the one Node every image of Node runs, and an image that runs another moves Node with it
+  // (apps/runner/src/pins.ts's `moveImage`): it is no fix until that Node is one mise may install.
+  const miseToml = sources.file('mise.toml') ?? '';
+  const pinnedNode = /^node\s*=\s*"(\d+\.\d+\.\d+)"\s*$/m.exec(miseToml)?.[1];
+  const miseAge = releaseAge(miseToml);
+  const nodeReadies = new Map<string, Promise<number | undefined>>();
+  /**
+   * When the image at a reference may be moved to, for the Node it runs: at once for the release mise.toml pins (or
+   * an image that runs no Node); the day its own release is as old as mise.toml's `minimum_release_age`, for a later
+   * one; never for one behind, or one it does not say. The image's own day still counts as well.
+   */
+  const nodeReady = (reference: string) => {
+    let once = nodeReadies.get(reference);
+    if (!once) {
+      once = (async () => {
+        const repository = repositoryOf(reference);
+        if (!pinnedNode || !runsNode(repository)) return 0;
+        const runs = await sources.node(repository, await digestOf(reference));
+        if (runs === pinnedNode) return 0;
+        const why = !runs
+          ? 'names no release of Node the scan can read'
+          : compareVersions(runs, pinnedNode) < 0
+            ? `runs Node ${runs}, behind the ${pinnedNode} mise.toml pins`
+            : undefined;
+        releases ??= sources.releases();
+        const release = runs && !why ? (await releases).find((each) => each.version === `v${runs}`) : undefined;
+        if (!runs || why || !release) {
+          log(
+            `::warning::${reference} ${why ?? `runs Node ${runs}, which Node's release index does not list`}: no fix to count from.`,
+          );
+          return undefined;
+        }
+        return time(`${release.date}T00:00:00Z`) + miseAge;
+      })();
+      nodeReadies.set(reference, once);
     }
     return once;
   };
@@ -899,9 +944,12 @@ export async function installable(
       if (!latest) return;
       const image = await scanned(latest.reference, true);
       if (!image.has.has(has(finding.package, finding.advisory))) {
+        // In the app, an image that runs Node brings its Node, which waits for mise as Node's own move does.
+        const ready = app && target.kind !== 'k3s' ? await nodeReady(latest.reference) : 0;
+        if (ready === undefined) return;
         // An image that gives no time it was made is installable from now, the day the scan first saw it without the
         // finding: the state keeps that day for every run after (`fixesOf` takes the earlier).
-        at[index] = image.created ?? now;
+        at[index] = Math.max(image.created ?? now, ready);
         fixes[index] =
           target.kind === 'k3s'
             ? { kind: 'k3s', release: latest.tag.replace(/-(k3s\d+)$/, '+$1') }
@@ -1228,6 +1276,7 @@ export async function assess(handoff: Handoff, sources: Sources, now: number, lo
       log,
       now,
       handoff.kubeVersion,
+      handoff.repository === APP,
     ),
     kept,
   ]);
@@ -1349,6 +1398,18 @@ function realSources(
         times.set(name, once);
       }
       return (await once)[version];
+    },
+    // As the pin step reads it, from the registry as data: a refusal (no Node it can read) is an answer, not a pull to
+    // try again.
+    async node(image, digest) {
+      return transient(() =>
+        nodeInImage(image, digest, (url, init) =>
+          fetch(url, { redirect: 'follow', ...init, signal: AbortSignal.timeout(300_000) }),
+        ).catch((error: unknown) => {
+          if (error instanceof PinsRefused) return undefined;
+          throw error;
+        }),
+      );
     },
     async releases() {
       const body = await transient(() => get(NODE_INDEX, "Node's release index"));
