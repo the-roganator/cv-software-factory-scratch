@@ -170,15 +170,15 @@ jobs:
       # Healthy (scripts/wait-deployed.sh), so a canary in flight on the app's main holds no change here.
       - name: Every Application Synced and Healthy
         run: |
-          kubectl --context k3d-software-factory -n argocd get applications \
+          kubectl --context k3d-software-factory-scratch -n argocd get applications \
             -o custom-columns='APPLICATION:.metadata.name,SYNC:.status.sync.status,HEALTH:.status.health.status,REVISION:.status.sync.revision'
-          unready=$(kubectl --context k3d-software-factory -n argocd get applications -o json |
+          unready=$(kubectl --context k3d-software-factory-scratch -n argocd get applications -o json |
             jq -r '.items[] | select(.status.sync.status != "Synced" or
               (.status.health.status != "Healthy" and (.metadata.name | IN("root", "website") | not))) | .metadata.name')
           if [ -n "$unready" ]; then echo "::error::Not Synced and Healthy: $(echo $unready)"; exit 1; fi
       - name: Every image policy enforcing, and admission ready
         run: |
-          policies=$(kubectl --context k3d-software-factory get imagevalidatingpolicies -o json |
+          policies=$(kubectl --context k3d-software-factory-scratch get imagevalidatingpolicies -o json |
             jq -r '.items[] | "\(.metadata.name) \(.spec.validationActions | join(","))"')
           echo "$policies"
           [ -n "$policies" ] || { echo "::error::No image policy on the cluster."; exit 1; }
@@ -222,7 +222,7 @@ jobs:
         if: ${{ always() }}
         timeout-minutes: 5
         env:
-          KUBECTL: kubectl --context k3d-software-factory
+          KUBECTL: kubectl --context k3d-software-factory-scratch
         run: |
           if [ -e "$RUNNER_TEMP/queue-gone" ]; then echo "The merge queue let this entry go: nothing to show."; exit 0; fi
           scripts/platform-timeline.sh | tee "$RUNNER_TEMP/measure/timeline.md"
@@ -239,44 +239,44 @@ jobs:
           echo "Peak memory in use: $(sort -n "$RUNNER_TEMP/measure/memory" | tail -1) MiB"
           df -h / | tail -1
           docker system df || true
-          kubectl --context k3d-software-factory -n argocd get applications \
+          kubectl --context k3d-software-factory-scratch -n argocd get applications \
             -o custom-columns='APPLICATION:.metadata.name,SYNC:.status.sync.status,HEALTH:.status.health.status,PHASE:.status.operationState.phase,MESSAGE:.status.operationState.message' || true
-          kubectl --context k3d-software-factory -n argocd get applications -o json | jq -r '.items[] | .metadata.name as $app |
+          kubectl --context k3d-software-factory-scratch -n argocd get applications -o json | jq -r '.items[] | .metadata.name as $app |
             (.status.conditions[]? | "\($app) condition \(.type): \(.message)"),
             (.status.resources[]? | select(.status != "Synced" or (.health.status // "Healthy") != "Healthy") |
               "\($app) \(.kind)/\(.namespace // "")/\(.name) \(.status) \(.health.status // "") \(.health.message // "")")' || true
-          kubectl --context k3d-software-factory get pods -A -o wide || true
-          kubectl --context k3d-software-factory get events -A --field-selector type=Warning --sort-by=.lastTimestamp | tail -40 || true
+          kubectl --context k3d-software-factory-scratch get pods -A -o wide || true
+          kubectl --context k3d-software-factory-scratch get events -A --field-selector type=Warning --sort-by=.lastTimestamp | tail -40 || true
           # What would reach outside: the gateway (no key, and no agent calls on a line not started), the GitHub
           # worker, which runs no pod here, and the line, which watches no release (deploy/argocd/platform-check.yaml),
           # and Alertmanager's sends to Pushover (none attempted with no token).
-          kubectl --context k3d-software-factory -n factory get deployment github line \
+          kubectl --context k3d-software-factory-scratch -n factory get deployment github line \
             -o custom-columns='DEPLOYMENT:.metadata.name,REPLICAS:.spec.replicas,RELEASE_ROLLOUT:.spec.template.spec.containers[0].env[?(@.name=="RELEASE_ROLLOUT")].value' || true
           for worker in gateway line; do
             echo "--- $worker's log"
-            kubectl --context k3d-software-factory -n factory logs "deploy/$worker" --tail=40 || true
+            kubectl --context k3d-software-factory-scratch -n factory logs "deploy/$worker" --tail=40 || true
           done
           # Every pod that failed (a Job's failed attempts, which the end passes over once the Job completes), with when
           # it started and ended and its log, and Postgres's, so a refused connection can be set against when Postgres
           # listened.
-          kubectl --context k3d-software-factory get pods -A --field-selector=status.phase=Failed -o json |
+          kubectl --context k3d-software-factory-scratch get pods -A --field-selector=status.phase=Failed -o json |
             jq -r '.items[] | "\(.metadata.namespace) \(.metadata.name) started \(.status.startTime // "-"), \([.status.initContainerStatuses[]?, .status.containerStatuses[]? | .state.terminated // empty |
               "ended \(.finishedAt // "-") exit \(.exitCode // "-")"] | join(", "))"' |
             while read -r ns pod times; do
               echo "--- $ns/$pod: $times"
-              kubectl --context k3d-software-factory -n "$ns" logs "$pod" --all-containers --timestamps --tail=60 || true
+              kubectl --context k3d-software-factory-scratch -n "$ns" logs "$pod" --all-containers --timestamps --tail=60 || true
             done || true
           echo "--- The migrate Job's last attempt (it waits for the store, saying each refusal's code once)"
-          kubectl --context k3d-software-factory -n factory logs job/migrate --timestamps --tail=40 || true
-          echo "--- Postgres: started $(kubectl --context k3d-software-factory -n factory get pod postgres-0 \
+          kubectl --context k3d-software-factory-scratch -n factory logs job/migrate --timestamps --tail=40 || true
+          echo "--- Postgres: started $(kubectl --context k3d-software-factory-scratch -n factory get pod postgres-0 \
             -o jsonpath='{.status.startTime}, ready {.status.conditions[?(@.type=="Ready")].lastTransitionTime}' || true)"
-          kubectl --context k3d-software-factory -n factory logs statefulset/postgres --all-containers --timestamps --tail=200 || true
+          kubectl --context k3d-software-factory-scratch -n factory logs statefulset/postgres --all-containers --timestamps --tail=200 || true
           echo "--- Alertmanager's notifications, by integration"
-          kubectl --context k3d-software-factory get --raw \
+          kubectl --context k3d-software-factory-scratch get --raw \
             '/api/v1/namespaces/telemetry/services/http:prometheus-alertmanager:9093/proxy/metrics' |
             grep -E '^alertmanager_notification(s|_requests)(_failed)?_total' | grep -v ' 0$' || true
           echo "--- Alertmanager's log"
-          kubectl --context k3d-software-factory -n telemetry logs statefulset/prometheus-alertmanager -c alertmanager --tail=40 || true
+          kubectl --context k3d-software-factory-scratch -n telemetry logs statefulset/prometheus-alertmanager -c alertmanager --tail=40 || true
       # On every outcome but success, cancellation included, but a run the merge queue let go, which made nothing worth
       # reading (the step above prints the watch's log), so its job ends at once. It holds Argo CD's, the pods' and the events' states, the
       # runner's figures, every failed pod's log and Postgres's, and each pod the end found not running: its description, which shows an env value a manifest

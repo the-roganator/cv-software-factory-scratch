@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest';
 import { CI_PROOFS } from '../../../../policy/guardrails.ts';
 import { type Job, jobNames, readCiProof, type WorkflowRun } from '../../src/guardrails/ci.ts';
 
-const REPO = 'the-roganator/cv-software-factory';
+const REPO = 'the-roganator/cv-software-factory-scratch';
 const WORKFLOW = `
 jobs:
   kind:
