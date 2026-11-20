@@ -16,8 +16,9 @@
  *   factory's own: each pin before and after, what each move clears in counts, its deadline, and how it merges. As the
  *   day's moves at its files change (a target moves on, a move joins or goes), its branch moves, in one forced update,
  *   and its title and description with it; one that conflicts with `main` is committed again on `main`'s head. A pull
- *   request Martin closed without merging it is not opened again for the same edits. Two moves that name one line are
- *   both refused, and the rest of their file's go on.
+ *   request Martin closed without merging it is not opened again for the same edits. A worker started again keeps
+ *   a branch whose head is already the commit it would write, so a restart sends no pull request round its checks
+ *   again. Two moves that name one line are both refused, and the rest of their file's go on.
  * - **A move no pin's line writes**, a lockfile's package, what mise pins, or an image that brings another pin with it
  *   (the Node it runs, or Playwright's library in the lockfile), is made by the pin step in the scan's own run, on the
  *   commit it read (github/made.ts): the day's lockfile moves in one group, mise's in another, an image's with its
@@ -59,7 +60,16 @@ import { BranchRefused, PIN_PREFIX, type WatchedHeads } from './branches.ts';
 import { type GitHub, GitHubError } from './client.ts';
 import { groupKey, groupOf, type MadeGroup, madeByStep, namedMajor, writtenBy } from './made.ts';
 import { PatchRefused } from './patches.ts';
-import { type PinEdit, type PinSource, pinBranchFor, segmentOf, spans, treeSource } from './pin-guard.ts';
+import {
+  type PinCommit,
+  type PinEdit,
+  type PinSource,
+  pinBranchFor,
+  pinChanges,
+  segmentOf,
+  spans,
+  treeSource,
+} from './pin-guard.ts';
 import type { Watch } from './poller.ts';
 import type { Reads } from './reads.ts';
 import type { RefusalRecorder } from './refusals.ts';
@@ -100,7 +110,8 @@ export interface PinWatchDependencies {
   recorder?: RefusalRecorder | undefined;
   /**
    * Where the watch records the commit it wrote to each pin branch, for the pin queue (`deploy-queue.ts`). Given, a
-   * branch at any other commit, moved by anyone, or not yet written by this worker, is written again.
+   * branch at any other commit, moved by anyone, is written again; one this worker has not yet written is recorded as
+   * it is when its head is already the commit the watch would write (`alreadyWritten`), and written again otherwise.
    */
   heads?: WatchedHeads;
   log: Logger;
@@ -144,6 +155,25 @@ const PULLS = z.array(
 );
 const PULL = z.object({ mergeable: z.boolean().nullable() });
 const BRANCH = z.object({ object: z.object({ sha: z.string() }) });
+/** main's head compared with a pin branch's: the commits the branch has that main has not, and the files they change. */
+const COMPARE = z.object({
+  ahead_by: z.number().int(),
+  merge_base_commit: z.object({ sha: z.string() }),
+  commits: z.array(
+    z.object({
+      sha: z.string(),
+      parents: z.array(z.object({ sha: z.string() })),
+      author: z.object({ login: z.string() }).nullable(),
+      committer: z.object({ login: z.string() }).nullable(),
+      commit: z.object({ verification: z.object({ verified: z.boolean() }).optional() }),
+    }),
+  ),
+  files: z.array(z.object({ filename: z.string(), status: z.string() })).optional(),
+});
+/** Who GitHub names as the committer of a commit it made and signed itself, as `createCommitOnBranch` makes the App's. */
+const GITHUB_COMMITTER = 'web-flow';
+/** A file's bytes as text, every byte kept, as the guard reads a file from git (`treeSource`). */
+const TEXT = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
 const ISSUES = z.array(
   z.object({
     number: z.number().int().positive(),
@@ -574,6 +604,56 @@ export function pinWatch(deps: PinWatchDependencies, repo: string): Watch {
     }
   };
 
+  /**
+   * Whether a pin branch's head is the commit the watch would write now, though this worker did not write it (it has
+   * started since): one commit of the App's, made and signed by GitHub as `commitPins` makes each, on a commit of main
+   * whose files it changes are as they are at main's head, changing those files alone, to exactly what the guard
+   * gives back for the day's moves on main's head (`pinChanges`). Its change onto main is then, file for file, the
+   * commit the watch would write; whatever the guard refuses, or a head it cannot read so, is written again.
+   */
+  const alreadyWritten = async (at: string, commit: PinCommit): Promise<boolean> => {
+    try {
+      return await isWritten(at, commit);
+    } catch (error) {
+      if (error instanceof BranchRefused || error instanceof PatchRefused) return false;
+      if (error instanceof GitHubError && (error.kind === 'conflict' || error.kind === 'not-found')) return false;
+      throw error;
+    }
+  };
+  const isWritten = async (at: string, commit: PinCommit): Promise<boolean> => {
+    const writes = await pinChanges(repo, commit, source);
+    const { body: compared } = await github.poll(repo, `/repos/${repo}/compare/${commit.base}...${at}`, COMPARE);
+    const [only, ...more] = compared.commits;
+    const parent = compared.merge_base_commit.sha;
+    if (
+      !only ||
+      more.length ||
+      compared.ahead_by !== 1 ||
+      only.sha !== at ||
+      only.parents.length !== 1 ||
+      only.parents[0]?.sha !== parent ||
+      only.author?.login !== APP_LOGIN ||
+      only.committer?.login !== GITHUB_COMMITTER ||
+      only.commit.verification?.verified !== true
+    )
+      return false;
+    const paths = writes.map((write) => write.path).sort();
+    const changed = (compared.files ?? []).filter((file) => file.status === 'modified').map((file) => file.filename);
+    if (JSON.stringify(changed.sort()) !== JSON.stringify(paths) || changed.length !== (compared.files ?? []).length)
+      return false;
+    for (const write of writes) {
+      const [there, before, main] = await Promise.all([
+        source.file(repo, at, write.path),
+        source.file(repo, parent, write.path),
+        source.file(repo, commit.base, write.path),
+      ]);
+      if (!there || !before || !main) return false;
+      if (before.text !== main.text || before.mode !== main.mode || there.mode !== main.mode) return false;
+      if (there.text !== TEXT.decode(write.contents)) return false;
+    }
+    return true;
+  };
+
   /** Whether the App closed an issue or pull request itself, rather than Martin: only his close holds a target back. */
   const closedByApp = async (number: number): Promise<boolean> => {
     const { body } = await github.poll(repo, `/repos/${repo}/issues/${number}`, CLOSED_BY);
@@ -864,13 +944,36 @@ export function pinWatch(deps: PinWatchDependencies, repo: string): Watch {
       if (!existing && actions.dryRun && recorded.get(branch) === fingerprint) continue;
       /** Whether its branch already holds these edits: only its words, and a conflict with main, are then left. */
       const holds = EDITS_MARK.exec(existing?.body ?? '')?.[1] === hash;
+      /** The commit the watch writes for these moves: on main's head, through the guard. */
+      const asked: PinCommit = {
+        branch,
+        base: head,
+        scanned,
+        message: title,
+        pins: edits,
+        ...(written ? { files: written.files } : {}),
+      };
       if (existing) {
         if (!existing.labels.some((l) => l.name === PIN_LABEL))
           await actions.addLabels(repo, existing.number, [PIN_LABEL]);
         // Its branch at any commit but the one the watch wrote (moved by anyone, or not yet written by this worker): the
         // watch writes its own again, and its queue adds nothing meanwhile.
         // Read from the branch itself, as GitHub's list of pull requests may name a head a push since has moved.
-        const ours = heads === undefined || (await branchAt(branch)) === heads.get(repo, branch);
+        const at = heads === undefined ? undefined : await branchAt(branch);
+        let ours = heads === undefined || at === heads.get(repo, branch);
+        // A worker that has written nothing to it since it started takes, as its own, a head that is already the commit
+        // it would write for the edits its description names: a restart costs the pull request no new head, and no
+        // round of its checks. One this worker wrote, moved since, is not taken back however it looks.
+        if (!ours && holds && at !== undefined && heads?.get(repo, branch) === undefined) {
+          if (await alreadyWritten(at, asked)) {
+            heads?.set(repo, branch, at);
+            ours = true;
+            log.info(
+              { repo, number: existing.number, branch, commit: at },
+              'the pin branch is already the commit the watch would write: the watch takes it as its own',
+            );
+          }
+        }
         if (!ours) {
           log.warn(
             { repo, number: existing.number, branch },
@@ -892,14 +995,7 @@ export function pinWatch(deps: PinWatchDependencies, repo: string): Watch {
       }
       let commit: string;
       try {
-        commit = await actions.commitPins(repo, {
-          branch,
-          base: head,
-          scanned,
-          message: title,
-          pins: edits,
-          ...(written ? { files: written.files } : {}),
-        });
+        commit = await actions.commitPins(repo, asked);
       } catch (error) {
         if (error instanceof BranchRefused || (error instanceof PatchRefused && error.kind === 'protected')) {
           await refused(run, branch, error, existing?.number ?? null);
