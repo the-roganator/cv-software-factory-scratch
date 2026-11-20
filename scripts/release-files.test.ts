@@ -92,6 +92,8 @@ describe('the files a release changes', () => {
       // own, written for a scratch repository to try it on.
       'scripts/check-kind.sh',
       'scripts/check-kind.test.ts',
+      // The pin step's derivation's tests, on an invented manifest's range.
+      'scripts/derive.test.ts',
       // flagd's evaluation library's own package.json, as for the test above.
       'scripts/flagd-sides.ts',
       // The move rule's tests, whose pin step writes a package.json of their own, and a package's version in it.

