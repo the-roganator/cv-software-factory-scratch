@@ -400,7 +400,7 @@ export class FakeGitHub implements GitHubPort {
           head: pr.head.sha,
           state: pr.merged ? 'merged' : pr.state,
           queued: queued ? { position: 1, state: 'AWAITING_CHECKS', enqueuedAt: '', commit: null } : null,
-          added: queued || out ? { at: new Date().toISOString(), by: 'mrogan-software-factory[bot]' } : null,
+          added: queued || out ? { at: new Date().toISOString(), by: 'the-roganator-scratch-factory[bot]' } : null,
           removed: out ? { at: out.at, by: 'github-merge-queue', reason: out.reason, commit: 'd'.repeat(40) } : null,
           checks: (out?.failed ?? []).map((name, i) => ({
             id: 800 + i,

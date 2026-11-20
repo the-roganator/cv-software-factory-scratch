@@ -29,11 +29,11 @@ images:
 ${images.map(([name, d, image]) => `- digest: ${d}\n  name: ${name}\n  newName: ghcr.io/${image}`).join('\n')}
 `;
 const FACTORY_PIN = pinFile([
-  ['factory', digest('1'), 'the-roganator/cv-software-factory/factory'],
-  ['factory-browser', digest('2'), 'the-roganator/cv-software-factory/factory-browser'],
+  ['factory', digest('1'), 'the-roganator/cv-software-factory-scratch/factory'],
+  ['factory-browser', digest('2'), 'the-roganator/cv-software-factory-scratch/factory-browser'],
 ]);
-const CONSOLE_PIN_FILE = pinFile([['console', digest('3'), 'the-roganator/cv-software-factory/console']]);
-const _APP_PIN_FILE = pinFile([['website', digest('1'), 'the-roganator/cv-worlds-worst-website']]);
+const CONSOLE_PIN_FILE = pinFile([['console', digest('3'), 'the-roganator/cv-software-factory-scratch/console']]);
+const _APP_PIN_FILE = pinFile([['website', digest('1'), 'the-roganator/cv-worlds-worst-website-scratch']]);
 const BOTH = { [CONSOLE_PIN.file]: CONSOLE_PIN_FILE, [FACTORY_PINS.file]: FACTORY_PIN };
 /** The body of a deploy pull request that lists what it brings already. */
 const _LISTED =
@@ -255,11 +255,11 @@ function github(
 /** GHCR: the factory built from c and b, its browser image not yet from c, the console from c, and every pin from a. */
 function ghcr(revision: string | ((image: string) => string) = commit('a'), later = false): Registry {
   const built: Record<string, string[]> = {
-    'the-roganator/cv-software-factory/factory': ['a', 'b', 'c'].map(commit),
-    'the-roganator/cv-software-factory/factory-browser': (later ? ['a', 'b', 'c'] : ['a', 'b']).map(commit),
-    'the-roganator/cv-software-factory/factory-runner': ['a', 'b', 'c'].map(commit),
-    'the-roganator/cv-software-factory/console': ['a', 'c'].map(commit),
-    'the-roganator/cv-worlds-worst-website': ['a', 'b'].map(commit),
+    'the-roganator/cv-software-factory-scratch/factory': ['a', 'b', 'c'].map(commit),
+    'the-roganator/cv-software-factory-scratch/factory-browser': (later ? ['a', 'b', 'c'] : ['a', 'b']).map(commit),
+    'the-roganator/cv-software-factory-scratch/factory-runner': ['a', 'b', 'c'].map(commit),
+    'the-roganator/cv-software-factory-scratch/console': ['a', 'c'].map(commit),
+    'the-roganator/cv-worlds-worst-website-scratch': ['a', 'b'].map(commit),
   };
   return {
     tags: async (image: string) => built[image] ?? [],
