@@ -17,10 +17,11 @@
  * - **The fix is installable** from the first fixed version's publish time in npm's registry plus the scanned
  *   repository's `minimumReleaseAge` (pnpm's default of a day where it sets none), for an npm package of ours: a
  *   lockfile's, or one in an image of ours that a lockfile of ours resolves at that version. For Node, from the first patched release
- *   in Node's release index. For anything else in an image (an operating system's package, a binary it ships), from
- *   the creation of the newest image on the line of the pin that brings it (the runtime stage of its Dockerfile, for an
+ *   in Node's release index, once it is as old as `mise.toml`'s `minimum_release_age` where that pins Node. For a tool
+ *   mise pins, from the day the newest release in its range without the finding is that old. For anything else in an
+ *   image (an operating system's package, a binary it ships), from the creation of the newest image on the line of the pin that brings it (the runtime stage of its Dockerfile, for an
  *   image of ours), found as `scripts/ci-images.sh`'s `newest` finds it, or the tag's current image for a tag that is
- *   not a version, once that image no longer has the finding; in the app, an image that runs Node only once the Node it
+ *   not a version, once that image no longer has the finding; an image that runs Node only once the Node it
  *   runs is one mise may install, the release `mise.toml` pins or a later one as old as its `minimum_release_age`, as
  *   the pin step moves Node with it. An image that arrives only with a k3s release is
  *   installable from the day the first k3s release after the pin on its Kubernetes minor (its node image's tags) was
@@ -490,8 +491,6 @@ export async function installable(
   log: (line: string) => void = () => {},
   now = Date.now(),
   kubeVersion?: string,
-  /** Whether the checkout is the app's, whose line moves Node with each image that runs it. */
-  app = false,
 ) {
   const kinds = new Map(targets.map((target) => [target.key, target]));
   const at: (number | undefined)[] = findings.map(() => undefined);
@@ -638,8 +637,9 @@ export async function installable(
     }
     return once;
   };
-  // In the app, mise.toml pins the one Node every image of Node runs, and an image that runs another moves Node with it
-  // (apps/runner/src/pins.ts's `moveImage`): it is no fix until that Node is one mise may install.
+  // mise.toml pins the one Node every image of Node runs, and an image that runs another moves Node with it
+  // (apps/runner/src/pins.ts's `moveImage`), in the app and here alike: it is no fix until that Node is one mise may
+  // install.
   const miseToml = sources.file('mise.toml') ?? '';
   const pinnedNode = /^node\s*=\s*"(\d+\.\d+\.\d+)"\s*$/m.exec(miseToml)?.[1];
   const miseAge = releaseAge(miseToml);
@@ -748,7 +748,11 @@ export async function installable(
     }
     return undefined;
   };
-  /** The newest release of a tool in mise.toml's range for it whose build lacks the finding, and its day. */
+  /**
+   * The newest release of a tool in mise.toml's range for it whose build lacks the finding and that is as old as
+   * mise.toml's `minimum_release_age`, and its day: the day it became that old, as the pin step moves no younger one
+   * (apps/runner/src/pins.ts's `moveTool`). Where every such release is younger, the newest, from the day it will be.
+   */
   const toolReleases = new Map<string, Promise<{ version: string; published: string }[]>>();
   const toolScans = new Map<string, Promise<Set<string> | undefined>>();
   const toolFix = async (tool: string, finding: Finding) => {
@@ -770,6 +774,7 @@ export async function installable(
       )
       .sort((a, b) => compareVersions(b.version, a.version))
       .slice(0, CANDIDATES);
+    let young: { at: number; target: Target } | undefined;
     for (const candidate of candidates) {
       const key = `${tool}@${candidate.version}`;
       let once = toolScans.get(key);
@@ -779,11 +784,14 @@ export async function installable(
         toolScans.set(key, once);
       }
       const set = await once;
-      const published = time(candidate.published);
-      if (set && !set.has(has(finding.package, finding.advisory)) && !Number.isNaN(published))
-        return { at: published, target: { kind: 'tool', tool, version: candidate.version } as Target };
+      const ready = time(candidate.published) + miseAge;
+      if (set && !set.has(has(finding.package, finding.advisory)) && !Number.isNaN(ready)) {
+        const fixed = { at: ready, target: { kind: 'tool', tool, version: candidate.version } as Target };
+        if (ready <= now) return fixed;
+        young ??= fixed;
+      }
     }
-    return undefined;
+    return young;
   };
   // The repository's lockfiles, read once: whether one resolves a package at a version.
   const lockfiles = targets
@@ -906,7 +914,8 @@ export async function installable(
           .sort((a, b) => a.at - b.at || compareVersions(a.version, b.version));
         const first = patched[0];
         if (first) {
-          at[index] = first.at;
+          // Where mise.toml pins Node, the pin step moves it once the release is as old as its `minimum_release_age`.
+          at[index] = first.at + (pinnedNode ? miseAge : 0);
           fixes[index] = { kind: 'version', versions: [first.version] };
         }
         return;
@@ -942,8 +951,8 @@ export async function installable(
       if (!latest) return;
       const image = await scanned(latest.reference, true);
       if (!image.has.has(has(finding.package, finding.advisory))) {
-        // In the app, an image that runs Node brings its Node, which waits for mise as Node's own move does.
-        const ready = app && target.kind !== 'k3s' ? await nodeReady(latest.reference) : 0;
+        // An image that runs Node brings its Node, which waits for mise as Node's own move does.
+        const ready = target.kind !== 'k3s' ? await nodeReady(latest.reference) : 0;
         if (ready === undefined) return;
         // An image that gives no time it was made is installable from now, the day the scan first saw it without the
         // finding: the state keeps that day for every run after (`fixesOf` takes the earlier).
@@ -1274,7 +1283,6 @@ export async function assess(handoff: Handoff, sources: Sources, now: number, lo
       log,
       now,
       handoff.kubeVersion,
-      handoff.repository === APP,
     ),
     kept,
   ]);

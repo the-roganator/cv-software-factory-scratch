@@ -5,6 +5,7 @@
  * (deadlines.ts), and the line's pin step (apps/runner/src/pins.ts, whose image copies this file alone), so the two
  * read one answer the same way. Node runs this with no dependencies, from a sparse checkout of this repository.
  */
+import { createHash } from 'node:crypto';
 import { Readable } from 'node:stream';
 import { createGunzip } from 'node:zlib';
 
@@ -116,11 +117,25 @@ async function fromRegistry(image: string, path: string, get: Get, method = 'GET
   return response;
 }
 
-/** The JSON at one of an image's paths in its registry, read only when the registry gives it. */
-async function registryJson(image: string, path: string, get: Get): Promise<unknown> {
+/**
+ * The bytes at one of an image's paths by digest (`manifests/<digest>`, `blobs/<digest>`), read only when the registry
+ * gives them, and only when they are the bytes the digest names: an answer of any other bytes is refused, whoever gave
+ * it.
+ */
+async function byDigest(image: string, path: string, get: Get): Promise<Buffer> {
+  const digest = path.split('/').at(-1) ?? '';
+  if (!DIGEST.test(digest)) throw new PinsRefused(`${image}'s ${path} names no SHA-256 digest.`);
   const response = await fromRegistry(image, path, get);
   if (!response.ok) throw new PinsRefused(`${image}'s ${path} is not in its registry (${response.status}).`);
-  return response.json();
+  const bytes = Buffer.from(await response.arrayBuffer());
+  if (`sha256:${createHash('sha256').update(bytes).digest('hex')}` !== digest)
+    throw new PinsRefused(`${image}'s registry answers ${path} with bytes that are not its digest's.`);
+  return bytes;
+}
+
+/** The JSON at one of an image's paths by digest, checked against it (`byDigest`). */
+async function registryJson(image: string, path: string, get: Get): Promise<unknown> {
+  return JSON.parse((await byDigest(image, path, get)).toString('utf-8'));
 }
 
 interface Manifest {
@@ -136,8 +151,9 @@ const RELEASE_URL = /https:\/\/nodejs\.org\/download\/release\/v(\d+\.\d+\.\d+)\
  * The Node release an image runs, at a digest, read from the registry as data and never run: its configuration's
  * `NODE_VERSION`, as Node's own images set it, or else the release its `bin/node` names, as each of Node's builds
  * does in `process.release` (distroless's images set nothing in their configuration). Linux on amd64's image, which
- * runs the release every platform's does. Each layer is read as it streams, the last first, until one holds
- * `bin/node`.
+ * runs the release every platform's does. Each layer is read, the last first, until one holds `bin/node`. Everything
+ * is read by its digest, and each manifest, configuration and layer is held to it, so what decides the release is the
+ * image at that digest and no other answer of its registry's.
  */
 export async function nodeInImage(image: string, digest: string, get: Get): Promise<string> {
   let manifest = (await registryJson(image, `manifests/${digest}`, get)) as Manifest;
@@ -155,19 +171,16 @@ export async function nodeInImage(image: string, digest: string, get: Get): Prom
   if (named) return named;
   for (const layer of [...(manifest.layers ?? [])].reverse()) {
     if (!layer.digest || !DIGEST.test(layer.digest)) continue;
-    const response = await fromRegistry(image, `blobs/${layer.digest}`, get);
-    if (!response.ok || !response.body)
-      throw new PinsRefused(`${image}'s layer ${layer.digest} is not in its registry (${response.status}).`);
     // A layer is a tar, gzipped or not; one compressed otherwise is passed over.
     const gzipped = /gzip$/.test(layer.mediaType ?? '');
     if (!gzipped && !/tar$/.test(layer.mediaType ?? '')) continue;
-    const found = await nodeInTar(Readable.fromWeb(response.body as WebStream), gzipped);
+    // Read whole, so its bytes are held to its digest before any of them is believed.
+    const bytes = await byDigest(image, `blobs/${layer.digest}`, get);
+    const found = await nodeInTar(Readable.from([bytes]), gzipped);
     if (found) return found;
   }
   throw new PinsRefused(`${image}@${digest} names no Node release the pin step can read.`);
 }
-
-type WebStream = Parameters<typeof Readable.fromWeb>[0];
 
 /**
  * The release a tar's `bin/node` names, read as the tar streams, or nothing when it has none. Each entry's header is

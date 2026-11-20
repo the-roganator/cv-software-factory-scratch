@@ -7,8 +7,9 @@
  *
  * It opens the run's state for what `moves.json` withholds, as the GitHub worker does (github/scanning.ts's
  * `joined`), and makes each move of the worker's lanes that the pin step makes, grouped by the files it writes, each
- * group on a worktree of its own at that commit, in the order of `moves.json` (scripts/derive.ts): the same step the
- * review gate runs again on main's tip. What it made is sealed with the key, for this repository and run, and written
+ * group on a worktree of its own at that commit, in the order of `moves.json` (scripts/derive.ts), as of the scan's
+ * time (`judged`): the same step the review gate runs again on main's tip, as of the same time and with the digests
+ * this step was given, which it keeps. What it made is sealed with the key, for this repository and run, and written
  * to `<out>`, the artifact `pins`: it names the packages a lockfile's moves withhold.
  *
  * It prints what it made by group and count alone, and a move the step refused by its place in `moves.json`: never a
@@ -33,7 +34,7 @@ import { FACTORY_REPOSITORY } from '../apps/factory/src/repositories.ts';
 import type { MovesFile } from '../apps/factory/src/vulnerabilities/moves.ts';
 import { open, readKey, STATE_KEY } from '../apps/factory/src/vulnerabilities/state.ts';
 import { lockedVersions, type Move as PinStepMove } from '../apps/runner/src/pins.ts';
-import { type Derivation, deriveOn, gitIn } from './derive.ts';
+import { askedKey, type Derivation, deriveOn, gitIn } from './derive.ts';
 
 /** The state's key, read once and out of the environment before anything runs. */
 const KEY = process.env[STATE_KEY];
@@ -79,12 +80,16 @@ function stepsOf(
   });
 }
 
-/** Makes one group's moves on a worktree of the checkout at its commit. */
+/**
+ * Makes one group's moves on a worktree of the checkout at its commit, as of the scan's time (`asOf`), keeping each
+ * digest a tag was found at.
+ */
 export async function makeGroup(
   checkout: string,
   moves: readonly ReadMove[],
   work: string,
   derive: (dir: string, steps: PinStepMove[], derivation: Derivation) => Promise<Map<string, string>> = deriveOn,
+  asOf?: number,
 ): Promise<MadeGroup> {
   const { files, major } = groupOf(moves[0] as ReadMove);
   const dir = join(work, 'checkout');
@@ -109,12 +114,16 @@ export async function makeGroup(
     const refusedSteps = new Set<PinStepMove>();
     const own = join(work, 'derive');
     mkdirSync(own);
+    const asked = new Map<string, string>();
     const changed = await derive(
       dir,
       steps.map(({ step }) => step),
       {
         work: own,
         workspace: true,
+        token: process.env.GH_TOKEN,
+        asOf,
+        asked,
         refused: (step, error) => {
           refusedSteps.add(step);
           const index = steps.find((each) => each.step === step)?.index;
@@ -130,6 +139,12 @@ export async function makeGroup(
       refused: refused.sort((a, b) => a.move - b.move),
       changed: [...changed].map(([path, text]) => ({ path, text })).sort((a, b) => (a.path < b.path ? -1 : 1)),
       steps: stepsOf(made, (path) => lockBefore.get(path) ?? before(path), changed),
+      asked: [...asked]
+        .map(([key, digest]) => {
+          const at = key.lastIndexOf(':');
+          return { image: key.slice(0, at), tag: key.slice(at + 1), digest };
+        })
+        .sort((a, b) => (askedKey(a.image, a.tag) < askedKey(b.image, b.tag) ? -1 : 1)),
     };
   } finally {
     await gitIn(checkout)('worktree', 'remove', '--force', dir).catch(() => {});
@@ -155,7 +170,7 @@ async function main(argv: string[]) {
   for (const each of groupsOf(moves, repository).values()) {
     const work = mkdtempSync(join(process.env.RUNNER_TEMP ?? tmpdir(), 'pins-'));
     try {
-      const group = await makeGroup(checkout, each, work);
+      const group = await makeGroup(checkout, each, work, deriveOn, Date.parse(file.judged));
       groups.push(group);
       console.log(
         `${group.files.join(', ')}${group.major ? ' (major)' : ''}: made ${group.moves.length} of ${each.length} moves, wrote ${group.changed.length} files${group.refused.length ? `; the step refused move ${group.refused.map((r) => r.move).join(', ')} of moves.json` : ''}.`,

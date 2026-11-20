@@ -97,11 +97,16 @@ describe('the scan’s making of the moves the pin watch commits', () => {
       mkdtempSync(join(tmpdir(), 'scan-pins-work-')),
       async (checkoutDir, steps, derivation) => {
         expect(derivation.workspace).toBe(true);
+        // As of the scan's time, keeping each tag's answer (C-1).
+        expect(derivation.asOf).toBe(Date.parse('2026-11-20T05:00:00Z'));
+        derivation.asked?.set(`node:24-slim`, `sha256:${'9'.repeat(64)}`);
+        derivation.asked?.set(`localhost:5000/tools:v1`, `sha256:${'8'.repeat(64)}`);
         expect(steps.map((step) => step.name)).toEqual(['example-a', 'example-b']);
         derivation.refused?.(steps[1] as (typeof steps)[number], new PinsRefused('example-b@2.0.3 is too young'));
         expect(checkoutDir).not.toBe(dir);
         return new Map([['pnpm-lock.yaml', LOCK('1.0.1', '2.0.0')]]);
       },
+      Date.parse('2026-11-20T05:00:00Z'),
     );
     expect(group).toEqual({
       files: ['pnpm-lock.yaml'],
@@ -110,6 +115,10 @@ describe('the scan’s making of the moves the pin watch commits', () => {
       refused: [{ move: 2, reason: 'example-b@2.0.3 is too young' }],
       changed: [{ path: 'pnpm-lock.yaml', text: LOCK('1.0.1', '2.0.0') }],
       steps: [{ move: 1, ecosystem: 'npm', name: 'example-a', before: ['1.0.0'], after: ['1.0.1'] }],
+      asked: [
+        { image: 'localhost:5000/tools', tag: 'v1', digest: `sha256:${'8'.repeat(64)}` },
+        { image: 'node', tag: '24-slim', digest: `sha256:${'9'.repeat(64)}` },
+      ],
     });
   });
 
@@ -128,6 +137,7 @@ describe('the scan’s making of the moves the pin watch commits', () => {
           refused: [],
           changed: [{ path: 'mise.lock', text: 'x' }],
           steps: [{ move: 4, ecosystem: 'tool', name: 'k3d', before: ['5.8.3'], after: ['5.9.0'] }],
+          asked: [{ image: 'node', tag: '24-slim', digest: `sha256:${'9'.repeat(64)}` }],
         },
       ],
     };
@@ -141,5 +151,23 @@ describe('the scan’s making of the moves the pin watch commits', () => {
       key,
     );
     expect(() => openMade(bad, key, FACTORY_REPOSITORY, '7')).toThrow(/a file that is not one/);
+    const wrong = sealMade(
+      {
+        ...made,
+        groups: [
+          {
+            ...(made.groups[0] as Made['groups'][number]),
+            asked: [{ image: 'node', tag: '24-slim', digest: 'md5:1' }],
+          },
+        ],
+      },
+      key,
+    );
+    expect(() => openMade(wrong, key, FACTORY_REPOSITORY, '7')).toThrow(/a registry's answer that is not one/);
+    // One made before the answers were kept still opens.
+    const { asked: _, ...older } = made.groups[0] as Made['groups'][number];
+    expect(openMade(sealMade({ ...made, groups: [older] }, key), key, FACTORY_REPOSITORY, '7').groups[0]).toEqual(
+      older,
+    );
   });
 });

@@ -1,6 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import type { Move as PinStepMove } from '../apps/runner/src/pins.ts';
-import { type Changed, hunkLines, type MoveIO, type MoveResult, proveMove, rawEntries, type ScanMove } from './move.ts';
+import {
+  type Changed,
+  exactText,
+  hunkLines,
+  type MoveIO,
+  type MoveResult,
+  proveMove,
+  rawEntries,
+  type ScanMove,
+} from './move.ts';
 
 // The scan's moves of a day and main's files, as the scratch copies had them (tests 1 to 5, 8a, 11 and 13 of patching),
 // and the forgeries each must refuse (N3, N4, N5).
@@ -283,6 +292,18 @@ describe('a lockfile’s move, made by the line’s pin step on main (tests 8a a
     expect(asked).toEqual([]);
   });
 
+  it('counts no move carried by a pin at no line: a major riding apart stays out of the others’ proof', async () => {
+    // The scan found the major's package at no line of the lockfile; the pull request makes the other move alone.
+    const major = move({ ...packageMove('protobufjs', '7.6.5', '8.0.0', 0), major: true });
+    const scan = [packageMove('@grpc/grpc-js', '1.14.5', '1.14.7', 3), major];
+    const asked: PinStepMove[][] = [];
+    expect(await proveApp(change(grpc), step(asked), scan)).toMatchObject({ rule: 'move' });
+    expect(asked).toEqual([[{ ecosystem: 'npm', name: '@grpc/grpc-js', from: '1.14.5', to: '1.14.7' }]]);
+    // Nor is it carried alone: the pull request that makes it is no move the gate can place.
+    const alone = await proveApp(change({ [LOCK]: lockfile('1.14.5', '8.0.0') }), step(), [major]);
+    expect(alone).toMatchObject({ none: expect.any(String) });
+  });
+
   it('says only that the pin step failed, never its words, which may name the package', async () => {
     const failing: MoveIO['derive'] = async () => {
       throw new Error('@grpc/grpc-js@1.14.7 is younger than minimumReleaseAge');
@@ -530,6 +551,31 @@ describe('what is not a move, and says what differs', () => {
     expect(reasonOf(await prove(link))).toContain('not a regular file');
     const workflow = change(moved, [{ path: '.github/workflows/check.yml', base: 'a', head: 'b' }]);
     expect(reasonOf(await prove(workflow))).toContain('no move is made under .github/');
+  });
+
+  it('refuses a file whose bytes are not UTF-8 on either side, whatever else it carries (S-M2)', async () => {
+    const moved = { [POSTGRES]: swap(POSTGRES, `18.6-alpine3.24@${D_OLD}`, `18.7-alpine3.24@${D_NEW}`) };
+    for (const [base, head] of [
+      [null, null],
+      ['png', null],
+      [null, 'png'],
+    ] as const) {
+      const binary = change(moved, [{ path: 'apps/console/public/icon.png', base, head }]);
+      expect(reasonOf(await prove(binary))).toBe(
+        'apps/console/public/icon.png is not UTF-8 text, and a move writes text alone',
+      );
+    }
+  });
+
+  it('reads text from bytes strictly: different invalid bytes are no text, and a mark at the start is kept', () => {
+    // Leniently, both read as `A\uFFFDB`, and would compare the same.
+    expect(new TextDecoder().decode(Uint8Array.of(0x41, 0x80, 0x42))).toBe(
+      new TextDecoder().decode(Uint8Array.of(0x41, 0xff, 0x42)),
+    );
+    expect(exactText(Uint8Array.of(0x41, 0x80, 0x42))).toBeNull();
+    expect(exactText(Uint8Array.of(0x41, 0xff, 0x42))).toBeNull();
+    expect(exactText(Uint8Array.of(0xef, 0xbb, 0xbf, 0x41))).toBe('\uFEFFA');
+    expect(exactText(new TextEncoder().encode('image: postgres\n'))).toBe('image: postgres\n');
   });
 
   it('is no move at all where it touches no pin of the scan’s, or changes nothing', async () => {

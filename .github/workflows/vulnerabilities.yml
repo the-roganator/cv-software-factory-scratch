@@ -422,6 +422,8 @@ jobs:
         env:
           FACTORY_REPOSITORY: ${{ vars.FACTORY_REPOSITORY }}
           APP_REPOSITORY: ${{ vars.APP_REPOSITORY }}
+          # The job's read-only token, for a tool's releases on GitHub's API (scripts/derive.ts): never pnpm's or mise's.
+          GH_TOKEN: ${{ github.token }}
           SCAN_STATE_KEY: ${{ secrets.SCAN_STATE_KEY }}
         run: node scripts/pins.ts "$RUNNER_TEMP/moves/moves.json" "$RUNNER_TEMP/state/state.sealed" "$GITHUB_WORKSPACE/scanned" "$RUNNER_TEMP/pins.sealed"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

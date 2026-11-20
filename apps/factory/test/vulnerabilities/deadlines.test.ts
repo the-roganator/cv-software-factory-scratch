@@ -349,6 +349,17 @@ describe('a finding’s deadline', () => {
     });
     expect(rows[0]?.installable).toBe(at('2026-10-20T00:00:00Z'));
   });
+
+  it('dates Node’s fix, where mise.toml pins Node, from the day the release is as old as its minimum_release_age', async () => {
+    const finding: Finding = { ...os(), type: 'node', package: 'node', installed: '24.22.0', fixed: '^24.22.1' };
+    const { rows } = await judge({
+      findings: [finding],
+      files: { 'mise.toml': '[settings]\nminimum_release_age = "3d"\n\n[tools]\nnode = "24.22.0"\n' },
+      releases: [{ version: 'v24.22.1', date: '2026-10-20' }],
+      alerts: [alertOf(finding, '2026-10-01T00:00:00Z')],
+    });
+    expect(rows[0]?.installable).toBe(at('2026-10-23T00:00:00Z'));
+  });
 });
 
 describe('an image’s fix', () => {
@@ -366,6 +377,24 @@ describe('an image’s fix', () => {
     expect(asked).toEqual(['tags node', 'image node:24.23.0-trixie-slim', 'digest node:24.23.0-trixie-slim']);
     expect(rows[0]?.installable).toBe(at('2026-11-01T00:00:00Z'));
     expect(rows[0]?.due).toBe(at('2026-11-08T00:00:00Z'));
+  });
+
+  it('waits, for an image that runs a Node newer than mise.toml pins, until mise may install that Node', async () => {
+    const world = (date: string) => ({
+      findings: [finding],
+      alerts,
+      tags,
+      images: { 'node:24.23.0-trixie-slim': imageReport('2026-11-01T00:00:00Z') },
+      files: { 'mise.toml': '[settings]\nminimum_release_age = "3d"\n\n[tools]\nnode = "24.22.1"\n' },
+      releases: [{ version: 'v24.23.0', date }],
+      runs: { [`node@sha256:${'d'.repeat(64)}`]: '24.23.0' },
+    });
+    // The factory's pin step moves Node with the image (apps/runner/src/pins.ts's `moveImage`), as the app's line does.
+    const young = await judge(world('2026-11-09'));
+    expect(young.fixes[0]).toBeUndefined();
+    expect(young.rows[0]?.installable).toBe(at('2026-11-12T00:00:00Z'));
+    const old = await judge(world('2026-10-25'));
+    expect(old.rows[0]?.installable).toBe(at('2026-11-01T00:00:00Z'));
   });
 
   it('has no deadline when the line has no patched image', async () => {
@@ -1497,6 +1526,56 @@ describe('what fixes it', () => {
       },
     });
     expect(fixes[0]?.target).toEqual({ kind: 'tool', tool: 'pnpm', version: '12.17.0' });
+  });
+
+  it('waits for mise.toml’s minimum_release_age on a tool’s release, and takes the newest that old', async () => {
+    const OURS = `ghcr.io/the-roganator/cv-software-factory/factory-runner@sha256:${'1'.repeat(64)}`;
+    const ours: ReadTarget = {
+      key: 'ours runner',
+      kind: 'ours',
+      file: 'deploy/overlays/local/runner-image/kustomization.yaml',
+      label: OURS,
+      image: OURS,
+    };
+    const finding = os({
+      item: ours.key,
+      file: ours.file,
+      label: OURS,
+      type: 'node-pkg',
+      package: 'example-bundled',
+      path: 'opt/pnpm/dist/index.js',
+    });
+    const world = (releases: { version: string; published: string }[]) => ({
+      findings: [finding],
+      targets: [ours],
+      alerts: [alertOf(finding, '2026-10-01T00:00:00Z')],
+      files: {
+        'mise.lock': '[[tools.pnpm]]\nversion = "12.16.1"\nbackend = "aqua:pnpm/pnpm"\n',
+        'mise.toml': '[settings]\nminimum_release_age = "3d"\n\n[tools]\npnpm = "12"\n',
+        'apps/factory-runner/Dockerfile': 'FROM node:24.22.1-trixie-slim AS base\n',
+      },
+      toolReleases: { pnpm: releases },
+      toolReports: {
+        'pnpm@12.17.0': imageReport('1970-01-01T00:00:00Z'),
+        'pnpm@12.18.0': imageReport('1970-01-01T00:00:00Z'),
+      },
+    });
+    const young = { version: '12.18.0', published: '2026-11-09T00:00:00Z' };
+    // The newest is a day old: the one before it, three days old since the 5th, is the fix.
+    const both = await judge(world([{ version: '12.17.0', published: '2026-11-02T00:00:00Z' }, young]));
+    expect(both.fixes[0]).toEqual({
+      target: { kind: 'tool', tool: 'pnpm', version: '12.17.0' },
+      day: at('2026-11-05T00:00:00Z'),
+    });
+    // The young one alone is no fix yet, and is once its three days are up.
+    const alone = await judge(world([young]));
+    expect(alone.fixes[0]).toBeUndefined();
+    expect(alone.rows[0]?.installable).toBe(at('2026-11-12T00:00:00Z'));
+    const later = await judge(world([young]), at('2026-11-12T06:00:00Z'));
+    expect(later.fixes[0]).toEqual({
+      target: { kind: 'tool', tool: 'pnpm', version: '12.18.0' },
+      day: at('2026-11-12T00:00:00Z'),
+    });
   });
 
   it('reports a tag that is not a version, made more than 180 days ago, as a line no longer built, with no deadline', async () => {

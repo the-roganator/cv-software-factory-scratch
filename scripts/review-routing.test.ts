@@ -244,6 +244,15 @@ describe('approval routing: the rule, the first that holds', () => {
       expect(route({ ...here, reviews: [approved()], move })).toMatchObject({ rule: 'martin-approved-head' });
       expect(route({ ...here, unread: 'GET /files: 502', move })).toMatchObject({ pass: false });
       expect(route({ ...here, labelsRemoved: ['code-owned'], move })).toMatchObject({ pass: false });
+      // Whoever opened it: Dependabot's, or anyone's from a branch here.
+      for (const opener of [49699333, 42])
+        expect(
+          route({ ...here, pr: pr(opener, FACTORY_REPO), labelsRemoved: ['dependency-change'], move }),
+        ).toMatchObject({
+          pass: false,
+          rule: 'held',
+          title: 'Someone other than Martin removed its dependency-change label: waits for Martin to approve aaaaaaa',
+        });
       expect(route({ ...here, pin: { unchecked: 'ghcr.io did not answer' }, move })).toMatchObject({
         pass: false,
         pending: 'the gate could not check its exact pin: ghcr.io did not answer',

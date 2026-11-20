@@ -245,6 +245,11 @@ export interface Run {
     | { kind: 'read'; read: MoveReader }
     | { kind: 'work'; read: MoveReader }
     | { kind: 'take'; answers: Map<string, MoveAnswer> | undefined };
+  /**
+   * The merge queue's commit the run judges, and the pull request it was made for: that one's move is proved on what
+   * the commit merges, onto the entries ahead of it, never on its head onto main's tip alone.
+   */
+  queue?: { number: number; commit: string };
 }
 
 /**
@@ -1052,7 +1057,8 @@ async function gate({ each, event, name, number, asApp }: ReturnType<typeof aske
   const commit = target_.commit;
   // The queue's commit merges into main, and carries every change below the pull request it was made for: a stacked
   // one's approval vouches for its own change alone, so each pull request below it down to main is judged too, each
-  // afresh at its head as it is now, never by a verdict judged for another commit.
+  // afresh at its head as it is now, never by a verdict judged for another commit. The one it was made for, if a move,
+  // is proved on what the commit merges, onto the entries ahead of it in the queue.
   // A pull request it finds open always gets a verdict: if GitHub cannot be read, the check fails, saying to re-run it.
   let stack: Stack;
   let judged: Awaited<ReturnType<typeof judgeEach>> = [];
@@ -1064,7 +1070,7 @@ async function gate({ each, event, name, number, asApp }: ReturnType<typeof aske
           one.number === pr.number ? pr : api<PullRequest>('GET', `/repos/${repo}/pulls/${one.number}`, read),
         ),
       );
-      judged = await judgeEach(each, full);
+      judged = await judgeEach({ ...each, queue: { number: pr.number, commit } }, full);
     }
   } catch (error) {
     console.log(`::warning::${error instanceof Error ? error.message : String(error)}`);

@@ -665,10 +665,11 @@ export function route(facts: Facts): Decision {
   });
   // A read that failed is a hold, never a wait: nothing runs the gate again for it, and it may never succeed.
   if (facts.unread) return held(`The gate could not read the pull request whole (${facts.unread})`);
+  // A risk label someone other than Martin took off holds it, whoever opened it: a move passes without him too.
+  if (facts.labelsRemoved.length)
+    return held(`Someone other than Martin removed its ${facts.labelsRemoved.join(', ')} label`);
   const { pin, move } = facts;
   if (appOpened(pr)) {
-    if (facts.labelsRemoved.length)
-      return held(`Someone other than Martin removed its ${facts.labelsRemoved.join(', ')} label`);
     if (pin && 'pins' in pin) {
       const images = [...new Set(pin.pins.map((p) => p.image.slice(p.image.lastIndexOf('/') + 1)))];
       return {

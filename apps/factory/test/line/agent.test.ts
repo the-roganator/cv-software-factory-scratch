@@ -171,6 +171,15 @@ describe('what a published text may not do from the App’s account', () => {
     }
     expect(mentionsIn(scopedNamesInCode('Through @grpc/proto-loader, thanks to @mrogan.'))).toEqual(['@mrogan']);
   });
+
+  it('puts a scoped package’s name in an HTML block in HTML’s code, and finds a mention there in backticks', () => {
+    const folded = '<details>\n<summary>Moves @grpc/proto-loader</summary>\n\nThrough @grpc/grpc-js.\n</details>';
+    expect(scopedNamesInCode(folded)).toBe(
+      '<details>\n<summary>Moves <code>@grpc/proto-loader</code></summary>\n\nThrough `@grpc/grpc-js`.\n</details>',
+    );
+    expect(mentionsIn(scopedNamesInCode(folded))).toEqual([]);
+    expect(mentionsIn('<summary>Thanks `@mrogan` and <code>@coded</code></summary>')).toEqual(['@mrogan']);
+  });
 });
 
 describe('an agent’s step', () => {

@@ -7,6 +7,7 @@
  * shapes the scan hands on (`deadlines.json`), and the registries' answers.
  */
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -61,6 +62,20 @@ export interface World {
   /** pnpm's update of the checkout's lockfile: each `<name>@<from>` it moves, to what. A copy not named stays. */
   pnpm?: Record<string, string>;
 }
+
+/**
+ * An image that runs a Node release, as the registry serves it for the pin step: a configuration that names the release
+ * (`NODE_VERSION`) and a manifest that names that configuration, each at the digest of its bytes.
+ */
+function nodeImage(repository: string, release: string) {
+  const sha = (bytes: Buffer) => `sha256:${createHash('sha256').update(bytes).digest('hex')}`;
+  const config = Buffer.from(JSON.stringify({ config: { Env: [`NODE_VERSION=${release}`] } }));
+  const manifest = Buffer.from(JSON.stringify({ repository, config: { digest: sha(config) }, layers: [] }));
+  return { digest: sha(manifest), manifest, config: { digest: sha(config), bytes: config } };
+}
+
+/** The digest of an image that runs a Node release, for a world's `digests` and `runs`. */
+export const runningNode = (repository: string, release: string) => nodeImage(repository, release).digest;
 
 const digestIn = (world: World, repository: string, tag: string) => {
   const digest = world.digests?.[`${repository}:${tag}`];
@@ -134,16 +149,19 @@ function getOf(world: World) {
       );
       return new Response(names.map((name) => `${'e'.repeat(64)}  ${name}`).join('\n'));
     }
-    // An image at a digest, read for the Node it runs: its manifest names itself as its configuration.
+    // An image at a digest, read for the Node it runs (`nodeImage`): its manifest, and its configuration.
     const read = /^https:\/\/([^/]+)\/v2\/(.+)\/(manifests|blobs)\/(sha256:[0-9a-f]{64})$/.exec(url);
     if (read && init?.method !== 'HEAD') {
       const [, host, path, kind, digest] = read as unknown as [string, string, string, string, string];
       const repository = host === 'registry-1.docker.io' ? path.replace(/^library\//, '') : `${host}/${path}`;
-      const runs = world.runs?.[`${repository}@${digest}`];
-      if (!runs) return new Response(null, { status: 404 });
-      return kind === 'manifests'
-        ? Response.json({ config: { digest }, layers: [] })
-        : Response.json({ config: { Env: [`NODE_VERSION=${runs}`] } });
+      for (const [at, release] of Object.entries(world.runs ?? {})) {
+        if (!at.startsWith(`${repository}@`)) continue;
+        const image = nodeImage(repository, release);
+        if (kind === 'manifests' && at === `${repository}@${digest}`)
+          return new Response(new Uint8Array(image.manifest));
+        if (kind === 'blobs' && image.config.digest === digest) return new Response(new Uint8Array(image.config.bytes));
+      }
+      return new Response(null, { status: 404 });
     }
     const manifest = /^https:\/\/([^/]+)\/v2\/(.+)\/manifests\/([^/]+)$/.exec(url);
     if (manifest) {
