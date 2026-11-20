@@ -18,7 +18,7 @@ const view = (payload: unknown) =>
 
 describe("the day's moves", () => {
   it('is a line event at version 2, appended by the sense alone', () => {
-    expect(VERSIONS['patching.read']).toBe(2);
+    expect(VERSIONS['patching.read']).toBe(3);
     expect(LINE_TYPES).toContain('patching.read');
     expect(PATCHING_ONLY_TYPES).toEqual(['patching.read']);
   });
@@ -73,6 +73,26 @@ describe("the day's moves", () => {
     const read = upcast({ type: 'patching.read', version: 1, payload: v1 });
     expect(read.ok && read.event.payload).toEqual(v1);
     expect(schema.safeParse(v1).success).toBe(true);
+  });
+
+  it('reads a version 2 day’s `approval` lane as the worker’s, its moves and its count', () => {
+    const [factory, app] = DAY.repositories;
+    const held = { ...factory.moves[0], lane: 'approval' };
+    const lanes = { ...factory.totals.lanes, worker: factory.totals.lanes.worker - 1, approval: 1 };
+    const v2 = {
+      ...DAY,
+      repositories: [
+        { ...factory, moves: [held, ...factory.moves.slice(1)], totals: { ...factory.totals, lanes } },
+        app,
+      ],
+    };
+    expect(schema.safeParse(v2).success).toBe(false);
+    const read = upcast({ type: 'patching.read', version: 2, payload: v2 });
+    expect(read.ok && read.event.payload).toEqual(DAY);
+    // A day whose scan wrote no totals has none to count.
+    const none = { ...DAY, repositories: [{ ...factory, totals: null, judged: null, moves: [] }, app] };
+    const kept = upcast({ type: 'patching.read', version: 2, payload: none });
+    expect(kept.ok && kept.event.payload).toEqual(none);
   });
 
   it('refuses a repository twice, a package on a move that is not a lockfile’s, and rows with no comparison', () => {
