@@ -32,15 +32,23 @@
  *   failed waits for a re-run or a newer build;
  * - GitHub says it does not conflict with main, and it is not in the queue already.
  *
- * It adds each head once. The enqueue is the one the line uses (`enqueuePullRequest`): the issue guard asks whether
- * the App opened it, the queue's guard whether it is from a branch the factory owns at the head named, and GitHub
- * takes it only at that head (`expectedHeadOid`), so a push after the verdict cannot ride it. A failure that may pass
- * (the head moved, a rate limit, an outage, GitHub saying the request does not fit the state it found) is tried again
- * on the next pass, up to `MAX_TRIES`. A refusal, the guard's or GitHub's 403, is kept in the artifact store, signed
- * and logged as the worker's HTTP door keeps one (`refusalOf`, `refusals.ts`), with no worker asking to relay it; it,
- * and any other failure, leaves the head for Martin. The queue then merges it, or takes it out, which GitHub shows on
- * the pull request, and the worker does not add that head again; a worker that restarts may, once, and the queue tests
- * it again as before.
+ * The enqueue is the one the line uses (`enqueuePullRequest`): the issue guard asks whether the App opened it, the
+ * queue's guard whether it is from a branch the factory owns at the head named, and GitHub takes it only at that head
+ * (`expectedHeadOid`), so a push after the verdict cannot ride it. A failure that may pass (the head moved, a rate
+ * limit, an outage, GitHub saying the request does not fit the state it found) is tried again on the next pass, up to
+ * `MAX_TRIES`. A refusal, the guard's or GitHub's 403, is kept in the artifact store, signed and logged as the worker's
+ * HTTP door keeps one (`refusalOf`, `refusals.ts`), with no worker asking to relay it; it, and any other failure,
+ * leaves the head for Martin.
+ *
+ * The queue then merges it, or takes it out, which GitHub shows on the pull request. A head the queue took out because
+ * a check failed on its commit is added again, on the next pass that finds all of the above still true: main's checks
+ * can fail for a reason that is not the change's (a test that flakes, a runner that dies), and a pin that waits a day
+ * for it is a day unpatched. The queue's run is the only test of the merged result, so the worker does not judge why
+ * it failed: a change that breaks main fails every time, and after `QUEUE_TRIES` failures at one head, counted from
+ * GitHub's record of the pull request so a restart does not start the count again, the worker stops and says so in a
+ * comment on the pull request, naming the checks that failed last. That head is then Martin's; a new head, as when the
+ * next scan moves the pin further, starts again. A head that left the queue any other way (Martin took it out, GitHub
+ * found a conflict) is not added again; a worker that restarts may, once, and the queue tests it again.
  *
  * In a dry run the watches write nothing to GitHub and record no commit, so no head in GitHub is one a watch wrote: the
  * queues add nothing and record no enqueue. A dry run's own deploy and pin pull requests, which GitHub never had, are
@@ -57,7 +65,7 @@ import { type GitHub, GitHubError } from './client.ts';
 import { DEPLOYS, type DeployTarget, deployLabel, isDeployTitle } from './deploys.ts';
 import { APP_USER, IssueRefused } from './issues.ts';
 import { type LevelReader, type Merging, mergingWait } from './level.ts';
-import { REVIEW_CHECK, type ReviewVerdict } from './merging.ts';
+import { failedChecks, type MergeQueue, REVIEW_CHECK, type ReviewVerdict } from './merging.ts';
 import { guardPinBranch, pinBranchFor } from './pin-guard.ts';
 import { PIN_LABEL, PIN_REPOS, type PinScope, pinTitle, titleIsExact } from './pins.ts';
 import type { Watch } from './poller.ts';
@@ -234,13 +242,34 @@ export function checksWait(runs: readonly CheckRun[], required: readonly string[
 /** How often a head is tried after a failure that may pass, before it is left for Martin. */
 export const MAX_TRIES = 5;
 
+/**
+ * How often one head goes into the merge queue before the worker stops adding it: each time but the last, the queue
+ * having taken it out for a failed check. Three, so one flake, or two, costs a pin minutes and not a day, and a move
+ * that breaks main costs three runs of main's checks and no more.
+ */
+export const QUEUE_TRIES = 3;
+
+/** What the worker says on a pull request whose head the queue took out `QUEUE_TRIES` times for failed checks. */
+export function spentComment(queue: Pick<MergeQueue, 'head' | 'checks'>): string {
+  const failed = queue.checks
+    .filter((run) => run.status === 'completed' && outcomeOf(run.conclusion) === 'failure')
+    .map((run) => `\`${run.name}\``);
+  const last = failed.length ? ` The last time, ${[...new Set(failed)].join(', ')} failed.` : '';
+  return (
+    `The merge queue has taken this pull request out ${QUEUE_TRIES} times at ${queue.head.slice(0, 7)}, each time ` +
+    `because a required check failed on the queue's commit.${last} The factory adds this head no more: it is Martin's ` +
+    'to add to the queue again or close. A new head starts again.'
+  );
+}
+
 /** The failures that may pass: a 409, or a GraphQL error that does not fit the state now; a limit; an outage. */
 const PASSING: readonly string[] = ['conflict', 'rate-limited', 'server', 'network'];
 
 export interface DeployQueueDependencies {
   github: GitHub;
   reads: Pick<Reads, 'checkRuns' | 'requiredChecks' | 'reviewVerdict' | 'mergeability' | 'mergeQueue'>;
-  actions: Pick<Actions, 'enqueuePullRequest'>;
+  /** The enqueue, and the comment that says a head is out of tries; without `comment`, that is only logged. */
+  actions: Pick<Actions, 'enqueuePullRequest'> & Partial<Pick<Actions, 'comment'>>;
   /** What keeps, logs and signs a refusal; without it, a refusal is only logged. */
   recorder?: RefusalRecorder | undefined;
   /**
@@ -274,7 +303,9 @@ export function headWait(
 interface Attempt {
   at: string;
   failures: number;
-  /** Once it is added, found queued, refused, or out of tries. */
+  /** Once this worker added it, or found it in the queue: out of the queue again, only failed checks add it again. */
+  queued: boolean;
+  /** Once it is refused, out of tries, or out of the queue for good. */
   done: boolean;
 }
 
@@ -291,7 +322,7 @@ function queueState(deps: DeployQueueDependencies, repo: string, kind: string) {
       const at = `${number} ${head}`;
       const kept = tried.get(number);
       if (kept?.at === at) return kept;
-      const attempt = { at, failures: 0, done: false };
+      const attempt = { at, failures: 0, queued: false, done: false };
       tried.set(number, attempt);
       return attempt;
     },
@@ -348,6 +379,23 @@ async function queueOne(
   }
   const queue = await reads.mergeQueue(repo, number);
   if (queue.head === head && queue.queued) {
+    attempt.queued = true;
+    return;
+  }
+  // Out of the queue, or never in it. Taken out for failed checks, it goes in again, up to `QUEUE_TRIES` times.
+  const out = queue.head === head ? queue.removed : null;
+  const failed = out !== null && failedChecks(out.reason);
+  if (failed && out.failures >= QUEUE_TRIES) {
+    // Said before the head is left, so a comment that could not be made is tried on the next pass: it is made once.
+    await actions.comment?.(repo, number, spentComment(queue));
+    attempt.done = true;
+    log.warn(
+      { repo, number, head, failures: out.failures },
+      `the merge queue took the ${kind} pull request out for failed checks ${QUEUE_TRIES} times: it waits for Martin`,
+    );
+    return;
+  }
+  if (attempt.queued && !failed) {
     attempt.done = true;
     return;
   }
@@ -365,9 +413,9 @@ async function queueOne(
 
   try {
     const entry = await actions.enqueuePullRequest(repo, number, head);
-    attempt.done = true;
+    attempt.queued = true;
     log.info(
-      { repo, number, head, rule, position: entry.position },
+      { repo, number, head, rule, position: entry.position, ...(failed ? { again: out.failures } : {}) },
       `added the ${kind} pull request to the merge queue`,
     );
   } catch (error) {
