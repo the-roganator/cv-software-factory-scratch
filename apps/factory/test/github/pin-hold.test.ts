@@ -13,7 +13,6 @@ import { DiskArtifacts } from '@software-factory/store';
 import { describe, expect, it } from 'vitest';
 import { APP_LOGIN, LiveActions } from '../../src/github/actions.ts';
 import { WatchedHeads } from '../../src/github/branches.ts';
-import { dependencyPulls } from '../../src/github/dependabot.ts';
 import { type DeployQueueDependencies, type LabelEvents, pinQueueWatch } from '../../src/github/deploy-queue.ts';
 import { APP_USER, IssueGuard, MARTIN, openedBy } from '../../src/github/issues.ts';
 import { PASS_MS, type PinScope, pinWatch, readPinScope } from '../../src/github/pins.ts';
@@ -90,7 +89,6 @@ function worker(repo: FakeRepo, only: PinScope, today: () => Moves) {
       github,
       reads: {
         moves: async () => today(),
-        dependencyPulls: (r: string) => dependencyPulls(github, r, async () => 'version: 2\nupdates: []\n'),
       },
       actions,
       recorder,
@@ -217,7 +215,6 @@ async function pinFirst(repo: FakeRepo, only: PinScope, scanned: string) {
       github,
       reads: {
         moves: async () => day(scanned, factoryMoves()),
-        dependencyPulls: (r: string) => dependencyPulls(github, r, async () => 'version: 2\nupdates: []\n'),
       },
       actions: new LiveActions(github, { guard }),
       recorder,

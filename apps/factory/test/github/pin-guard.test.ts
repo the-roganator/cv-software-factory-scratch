@@ -349,6 +349,7 @@ describe('the pin guard, for the files the scan’s pin step wrote', () => {
     ['policy/package.json', /not a file the scan’s pin step writes/],
     ['deploy/base/postgres/statefulset.yaml', /not a file the scan’s pin step writes/],
     ['apps/console/mise.toml', /not a file the scan’s pin step writes/],
+    ['apps/runner/Dockerfile.dockerignore', /not a file the scan’s pin step writes/],
     ['../pnpm-lock.yaml', /not a plain path/],
   ])('refuses to write %s whole', async (path, words) => {
     const repo = new FakeRepo({ ...FILES, 'pnpm-lock.yaml': LOCK });
@@ -370,6 +371,22 @@ describe('the pin guard, for the files the scan’s pin step wrote', () => {
       PatchRefused,
       /not a file the scan’s pin step writes/,
     );
+  });
+
+  it('writes a Dockerfile whole, as an image’s move that brings its Node or its library wrote it, one Martin owns too', async () => {
+    const owners = '/apps/console/Dockerfile @mrogan\n';
+    const before = `FROM example/browsers:v1.0.0@sha256:${'1'.repeat(64)}\n`;
+    const after = `FROM example/browsers:v1.0.1@sha256:${'2'.repeat(64)}\n`;
+    const repo = new FakeRepo({
+      ...FILES,
+      '.github/CODEOWNERS': owners,
+      'apps/factory/Dockerfile.browser': before,
+      'apps/console/Dockerfile': before,
+    });
+    for (const path of ['apps/factory/Dockerfile.browser', 'apps/console/Dockerfile']) {
+      const sha = await live(repo).actions.commitPins(REPO, asked(repo, made(path, after)));
+      expect(repo.file(sha, path)).toBe(after);
+    }
   });
 
   it('refuses a manifest CODEOWNERS gives Martin, and takes mise’s files, which he gives a move', async () => {
