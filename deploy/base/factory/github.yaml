@@ -72,7 +72,7 @@ spec:
               value: "15000"
             # Not a secret: GitHub accepts it as the issuer of the App's tokens, which only the key can sign.
             - name: GITHUB_APP_CLIENT_ID
-              value: Iv23liE1Dj3iYkwWX59z
+              value: Iv23liy57XMhlWYlOe5i
             - name: GITHUB_APP_PRIVATE_KEY
               valueFrom:
                 secretKeyRef:
@@ -90,17 +90,17 @@ spec:
             # The key each repository's scan seals its state with (ADR 0021), which `make scan-state-key` makes: the
             # worker opens the state for what moves.json withholds. Optional: without one it cannot read that
             # repository's moves, and says so.
-            - name: SCAN_STATE_KEY_CV_SOFTWARE_FACTORY
+            - name: SCAN_STATE_KEY_CV_SOFTWARE_FACTORY_SCRATCH
               valueFrom:
                 secretKeyRef:
                   name: scan-state-key
-                  key: cv-software-factory
+                  key: cv-software-factory-scratch
                   optional: true
-            - name: SCAN_STATE_KEY_CV_WORLDS_WORST_WEBSITE
+            - name: SCAN_STATE_KEY_CV_WORLDS_WORST_WEBSITE_SCRATCH
               valueFrom:
                 secretKeyRef:
                   name: scan-state-key
-                  key: cv-worlds-worst-website
+                  key: cv-worlds-worst-website-scratch
                   optional: true
             # true for the unattended passes: each action goes to the artifact store, and nothing to GitHub.
             - name: GITHUB_DRY_RUN
@@ -115,7 +115,7 @@ spec:
             # pin queue adds that to the merge queue once the gate passes it as `move`. It is changed only by a pull
             # request Martin merged, as CODEOWNERS gives him deploy/.
             - name: PIN_WATCH_ONLY
-              value: "*"
+              value: 'prometheus,loki,grafana'
             # The store, as factory_github, which reads Martin's controls and nothing else
             # (0053_github-reads-the-level.sql): the autonomy level decides which moves the pin queue adds. Optional:
             # without the Secret the worker cannot read the level, and queues no move, as at Supervised.
