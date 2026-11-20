@@ -1,7 +1,8 @@
 /**
  * A rehearsal of this repository's pin moves, on the Mac, pushing nothing: for each move one row, with the files it
- * changes, what the review gate's own proof says of it (`pin-move.ts`'s `pinMove`, on the two local commits), and which
- * of the repository's unit and database tests fail on it that pass on the base.
+ * changes and which of the repository's unit and database tests fail on it that pass on the base. The review gate's
+ * verdict is not rehearsed: it makes the same moves with the watch's own edit (scripts/move.ts), so a move the watch
+ * makes from a day's `moves.json` is that day's `move`.
  *
  *     node scripts/rehearse-pin-moves.ts --branches [--base origin/main]
  *     node scripts/rehearse-pin-moves.ts --moves <moves.json> [--base origin/main] [--scanned <ref>] [--compare]
@@ -12,12 +13,11 @@
  * of git's, and its `commitPins` is the guard's own `pinChanges` (`pin-guard.ts`), whose files become a local commit on
  * the base. `--compare` then says whether each such tree is the tree of origin's branch of the same name.
  *
- * Also: `--only <name>` (a move's name or its branch's last segment; may repeat), `--no-tests`, `--no-gate`,
+ * Also: `--only <name>` (a move's name or its branch's last segment; may repeat), `--no-tests`,
  * `--work <dir>` (default `scratch/rehearse`), `--scanned <ref>` (the commit the scan read; default the base).
  *
  * Everything is made in a repository of its own under the work directory, which borrows this checkout's objects and
- * changes nothing of it. What only GitHub has (the check runs at the head, the pull request's events, its siblings) is
- * said to be not read here, apart from what failed.
+ * changes nothing of it.
  */
 import { execFile, execFileSync, spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -36,14 +36,10 @@ import {
 } from '../apps/factory/src/github/pin-guard.ts';
 import { PIN_REPOS, type PinWatchDependencies, pinWatch } from '../apps/factory/src/github/pins.ts';
 import type { Moves, ReadMove } from '../apps/factory/src/github/scanning.ts';
-import { pinMove, realPinMoveIO } from './pin-move.ts';
 
 const exec = promisify(execFile);
 const ROOT = join(import.meta.dirname, '..');
 const REPO = PIN_REPOS[0] as string;
-/** What the gate's reader for a pull request reads that only GitHub has (`pin-moves.ts`'s `readPinMove`). */
-const ONLY_ON_GITHUB =
-  'its events (never retargeted), another pull request from its branch or at its head, and the check runs at its head';
 
 interface Options {
   mode: 'branches' | 'moves';
@@ -53,7 +49,6 @@ interface Options {
   only: string[];
   work: string;
   tests: boolean;
-  gate: boolean;
   compare: boolean;
   fetch: boolean;
 }
@@ -65,7 +60,6 @@ function options(argv: string[]): Options {
     only: [],
     work: join(ROOT, 'scratch/rehearse'),
     tests: true,
-    gate: true,
     compare: false,
     fetch: true,
   };
@@ -86,7 +80,6 @@ function options(argv: string[]): Options {
     else if (arg === '--only') out.only.push(value(arg, ++i));
     else if (arg === '--work') out.work = resolve(value(arg, ++i));
     else if (arg === '--no-tests') out.tests = false;
-    else if (arg === '--no-gate') out.gate = false;
     else if (arg === '--no-fetch') out.fetch = false;
     else if (arg === '--compare') out.compare = true;
     else throw new Error(`Unknown argument ${arg}`);
@@ -118,7 +111,6 @@ interface Failure {
 
 interface Row extends Candidate {
   files: string[];
-  gate?: { verdict: 'pin-move' | 'held' | 'not read locally' | 'not judged'; reason: string };
   failures?: Failure[];
   /** `--compare`: how its tree differs from origin's branch of the same name. */
   compared?: string;
@@ -318,45 +310,6 @@ function fromBranches(o: Options, work: Work): Candidate[] {
     });
 }
 
-/** What the gate's proof says of a move, from the two commits here; its check runs, which only GitHub has, read as none. */
-async function judged(work: Work, base: string, head: string): Promise<NonNullable<Row['gate']>> {
-  const mergeBase = work.git('merge-base', base, head);
-  let askedRuns = false;
-  let reader: Awaited<ReturnType<typeof realPinMoveIO>> | undefined;
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  try {
-    const expired = new Promise<never>((_, fail) => {
-      timer = setTimeout(() => fail(new Error('the rehearsal gave the proof 15 minutes')), 15 * 60_000);
-    });
-    reader = await realPinMoveIO({
-      repo: REPO,
-      remote: work.dir,
-      base,
-      mergeBase,
-      head,
-      runs: async () => {
-        askedRuns = true;
-        return [];
-      },
-    });
-    const result = await Promise.race([pinMove(reader, head), expired]);
-    if ('move' in result) return { verdict: 'pin-move', reason: `passes as pin-move (${result.fixed} fixed)` };
-    // The runs are the proof's last read: asked for, every condition before them held.
-    if (askedRuns)
-      return {
-        verdict: 'not read locally',
-        reason: `conditions 1 to 7 proved, and what runs it is known; not read locally: ${result.reason}`,
-      };
-    return { verdict: 'held', reason: result.reason };
-  } catch (error) {
-    const cause = (error instanceof Error ? error.message : String(error)).split('\n')[0]?.slice(0, 200) ?? '';
-    return { verdict: 'held', reason: `the gate could not read what it proves a pin move by (${cause})` };
-  } finally {
-    clearTimeout(timer);
-    reader?.close();
-  }
-}
-
 /** The unit and database tests (`make check-tests`) on a commit, checked out in the work repository: what failed. */
 async function tested(work: Work, sha: string, name: string): Promise<Failure[]> {
   work.git('checkout', '--quiet', '--detach', '--force', sha);
@@ -422,36 +375,24 @@ const key = (failure: Failure) => `${failure.file}\0${failure.test}`;
 const cell = (text: string) => text.replace(/\\/g, '\\\\').replace(/\|/g, '\\|').replace(/\n/g, ' ');
 
 function table(rows: Row[], o: Options, baseline: Failure[] | undefined): string {
-  const head = [
-    'Move',
-    'Files',
-    'Gate',
-    'Checks that fail (not on the base)',
-    ...(o.compare ? ['Against origin'] : []),
-  ];
+  const head = ['Move', 'Files', 'Checks that fail (not on the base)', ...(o.compare ? ['Against origin'] : [])];
   const lines = [`| ${head.join(' | ')} |`, `| ${head.map(() => '---').join(' | ')} |`];
   for (const row of rows) {
     const files = row.edits
       ? row.edits.map((edit) => `${edit.file}:${edit.line} ${edit.from} → ${edit.to}`).join('; ')
       : row.files.join(', ');
-    const gate = row.unmade
+    const checks = row.unmade
       ? `no change made: ${row.unmade}`
-      : row.gate
-        ? `${row.gate.verdict}: ${row.gate.reason}`
-        : 'not judged';
-    const checks = !row.failures
-      ? 'not run'
-      : row.failures.length
-        ? row.failures.map((each) => `${each.file}: ${each.test}`).join('; ')
-        : 'none';
+      : !row.failures
+        ? 'not run'
+        : row.failures.length
+          ? row.failures.map((each) => `${each.file}: ${each.test}`).join('; ')
+          : 'none';
     lines.push(
-      `| ${[row.name, files || '-', gate, checks, ...(o.compare ? [row.compared ?? '-'] : [])].map(cell).join(' | ')} |`,
+      `| ${[row.name, files || '-', checks, ...(o.compare ? [row.compared ?? '-'] : [])].map(cell).join(' | ')} |`,
     );
   }
-  lines.push(
-    '',
-    `Not read locally for any row, and the gate's on GitHub alone: ${ONLY_ON_GITHUB}. Nor does the rehearsal read Dependabot's open pull requests, or the watch's own.`,
-  );
+  lines.push('', "The rehearsal reads neither Dependabot's open pull requests nor the watch's own.");
   if (baseline?.length)
     lines.push(
       '',
@@ -488,18 +429,13 @@ async function main() {
       .git('diff', '--name-only', work.git('merge-base', base, head), head)
       .split('\n')
       .filter(Boolean);
-    console.error(`${candidate.name}: ${[o.gate && 'gate', o.tests && 'tests'].filter(Boolean).join(' and ')}`);
-    // The proof reads its own two worktrees, and the tests the work repository's: side by side.
-    const [gate, failures] = await Promise.all([
-      o.gate ? judged(work, base, head) : undefined,
-      // A move whose tests could not be run is a row that says so, and the rehearsal goes on.
-      o.tests
-        ? tested(work, head, segment).catch((error: unknown): Failure[] => [
-            { file: 'the tests could not be run', test: error instanceof Error ? error.message : String(error) },
-          ])
-        : undefined,
-    ]);
-    if (gate) row.gate = gate;
+    if (o.tests) console.error(`${candidate.name}: tests`);
+    // A move whose tests could not be run is a row that says so, and the rehearsal goes on.
+    const failures = o.tests
+      ? await tested(work, head, segment).catch((error: unknown): Failure[] => [
+          { file: 'the tests could not be run', test: error instanceof Error ? error.message : String(error) },
+        ])
+      : undefined;
     if (failures) row.failures = failures.filter((each) => !known.has(key(each)));
     if (o.compare) {
       const theirs = `refs/remotes/origin/${candidate.branch}`;
