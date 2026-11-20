@@ -292,7 +292,7 @@ describe('a lockfile’s move, made by the line’s pin step on main (tests 8a a
     );
   });
 
-  it('moves Node in the app with the pin step, the runtime image’s own move on the same Dockerfile, as app #60 did (test 11)', async () => {
+  describe('Node in the app, with the images that run it (tests 10 and 11)', () => {
     const runtime = 'gcr.io/distroless/nodejs24-debian13';
     const dockerfile = [
       `FROM node:24.22.0-alpine3.24@${D_OLD} AS build`,
@@ -322,22 +322,33 @@ describe('a lockfile’s move, made by the line’s pin step on main (tests 8a a
       from: 'nonroot',
       to: `image nonroot@${D_NEW}`,
     });
-    // The pin step moves Node whole, and re-pins every image of Node at its tag as the registry has it now.
-    const asked: PinStepMove[][] = [];
+    /**
+     * The pin step on main's files, as apps/runner/src/pins.ts writes them: Node's move re-pins each image of Node at
+     * its tag as the registry has it now (`now`); the runtime's pins it at the move's digest, and brings the Node that
+     * digest runs, 24.22.3, where mise.toml pins another.
+     */
     const derive =
-      (now: string): MoveIO['derive'] =>
+      (asked: PinStepMove[][], now: string): MoveIO['derive'] =>
       async (moves) => {
         asked.push([...moves]);
-        return new Map([
-          [
+        const text = new Map(Object.entries(files));
+        const toNode = () => {
+          if (text.get('mise.toml') === 'node = "24.22.3"\n') return;
+          text.set('mise.toml', 'node = "24.22.3"\n');
+          text.set('mise.lock', lock.replace('24.22.0', '24.22.3').replace('sha256:0', 'sha256:3'));
+          text.set(
             'Dockerfile',
-            dockerfile
+            (text.get('Dockerfile') as string)
               .replace(`24.22.0-alpine3.24@${D_OLD}`, `24.22.3-alpine3.24@${D_NEW}`)
-              .replace(`nonroot@${D_OLD}`, `nonroot@${now}`),
-          ],
-          ['mise.toml', 'node = "24.22.3"\n'],
-          ['mise.lock', lock.replace('24.22.0', '24.22.3').replace('sha256:0', 'sha256:3')],
-        ]);
+              .replace(/nonroot@sha256:\w+/, `nonroot@${now}`),
+          );
+        };
+        for (const each of moves) {
+          toNode();
+          if (each.ecosystem === 'docker')
+            text.set('Dockerfile', (text.get('Dockerfile') as string).replace(/nonroot@sha256:\w+/, each.to));
+        }
+        return new Map([...text].filter(([path, body]) => body !== files[path]));
       };
     const head = dockerfile
       .replace(`24.22.0-alpine3.24@${D_OLD}`, `24.22.3-alpine3.24@${D_NEW}`)
@@ -347,23 +358,57 @@ describe('a lockfile’s move, made by the line’s pin step on main (tests 8a a
       modified('mise.toml', files['mise.toml'] as string, 'node = "24.22.3"\n'),
       modified('mise.lock', lock, lock.replace('24.22.0', '24.22.3').replace('sha256:0', 'sha256:3')),
     ];
-    const read = (now: string) => ({ base: (path: string) => files[path], derive: derive(now) });
-    expect(await proveMove(changed, [node, distroless], read(D_NEW), true)).toMatchObject({
-      rule: 'move',
-      title: expect.stringContaining('2 moves'),
+    const read = (asked: PinStepMove[][], now = D_NEW) => ({
+      base: (path: string) => files[path],
+      derive: derive(asked, now),
     });
-    expect(asked).toEqual([[{ ecosystem: 'node', name: 'node', from: '24.22.0', to: '24.22.3' }]]);
-    // The runtime at the digest the scan read, whatever the registry says now: the edit decides its line.
-    expect(await proveMove(changed, [node, distroless], read(D_OTHER), true)).toMatchObject({ rule: 'move' });
-    const other = [
-      { ...changed[0], head: head.replace(`nonroot@${D_NEW}`, `nonroot@${D_OTHER}`) } as Changed,
-      ...changed.slice(1),
-    ];
-    expect(reasonOf(await proveMove(other, [node, distroless], read(D_OTHER), true))).toContain('Dockerfile:3 is');
-    // Its Node left behind: mise.toml is the pin step's too.
-    expect(reasonOf(await proveMove([changed[0] as Changed], [node, distroless], read(D_NEW), true))).toBe(
-      'it leaves mise.toml unmoved, which the moves it carries write',
-    );
+
+    it('passes Node’s move with the runtime image’s on the same Dockerfile, as app #82 did (test 11)', async () => {
+      const asked: PinStepMove[][] = [];
+      expect(await proveMove(changed, [node, distroless], read(asked), true)).toMatchObject({
+        rule: 'move',
+        title: expect.stringContaining('2 moves'),
+      });
+      expect(asked).toEqual([
+        [
+          { ecosystem: 'node', name: 'node', from: '24.22.0', to: '24.22.3' },
+          { ecosystem: 'docker', name: runtime, from: 'nonroot', to: `nonroot@${D_NEW}` },
+        ],
+      ]);
+      // The runtime at the digest the scan read, whatever the registry's tag says now: its own move pins it.
+      expect(await proveMove(changed, [node, distroless], read([], D_OTHER), true)).toMatchObject({ rule: 'move' });
+      const other = [
+        { ...changed[0], head: head.replace(`nonroot@${D_NEW}`, `nonroot@${D_OTHER}`) } as Changed,
+        ...changed.slice(1),
+      ];
+      expect(reasonOf(await proveMove(other, [node, distroless], read([], D_OTHER), true))).toContain(
+        'Dockerfile:3 is',
+      );
+      // Its Node left behind: mise.toml is the pin step's too.
+      expect(reasonOf(await proveMove([changed[0] as Changed], [node, distroless], read([]), true))).toBe(
+        'it leaves mise.toml unmoved, which the moves it carries write',
+      );
+    });
+
+    it('passes the runtime image’s move with the Node it brings, the line’s one ticket, as app #79 should have been (test 10)', async () => {
+      // The same bytes as Node's own move: the gate makes them from the runtime's move, whichever of the day's moves
+      // the scan lists beside it.
+      for (const scan of [[distroless], [node, distroless]]) {
+        const asked: PinStepMove[][] = [];
+        expect(await proveMove(changed, scan, read(asked), true)).toMatchObject({ rule: 'move' });
+        expect(asked.flat()).toContainEqual({
+          ecosystem: 'docker',
+          name: runtime,
+          from: 'nonroot',
+          to: `nonroot@${D_NEW}`,
+        });
+      }
+      // The runtime's line alone, its Node left behind, is what failed `image builds`: not the move.
+      const alone = [modified('Dockerfile', dockerfile, dockerfile.replace(`nonroot@${D_OLD}`, `nonroot@${D_NEW}`))];
+      expect(reasonOf(await proveMove(alone, [distroless], read([]), true))).toBe(
+        `Dockerfile:1 is \`FROM node:24.22.0-alpine3.24@${D_OLD} AS build\` where the scan's moves make \`FROM node:24.22.3-alpine3.24@${D_NEW} AS build\``,
+      );
+    });
   });
 });
 

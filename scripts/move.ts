@@ -7,8 +7,8 @@
  * with what the merge makes, file by file, byte for byte. Each move is made as the one who makes it makes it:
  *
  * - a pin's line, by the pin watch's own edit (`editAt`): an image's tag and digest, a chart's version, k3s's release;
- * - a lockfile's package, and in the app Node with its images, by the line's pin step (apps/runner/src/pins.ts's
- *   `writePins`), run on main's tip with its own pnpm: the derivation, in `MoveIO.derive`.
+ * - a lockfile's package, and in the app each image that runs Node, with the Node it brings, by the line's pin step
+ *   (apps/runner/src/pins.ts's `writePins`), run on main's tip with its own pnpm: the derivation, in `MoveIO.derive`.
  *
  * The pull request carries a move when it rewrites a line one of the move's pins is on (a lockfile's, where the scan
  * found its package); it may carry several of the day's moves, and must carry each whole. Anything that differs is refused, and the
@@ -26,7 +26,7 @@ import type { ReadMove } from '../apps/factory/src/github/scanning.ts';
 import { moveOf } from '../apps/factory/src/patching/sends.ts';
 import { repositoryOfImage } from '../apps/factory/src/repositories.ts';
 import { readTarget, type Target } from '../apps/factory/src/vulnerabilities/fixes.ts';
-import type { Move as PinStepMove } from '../apps/runner/src/pins.ts';
+import { type Move as PinStepMove, runsNode } from '../apps/runner/src/pins.ts';
 import type { MoveResult } from './review-routing.ts';
 
 export type { MoveResult } from './review-routing.ts';
@@ -97,12 +97,15 @@ function differing(a: string, b: string): number[] {
   return out;
 }
 
-/** The pin step's move for one the line makes (a lockfile's package; in the app, Node), or undefined for an edit. */
+/**
+ * The pin step's move for one the line makes, or undefined for an edit: a lockfile's package, and in the app each image
+ * that runs Node, which brings its Node (Node's own move, from the build stage's image, or the runtime's at a digest
+ * that runs another release).
+ */
 function stepMove(move: ScanMove, app: boolean): PinStepMove | string | undefined {
-  if (!move.lockfile && !(app && move.name === 'node')) return undefined;
+  if (!move.lockfile && !(app && runsNode(move.name))) return undefined;
   const made = moveOf(move.repository, move);
   if (typeof made === 'string') return made;
-  if (made.ecosystem === 'docker') return undefined;
   return { ecosystem: made.ecosystem, name: made.name, from: made.from, to: made.to };
 }
 
@@ -209,8 +212,7 @@ export async function proveMove(
       return { reason: `the pin step could not make ${names.join(', ')} on main` };
     }
   }
-  // The edits on what the pin step wrote: Node's step re-pins each image of Node at its tag (the runtime's too), and
-  // that image's own move, on the same line, then pins it at the digest the scan read.
+  // The edits on what the pin step wrote, each on a line the pin step leaves as main has it.
   const edited = edit(edits, (path) => derived.get(path) ?? byPath.get(path)?.base ?? io.base(path));
   if ('reason' in edited) return edited;
   const made = new Map([...derived, ...edited.files]);
