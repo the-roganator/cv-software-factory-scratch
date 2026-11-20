@@ -54,6 +54,8 @@ describe('the files a release changes', () => {
       'apps/factory/src/line/bench/fixtures.ts',
       // A move's pins before and after, which take the package's range in package.json from the diff.
       'apps/factory/src/line/moves.ts',
+      // The pin guard's tests, which give it a manifest the scan's pin step wrote, whole.
+      'apps/factory/test/github/pin-guard.test.ts',
       // The pin step's guard and the bench's, on invented manifests' dependency ranges.
       'apps/factory/test/github/pin-step.test.ts',
       'apps/factory/test/line/bench.test.ts',

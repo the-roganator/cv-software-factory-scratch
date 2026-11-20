@@ -7,8 +7,10 @@
  * with what the merge makes, file by file, byte for byte. Each move is made as the one who makes it makes it:
  *
  * - a pin's line, by the pin watch's own edit (`editAt`): an image's tag and digest, a chart's version, k3s's release;
- * - a lockfile's package, and in the app each image that runs Node, with the Node it brings, by the line's pin step
- *   (apps/runner/src/pins.ts's `writePins`), run on main's tip with its own pnpm: the derivation, in `MoveIO.derive`.
+ * - a lockfile's package, in the app each image that runs Node, with the Node it brings, and in the factory anything
+ *   mise pins, by the pin step (apps/runner/src/pins.ts's `writePins`), run on main's tip with this repository's pnpm
+ *   and mise (scripts/derive.ts): the derivation, in `MoveIO.derive`. In the factory it is what the scan ran to make
+ *   the moves the pin watch commits, in the same order (github/made.ts).
  *
  * The pull request carries a move when it rewrites a line one of the move's pins is on (a lockfile's, where the scan
  * found its package); it may carry several of the day's moves, and must carry each whole. Anything that differs is refused, and the
@@ -20,6 +22,8 @@
  * Every fact the verdict names comes from the scan's move, never from the pull request: where its pins are, what it
  * moves to, whether it crosses a major, and what it clears. Who opened the pull request decides nothing here.
  */
+
+import { madeByStep, stepOf } from '../apps/factory/src/github/made.ts';
 import { spans } from '../apps/factory/src/github/pin-guard.ts';
 import { editAt } from '../apps/factory/src/github/pins.ts';
 import type { ReadMove } from '../apps/factory/src/github/scanning.ts';
@@ -98,12 +102,13 @@ function differing(a: string, b: string): number[] {
 }
 
 /**
- * The pin step's move for one the line makes, or undefined for an edit: a lockfile's package, and in the app each image
- * that runs Node, which brings its Node (Node's own move, from the build stage's image, or the runtime's at a digest
- * that runs another release).
+ * The pin step's move for one it makes, or undefined for an edit: a lockfile's package; in the app each image that
+ * runs Node, which brings its Node (Node's own move, from the build stage's image, or the runtime's at a digest that
+ * runs another release); in the factory anything mise pins, as its scan made it for the pin watch (github/made.ts).
  */
-function stepMove(move: ScanMove, app: boolean): PinStepMove | string | undefined {
-  if (!move.lockfile && !(app && runsNode(move.name))) return undefined;
+function stepMove(move: ScanMove, app: boolean, base: MoveIO['base']): PinStepMove | string | undefined {
+  if (!app) return madeByStep(move) ? stepOf(move, base('mise.lock')) : undefined;
+  if (!move.lockfile && !runsNode(move.name)) return undefined;
   const made = moveOf(move.repository, move);
   if (typeof made === 'string') return made;
   return { ecosystem: made.ecosystem, name: made.name, from: made.from, to: made.to };
@@ -197,7 +202,7 @@ export async function proveMove(
   const steps: PinStepMove[] = [];
   const edits: ScanMove[] = [];
   for (const move of carried) {
-    const step = stepMove(move, app);
+    const step = stepMove(move, app, io.base);
     if (typeof step === 'string') return { reason: `the gate cannot make ${move.name}: ${step}` };
     if (step) steps.push(step);
     else edits.push(move);
@@ -208,7 +213,7 @@ export async function proveMove(
       derived = await io.derive(steps);
     } catch {
       // The step's own words may name a package a lockfile's move withholds: the reason says only that it failed.
-      const names = carried.filter((move) => stepMove(move, app)).map((move) => move.name);
+      const names = carried.filter((move) => stepMove(move, app, io.base)).map((move) => move.name);
       return { reason: `the pin step could not make ${names.join(', ')} on main` };
     }
   }

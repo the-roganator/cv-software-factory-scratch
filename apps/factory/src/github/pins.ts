@@ -18,21 +18,30 @@
  *   and its title and description with it; one that conflicts with `main` is committed again on `main`'s head. A pull
  *   request Martin closed without merging it is not opened again for the same edits. Two moves that name one line are
  *   both refused, and the rest of their file's go on.
+ * - **A move no pin's line writes**, a lockfile's package or what mise pins, is made by the pin step in the scan's own
+ *   run, on the commit it read (github/made.ts): the day's lockfile moves in one group, mise's in another, each made on
+ *   what the one before it wrote. The watch commits what the scan made, whole, once each file it wrote is the same at
+ *   `main`'s head as there, through the same guard, which holds where it writes; the review gate makes the same moves
+ *   again on main and compares. A move the step refused (pnpm's guards: a release younger than a day, a weaker
+ *   provenance; a copy only an override would move) waits, with an issue that says so by its mark, and the step's own
+ *   words in the worker's log; the rest of its group go on.
  * - **It does not fight Dependabot.** A move Dependabot's pull request already moves, by its branch's pin or by the
  *   lines a group's changes rewrite, to the same target or a newer one, is Dependabot's: the watch leaves it out of its
  *   own, and closes its own with a sentence naming Dependabot's when no move is left in it. It never pushes to
  *   Dependabot's branch or closes its pull request: the actions refuse both, as a branch the factory does not own and a
  *   pull request the App did not open. A pin Dependabot reads with no High or Critical on a deadline is in the
  *   `dependabot` lane, and never the watch's.
- * - **A move in the `issue` lane**, a line no longer built, and a move the watch cannot write on its pins' lines, is
+ * - **A move in the `issue` lane** (a workflow's pin, the Makefile's, Playwright's image where Dependabot does not read
+ *   it), a line no longer built, a move the watch cannot write on its pins' lines, and one the pin step refused, is
  *   one issue, labelled `pin`, that a session can take as it stands: its pins, its target, its counts and its
  *   deadline. It is found again by the mark in its body, and updated, never opened twice; one Martin closed is opened
  *   again only for a later target.
  * - **A pull request with no move left** is closed, with a sentence, and so is the issue of a move that is gone.
  *
- * What it writes names the move and its counts, never a package or advisory of an open finding: a lockfile's move,
- * which the scan names by its file alone, is only ever an issue, named by its file and its mark (scanning.ts's
- * `ReadMove.mark`).
+ * What it writes names the move and its counts, never an advisory of an open finding, and never more of a lockfile's
+ * move than its diff shows: its pull request names the package and the versions the lockfile resolves it at, before
+ * and after, and none of what the scan found there; its issue, which has no diff, names it by its file and its mark
+ * (scanning.ts's `ReadMove.mark`).
  *
  * Nothing acts on a day it could not read whole: a moves read that fails, or a run that uploaded no `moves.json`, opens
  * and closes nothing. A `moves.json` that lists no move, its count held to the scan's state as every day's is, is a day
@@ -51,6 +60,7 @@ import { type Actions, APP_LOGIN } from './actions.ts';
 import { BranchRefused, PIN_PREFIX, type WatchedHeads } from './branches.ts';
 import { type GitHub, GitHubError } from './client.ts';
 import { type DependencyPull, groupMovesTo } from './dependabot.ts';
+import { groupKey, groupOf, type MadeGroup, madeByStep, namedMajor, writtenBy } from './made.ts';
 import { PatchRefused } from './patches.ts';
 import { type PinEdit, type PinSource, pinBranchFor, segmentOf, spans, treeSource } from './pin-guard.ts';
 import type { Watch } from './poller.ts';
@@ -177,20 +187,19 @@ export function carriedBy(body: string | null | undefined): string[] {
   }
 }
 
-/** Whether the review gate will name a move `major` (scripts/move.ts): across a major, clearing no Critical. */
-export const namedMajor = (move: Pick<ReadMove, 'major' | 'clears'>): boolean =>
-  move.major && move.clears.CRITICAL === 0;
+export { namedMajor };
 
 /** The files a move pins, in order. */
 const filesOf = (move: Pick<ReadMove, 'pins'>) => [...new Set(move.pins.map((pin) => pin.file))].sort();
 
 /**
- * The branch of the pull request a move is in: that of the files it pins, so every move of the day at one file is in
+ * The branch of the pull request a move is in: that of the files it writes, so every move of the day at one file is in
  * one pull request, and a move at two files (one chart at two Applications) is whole in one. A move the gate will name
- * `major` is on its files' other branch: the level may hold it, and the rest of its file's moves do not wait for it.
+ * `major` is on its files' other branch: the level may hold it, and the rest of its file's moves do not wait for it. A
+ * move the pin step makes writes its lockfile, or mise's files, alone (`writtenBy`).
  */
-export const branchOf = (move: Pick<ReadMove, 'pins' | 'major' | 'clears'>): string =>
-  pinBranchFor(filesOf(move), namedMajor(move));
+export const branchOf = (move: Pick<ReadMove, 'pins' | 'major' | 'clears' | 'lockfile'>): string =>
+  pinBranchFor(madeByStep(move) ? writtenBy(move) : filesOf(move), namedMajor(move));
 
 /** A move's name as code in a description: no backtick, no line break. */
 const code = (text: string) => `\`${text.replace(/[`\r\n]/g, '')}\``;
@@ -371,16 +380,19 @@ export function pullBody(carried: readonly Carried[], moves: Moves): string {
   return `${lines.join('\n')}\n`;
 }
 
+/** Why a move the pin step makes is an issue: the step refused it, in the scan's run. */
+const STEP_REFUSED = 'the pin step could not make it on the commit the scan read';
+
 /** Why the App cannot write a move, and what to do instead, for its issue. */
 function cannotWrite(move: ReadMove, why?: string): string {
+  if (why === STEP_REFUSED)
+    return 'The scan’s pin step could not make it on the commit it read: pnpm’s guards (a release younger than a day, a weaker provenance than the release before, an install script) or a copy only an override in `pnpm-workspace.yaml` would move, or mise could not lock the release. The worker’s log says which, and the watch makes it once a scan can: or move it by hand, and the scan’s next run sees it.';
   if (why)
     return `The watch cannot write it on its pins' lines (${why}): move it by hand, and the scan's next run sees it.`;
   if (move.lane === 'none')
     return 'Its line is no longer built: nothing on this line will bring the fix. Move the pin to a line its publisher builds, and the scan reads it from there.';
-  if (move.lockfile)
-    return 'A lockfile moves by its package manager, and the App writes none: update the package with pnpm, and its code scanning alerts say which.';
-  if (move.pins.some((pin) => /(^|\/)mise\.(toml|lock)$/.test(pin.file) || pin.file === 'Makefile'))
-    return 'mise or the Makefile pins it, and the toolchain moves only when someone upgrades it: `mise upgrade`, with both of mise’s files, in a `chore(toolchain)` pull request.';
+  if (move.pins.some((pin) => pin.file === 'Makefile'))
+    return 'The Makefile pins it, with what mise pins beside it, and no pull request of the App’s writes the Makefile: move both in a pull request of your own.';
   if (move.pins.some((pin) => pin.file.startsWith('.github/')))
     return 'A workflow pins it, and the App writes no workflow: move it in a pull request of your own.';
   return 'It needs more than its pins’ lines written, which no pull request of the App’s makes: move it in a pull request of your own.';
@@ -439,6 +451,79 @@ export function pullTitle(carried: readonly Carried[]): string {
   const pins = carried.reduce((sum, each) => sum + each.edits.length, 0);
   const more = files.length > 1 ? ` and ${files.length - 1} more` : '';
   return `chore(pin): move ${pins} pins in ${files[0] ?? ''}${more}`.slice(0, 256);
+}
+
+/** What a pull request of moves the pin step made commits: the files it wrote, whole, and its record of them. */
+export interface Written {
+  made: MadeGroup;
+  files: { path: string; text: string }[];
+}
+
+/** The mark of a pull request whose files the pin step wrote: their paths and a digest of each. */
+const writtenHash = (files: readonly { path: string; text: string }[]) =>
+  createHash('sha256')
+    .update(
+      JSON.stringify(
+        [...files]
+          .sort((a, b) => (a.path < b.path ? -1 : 1))
+          .map((f) => [f.path, createHash('sha256').update(f.text).digest('hex')]),
+      ),
+    )
+    .digest('hex');
+
+/** A name as the diff writes it: no backtick, no line break. */
+const plain = (text: string) => text.replace(/[`\r\n]/g, '');
+
+/**
+ * The title of a pull request of moves the pin step made, by what its diff shows and nothing the scan withholds: the
+ * package or tool it moves, or how many, in which file. A lockfile's package's versions are left to the diff.
+ */
+export function madeTitle({ made }: Written): string {
+  const names = [...new Set(made.steps.map((step) => step.name))];
+  const files = `${made.files[0] ?? ''}${made.files.length > 1 ? ` and ${made.files.length - 1} more` : ''}`;
+  const [first] = made.steps;
+  if (names.length === 1 && first) {
+    if (first.ecosystem === 'npm') return `chore(pin): move ${plain(first.name)} in ${files}`.slice(0, 256);
+    const to = [...new Set(made.steps.flatMap((step) => step.after))].join(' and ');
+    return pinTitle(first.name, to);
+  }
+  const what = made.steps.every((step) => step.ecosystem === 'npm') ? 'packages' : 'pins';
+  return `chore(pin): move ${names.length} ${what} in ${files}`.slice(0, 256);
+}
+
+/**
+ * The description of a pull request of moves the pin step made: what each moves, before and after, as its diff shows
+ * it; for a move the scan names in public (what mise pins), what it clears and its deadline, as for an edit's; for a
+ * lockfile's, nothing more, since what the scan found in a package is the scan's alone.
+ */
+export function madeBody(carried: readonly Carried[], written: Written, moves: Moves): string {
+  const { made } = written;
+  const names = (values: readonly string[]) => values.map((value) => code(value)).join(', ') || '–';
+  const open = carried.filter(({ move }) => !move.lockfile);
+  const lines = [
+    `The factory's pin watch makes ${carried.length === 1 ? 'one of the day’s moves' : `${carried.length} of the day’s moves`} in ${made.files.map((file) => code(file)).join(' and ')}, as ${runText(moves)} found (judged ${moves.file?.judged ?? 'then'}). The scan made ${carried.length === 1 ? 'it' : 'them'} on the commit it read, with the pin step and the pnpm and mise this repository pins, and the review gate makes ${carried.length === 1 ? 'it' : 'them'} again on main and compares, byte for byte. It changes nothing but the files they write.`,
+    '',
+    '| Moves | Before | After |',
+    '| --- | --- | --- |',
+    ...made.steps.map((step) => `| ${code(step.name)} | ${names(step.before)} | ${names(step.after)} |`),
+    ...(open.length
+      ? [
+          '',
+          '| Move | Clears | Leaves on the same pins | Deadline |',
+          '| --- | --- | --- | --- |',
+          ...open.map(
+            ({ move }) =>
+              `| ${code(move.name)} | ${counted(move.clears)} | ${counted(move.leaves)} | ${move.deadline ?? 'none'} |`,
+          ),
+        ]
+      : []),
+    '',
+    mergesBy(carried),
+    '',
+    `<!-- factory: pin-edits ${writtenHash(written.files)} -->`,
+    `<!-- factory: pin-moves ${encodeURIComponent(JSON.stringify(carried.map(({ move }) => move.name)))} -->`,
+  ];
+  return `${lines.join('\n')}\n`;
 }
 
 /** The title of one move's pull request, from its name and the version it moves to. */
@@ -627,8 +712,10 @@ export function pinWatch(deps: PinWatchDependencies, repo: string): Watch {
     // Two moves that name one line are both refused: neither is the one move of that pin. Read over every move of the
     // day, taken or not: a move named alone is still refused beside a rival it was not told.
     const writable = (m: ReadMove) => PULL_LANES.has(m.lane);
+    // A move the pin step makes is made as one step on its files, whatever line its pin names (two of the scan's
+    // moves at one tool's entry are one tool's move): it is never one of two edits at a line.
     const byPlace = new Map<string, ReadMove[]>();
-    for (const move of read.moves.filter(writable))
+    for (const move of read.moves.filter((m) => writable(m) && !madeByStep(m)))
       for (const pin of move.pins) {
         const key = `${pin.file}:${pin.line}`;
         byPlace.set(key, [...(byPlace.get(key) ?? []), move]);
@@ -654,10 +741,16 @@ export function pinWatch(deps: PinWatchDependencies, repo: string): Watch {
         );
     }
 
-    // Each move the watch can write today, with its edits, by the branch of the pull request it is in.
+    // Each move the watch can write today, with its edits, by the branch of the pull request it is in; and those the
+    // pin step makes, which the scan made, by theirs.
     const groups = new Map<string, Carried[]>();
+    const stepped = new Map<string, ReadMove[]>();
     for (const move of day.moves.filter(writable)) {
       const branch = branchOf(move);
+      if (madeByStep(move)) {
+        stepped.set(branch, [...(stepped.get(branch) ?? []), move]);
+        continue;
+      }
       const existing = open.find((p) => p.head.ref === branch);
       const target = readTarget(move.to);
       if (
@@ -732,17 +825,90 @@ export function pinWatch(deps: PinWatchDependencies, repo: string): Watch {
       groups.set(branch, [...(groups.get(branch) ?? []), { move, edits }]);
     }
 
+    // The moves the pin step makes: what the scan made of each group, on the commit it read, committed whole once each
+    // file it wrote is the same at main's head. A move the step refused is the one thing of its group that waits, with
+    // an issue that says so and names no package; the step's own words are logged here, where the public cannot read.
+    const writtenOf = new Map<string, Written>();
+    for (const [branch, moves] of stepped) {
+      const [first] = moves;
+      if (!first) continue;
+      const made = day.made?.groups.find((group) => groupKey(group) === groupKey(groupOf(first)));
+      if (!made) {
+        keep.add(branch);
+        say(
+          `unmade ${run} ${branch}`,
+          { branch, moves: moves.map((move) => move.index) },
+          'the scan made none of these moves with the pin step: they wait for a run that does',
+        );
+        continue;
+      }
+      for (const { move: index, reason } of made.refused) {
+        const move = moves.find((each) => each.index === index);
+        if (!move) continue;
+        want(move, STEP_REFUSED);
+        if (!said.has(`refused ${run} ${index}`)) {
+          said.add(`refused ${run} ${index}`);
+          log.warn(
+            { repo, move: index, mark: move.mark, reason },
+            'the scan’s pin step could not make a move: it waits',
+          );
+        }
+      }
+      const taken = moves.map((move) => move.index).filter((index) => !made.refused.some((r) => r.move === index));
+      if (JSON.stringify(taken) !== JSON.stringify(made.moves)) {
+        keep.add(branch);
+        say(
+          `unlike ${run} ${branch}`,
+          { branch, taken, made: made.moves },
+          'the scan made other moves here than the watch takes: they wait for a run that made these',
+        );
+        continue;
+      }
+      if (!made.moves.length) continue;
+      if (!made.changed.length) {
+        say(`empty ${run} ${branch}`, { branch }, 'the scan’s pin step wrote nothing for these moves: main has them');
+        continue;
+      }
+      // What the step wrote is made on the files of the commit it read: each must be the same at main's head.
+      let same = true;
+      for (const file of made.changed) {
+        const [now, then] = await Promise.all([
+          source.file(repo, head, file.path),
+          source.file(repo, scanned, file.path),
+        ]);
+        if (!now || !then || now.text !== then.text) same = false;
+      }
+      if (!same) {
+        keep.add(branch);
+        say(
+          `waits ${run} ${branch} ${head}`,
+          { branch, head },
+          'a file the scan’s pin step wrote has changed since: its moves wait for the next scan',
+        );
+        continue;
+      }
+      const carried = made.moves
+        .flatMap((index) => moves.filter((move) => move.index === index))
+        .map((move) => ({
+          move,
+          edits: [],
+        }));
+      groups.set(branch, carried);
+      writtenOf.set(branch, { made, files: made.changed });
+    }
+
     for (const [branch, carried] of groups) {
       keep.add(branch);
       const existing = open.find((p) => p.head.ref === branch);
+      const written = writtenOf.get(branch);
       const edits = editsOf(carried);
-      const hash = editsHash(edits);
-      const title = pullTitle(carried);
-      const body = pullBody(carried, day);
+      const hash = written ? writtenHash(written.files) : editsHash(edits);
+      const title = written ? madeTitle(written) : pullTitle(carried);
+      const body = written ? madeBody(carried, written, day) : pullBody(carried, day);
       const fingerprint = `${title}\n${hash}`;
       if (!existing && actions.dryRun && recorded.get(branch) === fingerprint) continue;
       /** Whether its branch already holds these edits: only its words, and a conflict with main, are then left. */
-      const written = EDITS_MARK.exec(existing?.body ?? '')?.[1] === hash;
+      const holds = EDITS_MARK.exec(existing?.body ?? '')?.[1] === hash;
       if (existing) {
         if (!existing.labels.some((l) => l.name === PIN_LABEL))
           await actions.addLabels(repo, existing.number, [PIN_LABEL]);
@@ -755,7 +921,7 @@ export function pinWatch(deps: PinWatchDependencies, repo: string): Watch {
             { repo, number: existing.number, branch },
             'the pin branch is not at the commit the watch wrote: the watch writes its own again',
           );
-        } else if (written) {
+        } else if (holds) {
           if (existing.title !== title || (existing.body ?? '') !== body)
             await actions.updatePullRequest(repo, existing.number, { title, body });
           const { body: pull } = await github.poll(repo, `/repos/${repo}/pulls/${existing.number}`, PULL);
@@ -771,7 +937,14 @@ export function pinWatch(deps: PinWatchDependencies, repo: string): Watch {
       }
       let commit: string;
       try {
-        commit = await actions.commitPins(repo, { branch, base: head, scanned, message: title, pins: edits });
+        commit = await actions.commitPins(repo, {
+          branch,
+          base: head,
+          scanned,
+          message: title,
+          pins: edits,
+          ...(written ? { files: written.files } : {}),
+        });
       } catch (error) {
         if (error instanceof BranchRefused || (error instanceof PatchRefused && error.kind === 'protected')) {
           await refused(run, branch, error, existing?.number ?? null);
@@ -791,7 +964,7 @@ export function pinWatch(deps: PinWatchDependencies, repo: string): Watch {
         await actions.updatePullRequest(repo, existing.number, { title, body });
         log.info(
           { repo, number: existing.number, commit },
-          written ? 'made the pin moves again on main' : 'moved the pin pull request to the day’s moves',
+          holds ? 'made the pin moves again on main' : 'moved the pin pull request to the day’s moves',
         );
       } else {
         const made = await actions.openPullRequest(repo, {
