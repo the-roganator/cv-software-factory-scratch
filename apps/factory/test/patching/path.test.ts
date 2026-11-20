@@ -145,11 +145,11 @@ const CASES: Case[] = [
   {
     name: 'the lockfile: a package at two versions, an advisory of each',
     findings: () => [npm('example-twice', '6.11.0', '6.11.5', 28), npm('example-twice', '7.6.4', '7.6.6', 31)],
+    // The sense joins the two moves' versions with a comma, and the pin step moves each copy on its own line.
     ends: [
-      { ends: 'pin step', why: '6.11.5,7.6.6 is not a version, so example-twice cannot move to it.' },
-      { ends: 'pin step', why: '6.11.5,7.6.6 is not a version, so example-twice cannot move to it.' },
+      { ends: 'pull request', tags: ['dependency-change'] },
+      { ends: 'pull request', tags: ['dependency-change'] },
     ],
-    gap: 'the sense joins the two moves’ versions with a comma, and the pin step reads one version',
   },
   {
     name: 'the lockfile: a package at two versions, an advisory of the newer alone',
@@ -262,7 +262,6 @@ describe('a move of the app’s, from the scan’s finding to a pull request', (
     expect(CASES.filter((each) => each.gap).map((each) => each.name)).toMatchInlineSnapshot(`
       [
         "the lockfile: a package at two versions, one advisory of both",
-        "the lockfile: a package at two versions, an advisory of each",
         "the app’s image: Node’s own advisory",
       ]
     `);
