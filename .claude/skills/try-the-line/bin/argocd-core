@@ -8,6 +8,6 @@ trap 'rm -rf "$dir"' EXIT
 trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM
-kubectl config view --minify --flatten --context k3d-software-factory >"$dir/config"
+kubectl config view --minify --flatten --context k3d-software-factory-scratch >"$dir/config"
 KUBECONFIG="$dir/config" kubectl config set-context --current --namespace argocd >/dev/null
 KUBECONFIG="$dir/config" argocd --core "$@"

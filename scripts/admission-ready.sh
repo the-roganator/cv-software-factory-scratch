@@ -15,7 +15,7 @@
 # still be one Kyverno refuses; Kyverno's reports cover the pods it has seen made since it was installed.
 set -euo pipefail
 
-context="${KUBE_CONTEXT:-k3d-software-factory}"
+context="${KUBE_CONTEXT:-k3d-software-factory-scratch}"
 kubectl=(kubectl --context "$context")
 command -v cosign >/dev/null || { echo "cosign isn't installed: run 'mise install'."; exit 1; }
 
@@ -72,11 +72,11 @@ check() { # namespace policy allowed factory-repositories website-repositories i
   # The repository, without the digest or a tag.
   repository=${image%%@*}
   [[ "$repository" =~ ^(.*/[^/:]+):[^/]+$ ]] && repository=${BASH_REMATCH[1]}
-  if grep -qxF "$repository" <<<"$factory"; then repo=cv-software-factory
-  elif grep -qxF "$repository" <<<"$website"; then repo=cv-worlds-worst-website
+  if grep -qxF "$repository" <<<"$factory"; then repo=cv-software-factory-scratch
+  elif grep -qxF "$repository" <<<"$website"; then repo=cv-worlds-worst-website-scratch
   else
     case "$repository" in
-      ghcr.io/the-roganator/cv-software-factory/* | ghcr.io/the-roganator/cv-worlds-worst-website)
+      ghcr.io/the-roganator/cv-software-factory-scratch/* | ghcr.io/the-roganator/cv-worlds-worst-website-scratch)
         echo "  refused  $ns  $image: ours, but not one $policy admits"; failed=1; return ;;
       *) echo "  refused  $ns  $image: from another registry"; failed=1; return ;;
     esac

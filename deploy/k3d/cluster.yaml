@@ -3,7 +3,7 @@
 apiVersion: k3d.io/v1alpha5
 kind: Simple
 metadata:
-  name: software-factory
+  name: software-factory-scratch
 servers: 1
 agents: 0
 image: rancher/k3s:v1.37.1-k3s1
@@ -12,21 +12,23 @@ image: rancher/k3s:v1.37.1-k3s1
 # edit` cannot move it, so a cluster made before it keeps its old binding until `make upgrade-cluster` makes it again.
 kubeAPI:
   hostIP: 127.0.0.1
-  hostPort: '6550'
+  hostPort: '6551'
 ports:
-  # k3s's Traefik ingress: plain HTTP for the app's hosts (http://website.localhost:8080) and the local UIs, and HTTPS
-  # for the console (https://console.localhost:8443). `make up` adds the second to a cluster made before it.
-  - port: 127.0.0.1:8080:80
+  # k3s's Traefik ingress: plain HTTP for the app's hosts (http://website.localhost:9080) and the local UIs, and HTTPS
+  # for the console (https://console.localhost:9443). `make up` adds the second to a cluster made before it.
+  - port: 127.0.0.1:9080:80
     nodeFilters: [loadbalancer]
-  - port: 127.0.0.1:8443:443
+  - port: 127.0.0.1:9443:443
     nodeFilters: [loadbalancer]
 # k3s's data directory (its datastore, certificates and the local-path volumes, the event store's among them) on a
 # volume of its own, outside the node: `make up` makes it first, k3d does not delete it with the cluster, and
 # `make upgrade-cluster` moves the cluster to a new k3s by starting it on the same directory, as k3s upgrades itself.
 volumes:
-  - volume: k3d-software-factory-state:/var/lib/rancher/k3s
+  - volume: k3d-software-factory-scratch-state:/var/lib/rancher/k3s
     nodeFilters: [server:0]
 options:
+  runtime:
+    serversMemory: 10g
   kubeconfig:
     updateDefaultKubeconfig: true
     switchCurrentContext: false

@@ -55,7 +55,7 @@ Anything else is held in Needs you, as a `merge` hold naming the gate's rule, it
 
 A hold the gate marks `pending` ([the verdict](#the-verdict)) is a wait, not a refusal: the line records nothing and holds nothing, and the change waits at Review for the gate to judge again (a hold already in force stands). The gate marks a hold pending conservatively, and the line, which has a clock, bounds the wait. Should the gate's latest verdict on the head still be pending fifteen minutes after the later of the line's own gates passing at that head and the pending check concluding (`PENDING_LIMIT_MS`; the gates' time is the store's for the line's `gates.finished`, so a restart neither starts it again nor ends it, and a re-run of test integrity, which has the gate judge again, starts it again), the merge is held for Martin as having no verdict (`no-verdict`), saying what the gate waits for, with nothing refused. The line reads the verdict before its gates pass at the head only with a hold in force, as after Martin's push; then the wait is timed from the check alone. A change whose gates never finish, as when test integrity never starts, stands at Gates, and the line's stuck alert pages for it. No hold made while the verdict is pending, a conflict or the queue's among them, carries its words, rule, tags or check, and the verdict resolving does not make a conflict's or the queue's hold again. A passing verdict is never stale: `low-risk` already needs a completed, successful test-integrity run, and Martin's approval and an exact pin do not depend on one. A pass given before test integrity is run again at the same head is still enqueued; `gates / test integrity` is among the app's required checks (`scripts/github-settings.ts`), which the merge queue requires of its own commit, so a re-run that fails there stops the merge, and the queue taking it out holds it as below. The queue taking a pull request out is recorded (`pull-request.dequeued`), with the checks that failed, and holds it. [The line's merge](ORCHESTRATOR.md#the-merge) has the rest.
 
-`AUTONOMY` is a variable of the app's repository, which only Martin can set: `gh variable set AUTONOMY -R the-roganator/cv-worlds-worst-website -b lights-out`, and `gh variable delete AUTONOMY -R the-roganator/cv-worlds-worst-website` to go back. This repository's is never read.
+`AUTONOMY` is a variable of the app's repository, which only Martin can set: `gh variable set AUTONOMY -R the-roganator/cv-worlds-worst-website-scratch -b lights-out`, and `gh variable delete AUTONOMY -R the-roganator/cv-worlds-worst-website-scratch` to go back. This repository's is never read.
 
 ### A pin move
 
@@ -124,5 +124,5 @@ Read it only from the check named `review` that the review App (5470762) posted 
 To see what the gate would say of a pull request, with nothing posted:
 
 ```sh
-GH_TOKEN="$(gh auth token)" AUTONOMY= mise exec -- node scripts/review-gate.ts --print the-roganator/cv-worlds-worst-website <number>
+GH_TOKEN="$(gh auth token)" AUTONOMY= mise exec -- node scripts/review-gate.ts --print the-roganator/cv-worlds-worst-website-scratch <number>
 ```
