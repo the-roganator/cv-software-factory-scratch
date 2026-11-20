@@ -12,6 +12,7 @@ import { describe, expect, it } from 'vitest';
 import { type Changed, proveMove } from '../../../../scripts/move.ts';
 import type { Move as PinStepMove } from '../../../runner/src/pins.ts';
 import { LiveActions } from '../../src/github/actions.ts';
+import { WatchedHeads } from '../../src/github/branches.ts';
 import { IssueGuard, openedBy } from '../../src/github/issues.ts';
 import { groupOf, type MadeGroup, madeByStep, stepOf, toolAt, writtenBy } from '../../src/github/made.ts';
 import { pinBranchFor } from '../../src/github/pin-guard.ts';
@@ -108,7 +109,7 @@ const made = (scanned: string, moves: ReadMove[], groups: MadeGroup[]): Moves =>
   made: { version: 1, repository: day(scanned, moves).repository, run: '42000000101', commit: scanned, groups },
 });
 
-function harness(repo: FakeRepo, today: () => Moves, only: PinScope = '*') {
+function harness(repo: FakeRepo, today: () => Moves, only: PinScope = '*', heads?: WatchedHeads) {
   const sent: Sent[] = [];
   const { github } = client(repo.routes(), sent);
   const artifacts = new DiskArtifacts(mkdtempSync(join(tmpdir(), 'pin-made-')));
@@ -119,7 +120,7 @@ function harness(repo: FakeRepo, today: () => Moves, only: PinScope = '*') {
   let clock = Date.parse('2026-11-11T07:00:00Z');
   const reads = { moves: async () => today() };
   const watch = pinWatch(
-    { github, reads, actions, recorder, log, now: () => clock, only },
+    { github, reads, actions, recorder, log, now: () => clock, only, ...(heads ? { heads } : {}) },
     day(repo.main, []).repository,
   );
   return {
@@ -306,6 +307,34 @@ describe('the moves the scan made with the pin step', () => {
     await w.pass();
     expect(repo.refs.get(LOCK_BRANCH)).not.toBe(first);
     expect(openPins(repo)).toHaveLength(1);
+  });
+
+  it('a restart keeps the head of a pull request whose files the scan wrote, while main has not changed them', async () => {
+    const repo = new FakeRepo(files());
+    const scanned = repo.main;
+    const today = () => made(scanned, scan().slice(0, 2), [lockGroup()]);
+    await harness(repo, today, '*', new WatchedHeads()).pass();
+    const first = repo.refs.get(LOCK_BRANCH) as string;
+    // main moves elsewhere, then the worker starts again: a new record, and the same head taken as its own.
+    repo.push({ 'deploy/k3d/cluster.yaml': 'kind: Simple\n' });
+    const heads = new WatchedHeads();
+    const again = harness(repo, today, '*', heads);
+    await again.pass();
+    expect(repo.refs.get(LOCK_BRANCH)).toBe(first);
+    expect(heads.get(day(scanned, []).repository, LOCK_BRANCH)).toBe(first);
+    expect(writes(again.sent)).toEqual([]);
+    // The scan's bytes for the lockfile change: the branch no longer holds them, and is written again.
+    const moved = harness(
+      repo,
+      () =>
+        made(scanned, scan().slice(0, 2), [
+          lockGroup({ changed: [{ path: 'pnpm-lock.yaml', text: MOVED.replace('1.0.1', '1.0.2') }] }),
+        ]),
+      '*',
+      new WatchedHeads(),
+    );
+    await moved.pass();
+    expect(repo.refs.get(LOCK_BRANCH)).not.toBe(first);
   });
 
   describe('Playwright’s image, which brings its library (test 6)', () => {
