@@ -59,6 +59,7 @@ import { type Actions, APP_LOGIN } from './actions.ts';
 import { BranchRefused, PIN_PREFIX, type WatchedHeads } from './branches.ts';
 import { type GitHub, GitHubError } from './client.ts';
 import { groupKey, groupOf, type MadeGroup, madeByStep, namedMajor, writtenBy } from './made.ts';
+import { isOwnCommit } from './own-commit.ts';
 import { PatchRefused } from './patches.ts';
 import {
   type PinCommit,
@@ -155,23 +156,6 @@ const PULLS = z.array(
 );
 const PULL = z.object({ mergeable: z.boolean().nullable() });
 const BRANCH = z.object({ object: z.object({ sha: z.string() }) });
-/** main's head compared with a pin branch's: the commits the branch has that main has not, and the files they change. */
-const COMPARE = z.object({
-  ahead_by: z.number().int(),
-  merge_base_commit: z.object({ sha: z.string() }),
-  commits: z.array(
-    z.object({
-      sha: z.string(),
-      parents: z.array(z.object({ sha: z.string() })),
-      author: z.object({ login: z.string() }).nullable(),
-      committer: z.object({ login: z.string() }).nullable(),
-      commit: z.object({ verification: z.object({ verified: z.boolean() }).optional() }),
-    }),
-  ),
-  files: z.array(z.object({ filename: z.string(), status: z.string() })).optional(),
-});
-/** Who GitHub names as the committer of a commit it made and signed itself, as `createCommitOnBranch` makes the App's. */
-const GITHUB_COMMITTER = 'web-flow';
 /** A file's bytes as text, every byte kept, as the guard reads a file from git (`treeSource`). */
 const TEXT = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
 const ISSUES = z.array(
@@ -606,52 +590,20 @@ export function pinWatch(deps: PinWatchDependencies, repo: string): Watch {
 
   /**
    * Whether a pin branch's head is the commit the watch would write now, though this worker did not write it (it has
-   * started since): one commit of the App's, made and signed by GitHub as `commitPins` makes each, on a commit of main
-   * whose files it changes are as they are at main's head, changing those files alone, to exactly what the guard
-   * gives back for the day's moves on main's head (`pinChanges`). Its change onto main is then, file for file, the
-   * commit the watch would write; whatever the guard refuses, or a head it cannot read so, is written again.
+   * started since): exactly what the guard gives back for the day's moves on main's head (`pinChanges`), as
+   * `own-commit.ts` reads a head. Whatever the guard refuses is written again.
    */
   const alreadyWritten = async (at: string, commit: PinCommit): Promise<boolean> => {
+    let writes: { path: string; contents: Uint8Array }[];
     try {
-      return await isWritten(at, commit);
+      writes = await pinChanges(repo, commit, source);
     } catch (error) {
       if (error instanceof BranchRefused || error instanceof PatchRefused) return false;
-      if (error instanceof GitHubError && (error.kind === 'conflict' || error.kind === 'not-found')) return false;
+      if (error instanceof GitHubError && error.kind === 'conflict') return false;
       throw error;
     }
-  };
-  const isWritten = async (at: string, commit: PinCommit): Promise<boolean> => {
-    const writes = await pinChanges(repo, commit, source);
-    const { body: compared } = await github.poll(repo, `/repos/${repo}/compare/${commit.base}...${at}`, COMPARE);
-    const [only, ...more] = compared.commits;
-    const parent = compared.merge_base_commit.sha;
-    if (
-      !only ||
-      more.length ||
-      compared.ahead_by !== 1 ||
-      only.sha !== at ||
-      only.parents.length !== 1 ||
-      only.parents[0]?.sha !== parent ||
-      only.author?.login !== APP_LOGIN ||
-      only.committer?.login !== GITHUB_COMMITTER ||
-      only.commit.verification?.verified !== true
-    )
-      return false;
-    const paths = writes.map((write) => write.path).sort();
-    const changed = (compared.files ?? []).filter((file) => file.status === 'modified').map((file) => file.filename);
-    if (JSON.stringify(changed.sort()) !== JSON.stringify(paths) || changed.length !== (compared.files ?? []).length)
-      return false;
-    for (const write of writes) {
-      const [there, before, main] = await Promise.all([
-        source.file(repo, at, write.path),
-        source.file(repo, parent, write.path),
-        source.file(repo, commit.base, write.path),
-      ]);
-      if (!there || !before || !main) return false;
-      if (before.text !== main.text || before.mode !== main.mode || there.mode !== main.mode) return false;
-      if (there.text !== TEXT.decode(write.contents)) return false;
-    }
-    return true;
+    const whole = writes.map((write) => ({ path: write.path, text: TEXT.decode(write.contents) }));
+    return isOwnCommit(github, source, repo, commit.base, at, whole);
   };
 
   /** Whether the App closed an issue or pull request itself, rather than Martin: only his close holds a target back. */
