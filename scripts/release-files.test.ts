@@ -56,6 +56,8 @@ describe('the files a release changes', () => {
       'apps/factory/src/line/moves.ts',
       // The pin guard's tests, which give it a manifest the scan's pin step wrote, whole.
       'apps/factory/test/github/pin-guard.test.ts',
+      // The moves the scan made, Playwright's image with its library among them, and the ranges it moved in a manifest.
+      'apps/factory/test/github/pin-made.test.ts',
       // The pin step's guard and the bench's, on invented manifests' dependency ranges.
       'apps/factory/test/github/pin-step.test.ts',
       'apps/factory/test/line/bench.test.ts',
