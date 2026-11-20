@@ -197,7 +197,14 @@ describe('the door, asked for actions that name no pull request', () => {
     });
     const none = { enqueuePullRequest: async () => ({ position: null, state: null }) };
     await pinQueueWatch(
-      { github, reads, actions: none, heads: { get: () => undefined }, log: quiet },
+      {
+        github,
+        reads,
+        actions: none,
+        heads: { get: () => undefined },
+        level: async () => 'guarded' as const,
+        log: quiet,
+      },
       FACTORY,
       readPinScope(undefined),
     )();
