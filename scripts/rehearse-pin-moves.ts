@@ -171,8 +171,8 @@ function localSource(head: string): PinSource {
 }
 
 /**
- * A day's moves made as the pin watch makes them: `pinWatch` run once on a GitHub that has nothing of the watch's open
- * and no pull request of Dependabot's, each `commitPins` answered by the guard's `pinChanges` and committed here.
+ * A day's moves made as the pin watch makes them: `pinWatch` run once on a GitHub that has nothing of the watch's open,
+ * each `commitPins` answered by the guard's `pinChanges` and committed here.
  */
 async function fromMoves(o: Options, work: Work, base: string): Promise<Candidate[]> {
   const file = JSON.parse(readFileSync(o.moves as string, 'utf-8')) as {
@@ -257,7 +257,7 @@ async function fromMoves(o: Options, work: Work, base: string): Promise<Candidat
           throw new Error(`The rehearsal has no answer for ${path}`);
         },
       } as unknown as GitHub,
-      reads: { moves: async () => day, dependencyPulls: async () => [] },
+      reads: { moves: async () => day },
       actions: actions as Pick<Actions, keyof PinWatchDependencies['actions']>,
       source,
       log: { info: log('info'), warn: log('warn'), error: log('error') } as unknown as PinWatchDependencies['log'],
@@ -399,7 +399,7 @@ function table(rows: Row[], o: Options, baseline: Failure[] | undefined): string
       `| ${[row.name, files || '-', checks, ...(o.compare ? [row.compared ?? '-'] : [])].map(cell).join(' | ')} |`,
     );
   }
-  lines.push('', "The rehearsal reads neither Dependabot's open pull requests nor the watch's own.");
+  lines.push('', "The rehearsal reads none of the watch's own open pull requests.");
   if (baseline?.length)
     lines.push(
       '',

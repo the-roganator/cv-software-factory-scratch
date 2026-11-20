@@ -412,6 +412,64 @@ describe('a lockfile’s move, made by the line’s pin step on main (tests 8a a
   });
 });
 
+describe('an image that brings another pin, made by the pin step on main (tests 6 and 12)', () => {
+  it('passes Playwright’s image with its library, made by the step as the scan made it (test 6)', async () => {
+    const browser = 'apps/factory/Dockerfile.browser';
+    const playwright = 'mcr.microsoft.com/playwright';
+    const files: Record<string, string> = {
+      [browser]: `FROM node:24.22.2-trixie-slim@${D_OLD} AS node\nFROM ${playwright}:v1.65.0-noble@${D_OLD} AS browsers\n`,
+      [LOCK]: "lockfileVersion: '9.0'\npackages:\n  playwright@1.65.0:\n    resolution: {integrity: sha512-a}\n",
+      'apps/factory/package.json': '{ "dependencies": { "playwright": "^1.65.0" } }\n',
+    };
+    const moved: Record<string, string> = {
+      [browser]: (files[browser] as string).replace(`v1.65.0-noble@${D_OLD}`, `v1.65.1-noble@${D_NEW}`),
+      [LOCK]: (files[LOCK] as string).replace('1.65.0', '1.65.1'),
+      'apps/factory/package.json': (files['apps/factory/package.json'] as string).replace('1.65.0', '1.65.1'),
+    };
+    const image = move({
+      name: playwright,
+      pins: [{ file: browser, line: 2 }],
+      from: 'v1.65.0-noble',
+      to: `image v1.65.1-noble@${D_NEW}`,
+    });
+    const asked: PinStepMove[][] = [];
+    const read: MoveIO = {
+      base: (path) => files[path],
+      derive: async (moves) => {
+        asked.push([...moves]);
+        return new Map(Object.entries(moved));
+      },
+    };
+    const whole = Object.entries(moved).map(([path, head]) => modified(path, files[path] as string, head));
+    expect(await proveMove(whole, [image], read, false)).toMatchObject({ rule: 'move' });
+    expect(asked).toEqual([
+      [{ ecosystem: 'docker', name: playwright, from: 'v1.65.0-noble', to: `v1.65.1-noble@${D_NEW}` }],
+    ]);
+    // The image's FROM alone, as Dependabot's pull request moves it without its library: not the move.
+    expect(reasonOf(await proveMove([whole[0] as Changed], [image], read, false))).toMatch(/^it leaves .* unmoved/);
+  });
+
+  it('passes the app’s Syft under deploy/ as an edit of its FROM, as one at the root is (test 12)', async () => {
+    const syft = 'deploy/images/syft/Dockerfile';
+    const base = `# Syft's one pin.\nFROM ghcr.io/anchore/syft:v1.54.0@${D_OLD}\n`;
+    const scan = [
+      move({
+        repository: APP,
+        lane: 'line',
+        name: 'ghcr.io/anchore/syft',
+        pins: [{ file: syft, line: 2 }],
+        from: 'v1.54.0',
+        to: `image v1.57.2@${D_NEW}`,
+      }),
+    ];
+    const asked: PinStepMove[][] = [];
+    const read: MoveIO = { base: (path) => (path === syft ? base : undefined), derive: step(asked) };
+    const head = base.replace(`v1.54.0@${D_OLD}`, `v1.57.2@${D_NEW}`);
+    expect(await proveMove([modified(syft, base, head)], scan, read, true)).toMatchObject({ rule: 'move' });
+    expect(asked).toEqual([]);
+  });
+});
+
 describe('what is not a move, and says what differs', () => {
   it('refuses a move backward, or to another version than the scan’s (N3)', async () => {
     expect(reasonOf(await prove(change({ [PROMETHEUS]: swap(PROMETHEUS, '29.35.0', '29.30.0') })))).toBe(

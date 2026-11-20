@@ -4,7 +4,7 @@
  * deploy watch (`deploys.ts`), and like it the App's.
  *
  * Each pass, at most hourly, it reads the scan's day (`reads.moves`: the last finished run of `vulnerabilities.yml` on
- * `main`, its `moves.json` checked against the state the scan kept) and Dependabot's open pull requests, and then:
+ * `main`, its `moves.json` checked against the state the scan kept), and then:
  *
  * - **The moves in the `worker` and `cluster` lanes** are grouped by the files they pin (`branchOf`): Kyverno's four
  *   images in one values file are one pull request, and so is one chart at two Applications, a move of two files. A
@@ -18,21 +18,19 @@
  *   and its title and description with it; one that conflicts with `main` is committed again on `main`'s head. A pull
  *   request Martin closed without merging it is not opened again for the same edits. Two moves that name one line are
  *   both refused, and the rest of their file's go on.
- * - **A move no pin's line writes**, a lockfile's package or what mise pins, is made by the pin step in the scan's own
- *   run, on the commit it read (github/made.ts): the day's lockfile moves in one group, mise's in another, each made on
- *   what the one before it wrote. The watch commits what the scan made, whole, once each file it wrote is the same at
+ * - **A move no pin's line writes**, a lockfile's package, what mise pins, or an image that brings another pin with it
+ *   (the Node it runs, or Playwright's library in the lockfile), is made by the pin step in the scan's own run, on the
+ *   commit it read (github/made.ts): the day's lockfile moves in one group, mise's in another, an image's with its
+ *   Dockerfiles', each made on what the one before it wrote. The watch commits what the scan made, whole, once each file it wrote is the same at
  *   `main`'s head as there, through the same guard, which holds where it writes; the review gate makes the same moves
  *   again on main and compares. A move the step refused (pnpm's guards: a release younger than a day, a weaker
  *   provenance; a copy only an override would move) waits, with an issue that says so by its mark, and the step's own
  *   words in the worker's log; the rest of its group go on.
- * - **It does not fight Dependabot.** A move Dependabot's pull request already moves, by its branch's pin or by the
- *   lines a group's changes rewrite, to the same target or a newer one, is Dependabot's: the watch leaves it out of its
- *   own, and closes its own with a sentence naming Dependabot's when no move is left in it. It never pushes to
- *   Dependabot's branch or closes its pull request: the actions refuse both, as a branch the factory does not own and a
- *   pull request the App did not open. A pin Dependabot reads with no High or Critical on a deadline is in the
- *   `dependabot` lane, and never the watch's.
- * - **A move in the `issue` lane** (a workflow's pin, the Makefile's, Playwright's image where Dependabot does not read
- *   it), a line no longer built, a move the watch cannot write on its pins' lines, and one the pin step refused, is
+ * - **It makes every move of its lanes, whoever else proposes one.** A pull request of Dependabot's for the same pin is
+ *   left as it is: the watch never pushes to Dependabot's branch or closes its pull request (the actions refuse both,
+ *   as a branch the factory does not own and a pull request the App did not open), and Dependabot closes it itself
+ *   once `main` has the version, when it next looks at it.
+ * - **A move in the `issue` lane** (a workflow's pin, the Makefile's), a line no longer built, a move the watch cannot write on its pins' lines, and one the pin step refused, is
  *   one issue, labelled `pin`, that a session can take as it stands: its pins, its target, its counts and its
  *   deadline. It is found again by the mark in its body, and updated, never opened twice; one Martin closed is opened
  *   again only for a later target.
@@ -52,14 +50,13 @@ import { createHash } from 'node:crypto';
 import type { Logger } from 'pino';
 import { z } from 'zod';
 import { FACTORY_REPOSITORY } from '../repositories.ts';
-import { compareVersions } from '../vulnerabilities/deadlines.ts';
 import { readTarget, type Target } from '../vulnerabilities/fixes.ts';
-import { DIGEST_PATTERN, repositoryOf, splitReference } from '../vulnerabilities/reference.ts';
+import { DIGEST_PATTERN, splitReference } from '../vulnerabilities/reference.ts';
+import { libraryOf } from '../vulnerabilities/registry.ts';
 import { SEVERITIES } from '../vulnerabilities/sarif.ts';
 import { type Actions, APP_LOGIN } from './actions.ts';
 import { BranchRefused, PIN_PREFIX, type WatchedHeads } from './branches.ts';
 import { type GitHub, GitHubError } from './client.ts';
-import { type DependencyPull, groupMovesTo } from './dependabot.ts';
 import { groupKey, groupOf, type MadeGroup, madeByStep, namedMajor, writtenBy } from './made.ts';
 import { PatchRefused } from './patches.ts';
 import { type PinEdit, type PinSource, pinBranchFor, segmentOf, spans, treeSource } from './pin-guard.ts';
@@ -83,7 +80,7 @@ export const PASS_MS = 60 * 60_000;
 
 export interface PinWatchDependencies {
   github: GitHub;
-  reads: Pick<Reads, 'moves' | 'dependencyPulls'>;
+  reads: Pick<Reads, 'moves'>;
   actions: Pick<
     Actions,
     | 'dryRun'
@@ -196,9 +193,10 @@ const filesOf = (move: Pick<ReadMove, 'pins'>) => [...new Set(move.pins.map((pin
  * The branch of the pull request a move is in: that of the files it writes, so every move of the day at one file is in
  * one pull request, and a move at two files (one chart at two Applications) is whole in one. A move the gate will name
  * `major` is on its files' other branch: the level may hold it, and the rest of its file's moves do not wait for it. A
- * move the pin step makes writes its lockfile, or mise's files, alone (`writtenBy`).
+ * move the pin step makes is grouped by what it writes whole (`writtenBy`): the lockfile, with an image that brings
+ * its library there; mise's files; an image's Dockerfiles, with the Node it brings.
  */
-export const branchOf = (move: Pick<ReadMove, 'pins' | 'major' | 'clears' | 'lockfile'>): string =>
+export const branchOf = (move: Pick<ReadMove, 'pins' | 'major' | 'clears' | 'lockfile' | 'name' | 'to'>): string =>
   pinBranchFor(madeByStep(move) ? writtenBy(move) : filesOf(move), namedMajor(move));
 
 /** A move's name as code in a description: no backtick, no line break. */
@@ -209,7 +207,7 @@ const counted = (counts: ReadMove['clears']) =>
     .map((s) => `${counts[s]} ${s.toLowerCase()}`)
     .join(', ') || 'nothing';
 
-/** A version as the target writes it, to compare with what Dependabot moves a pin to. */
+/** A version as the target writes it, for a pull request's title. */
 function versionOf(target: Target): string | undefined {
   switch (target.kind) {
     case 'image':
@@ -228,45 +226,6 @@ function versionOf(target: Target): string | undefined {
 
 /** A digest written after a pin's tag, as `@sha256:…`. */
 const DIGEST_AFTER = new RegExp(`^@${DIGEST_PATTERN}`);
-
-/** A name as Docker would compare it: no registry for Docker Hub, no `library/`. */
-const bare = (name: string) =>
-  repositoryOf(name.replace(/^(docker\.io|index\.docker\.io|registry-1\.docker\.io)\//, '').replace(/^library\//, ''));
-
-const directoryOf = (file: string) => `/${file.split('/').slice(0, -1).join('/')}`.replace(/\/$/, '') || '/';
-
-/**
- * Dependabot's open pull request that moves a move's pin to its target or a newer one, if one does: one whose branch
- * names the pin's dependency in its directory, or a group's that rewrites the pin's line; or a group's whose patch of
- * the pin's file GitHub did not send, which may.
- */
-export function dependabotHas(
-  move: Pick<ReadMove, 'name' | 'pins'>,
-  target: Target,
-  pulls: readonly DependencyPull[],
-): { number: number; version: string } | undefined {
-  const want = versionOf(target);
-  if (!want) return undefined;
-  const atLeast = (version: string) => compareVersions(version, want) >= 0;
-  for (const pull of pulls) {
-    if (pull.dependency !== null && pull.version !== null && pull.directory !== null) {
-      const dirs = new Set(move.pins.map((pin) => directoryOf(pin.file)));
-      const named = bare(pull.dependency) === bare(move.name) && dirs.has(pull.directory.replace(/\/+$/, '') || '/');
-      if (named && atLeast(pull.version)) return { number: pull.number, version: pull.version };
-      continue;
-    }
-    if (move.pins.some((pin) => pull.unread.includes(pin.file)))
-      return { number: pull.number, version: 'a version its patch does not show' };
-    // A group's has the move when it changes the pin's line to the move's target: its tag or further, or its digest.
-    for (const pin of move.pins) {
-      const moves = groupMovesTo(pull, pin);
-      if (moves?.version && atLeast(moves.version)) return { number: pull.number, version: moves.version };
-      if (target.kind === 'image' && moves?.digests.includes(target.digest))
-        return { number: pull.number, version: `${target.tag}@${target.digest}` };
-    }
-  }
-  return undefined;
-}
 
 /**
  * The edit a move makes at one pin's line, or why it cannot be written there: what it pins now, as the line writes it
@@ -484,7 +443,10 @@ export function madeTitle({ made }: Written): string {
   const [first] = made.steps;
   if (names.length === 1 && first) {
     if (first.ecosystem === 'npm') return `chore(pin): move ${plain(first.name)} in ${files}`.slice(0, 256);
-    const to = [...new Set(made.steps.flatMap((step) => step.after))].join(' and ');
+    // An image's tag, without its digest, as an edit's title names it.
+    const to = [...new Set(made.steps.flatMap((step) => step.after.map((each) => each.split('@')[0] ?? each)))].join(
+      ' and ',
+    );
     return pinTitle(first.name, to);
   }
   const what = made.steps.every((step) => step.ecosystem === 'npm') ? 'packages' : 'pins';
@@ -506,6 +468,7 @@ export function madeBody(carried: readonly Carried[], written: Written, moves: M
     '| Moves | Before | After |',
     '| --- | --- | --- |',
     ...made.steps.map((step) => `| ${code(step.name)} | ${names(step.before)} | ${names(step.after)} |`),
+    ...brought(made),
     ...(open.length
       ? [
           '',
@@ -524,6 +487,21 @@ export function madeBody(carried: readonly Carried[], written: Written, moves: M
     `<!-- factory: pin-moves ${encodeURIComponent(JSON.stringify(carried.map(({ move }) => move.name)))} -->`,
   ];
   return `${lines.join('\n')}\n`;
+}
+
+/**
+ * What an image's move brought with it, in a description: its library, at the release the image's tag names, in the
+ * lockfile and the manifests that name it. The diff shows the versions.
+ */
+function brought(made: MadeGroup): string[] {
+  return made.steps.flatMap((step) => {
+    const library = step.ecosystem === 'docker' ? libraryOf(step.name) : undefined;
+    if (!library) return [];
+    return [
+      '',
+      `${code(step.name)} is one release with its library, ${library.map((name) => code(name)).join(', ')}: the pin step moves each copy of it in the lockfile, and each manifest’s range, to the release its tag names, in the same change.`,
+    ];
+  });
 }
 
 /** The title of one move's pull request, from its name and the version it moves to. */
@@ -687,7 +665,7 @@ export function pinWatch(deps: PinWatchDependencies, repo: string): Watch {
       last = now();
       return;
     }
-    const [pulls, open, issues] = await Promise.all([reads.dependencyPulls(repo), openPulls(), pinIssues()]);
+    const [open, issues] = await Promise.all([openPulls(), pinIssues()]);
     const head = await source.head(repo);
     const scanned = day.run.headSha;
     const run = day.run.id;
@@ -721,9 +699,8 @@ export function pinWatch(deps: PinWatchDependencies, repo: string): Watch {
         byPlace.set(key, [...(byPlace.get(key) ?? []), move]);
       }
 
-    /** The branches today's moves keep (their pull requests stay), and why one of those is closed instead. */
+    /** The branches today's moves keep: their pull requests stay. */
     const keep = new Set<string>();
-    const closeWith = new Map<string, string>();
     /** The issues today's moves keep, each with what it says. */
     const wanted = new Map<string, { title: string; body: string; target: string }>();
     const want = (move: ReadMove, why?: string) => {
@@ -731,15 +708,7 @@ export function pinWatch(deps: PinWatchDependencies, repo: string): Watch {
       wanted.set(issue.key, { title: issue.title, body: issue.body, target: move.to });
     };
 
-    for (const move of day.moves) {
-      if (ISSUE_LANES.has(move.lane)) want(move);
-      // In the `dependabot` lane a move is Dependabot's alone; a lockfile's there has no pull request of the watch's.
-      if (move.lane === 'dependabot' && !move.lockfile)
-        closeWith.set(
-          branchOf(move),
-          `${RunText(day)} gives this pin to Dependabot now: nothing on a deadline at High or Critical needs it moved sooner. Closed, so the two do not both move it.`,
-        );
-    }
+    for (const move of day.moves) if (ISSUE_LANES.has(move.lane)) want(move);
 
     // Each move the watch can write today, with its edits, by the branch of the pull request it is in; and those the
     // pin step makes, which the scan made, by theirs.
@@ -770,20 +739,6 @@ export function pinWatch(deps: PinWatchDependencies, repo: string): Watch {
         await refused(run, branch, error, existing?.number ?? null);
         continue;
       }
-      const theirs = dependabotHas(move, target, pulls);
-      if (theirs) {
-        closeWith.set(
-          branch,
-          `Dependabot's #${theirs.number} moves this pin to ${theirs.version}, as far as this move needs or further. Closed, so the two do not both move it; Dependabot's is left as it is.`,
-        );
-        say(
-          `dependabot ${run} ${move.name} ${theirs.number}`,
-          { move: move.name, pull: theirs.number },
-          'Dependabot moves this pin: the watch leaves it out',
-        );
-        continue;
-      }
-
       // The edits, from each pin's line at main's head, which must still be the line the scan read.
       const edits: PinEdit[] = [];
       let why: string | undefined;
@@ -986,9 +941,7 @@ export function pinWatch(deps: PinWatchDependencies, repo: string): Watch {
     };
     for (const pull of open) {
       if (keep.has(pull.head.ref) || !(every || own(pull))) continue;
-      const sentence =
-        closeWith.get(pull.head.ref) ??
-        `${RunText(day)} no longer lists a move here that a pull request of the factory's makes: \`main\` has moved its pins, or nothing they cleared is left. Closed; the watch opens another if the scan lists one.`;
+      const sentence = `${RunText(day)} no longer lists a move here that a pull request of the factory's makes: \`main\` has moved its pins, or nothing they cleared is left. Closed; the watch opens another if the scan lists one.`;
       await actions.closePullRequest(repo, pull.number, sentence);
       heads?.delete(repo, pull.head.ref);
       log.info({ repo, number: pull.number }, 'closed a pin pull request with no move left');
