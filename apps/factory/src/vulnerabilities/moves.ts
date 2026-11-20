@@ -18,13 +18,13 @@
  *   its CLI, a tool's release), a workflow, an indirect package of the lockfile, a direct one Dependabot has not moved within a
  *   day of its fix, an image whose other half is in the lockfile, and Playwright's image, whose library is in the
  *   lockfile, where Dependabot does not read its pin;
- * - `approval`: a major, of any kind (a chart's, or a version past every copy's major), which needs more than its pins'
- *   lines written, what judges a move (Kyverno, Trivy, Syft), and one chart at two Applications' pins, neither of which the gate passes; whether a chart within its major changes
- *   more than its images is the review gate's to prove from the pull request, not the scan's to assume;
  * - `dependabot`: Playwright's image where Dependabot reads its pin, whose group moves it with its library; a pin
  *   `dependabot.yml`'s docker entries read, with no High or Critical on a deadline, and a direct
  *   package of the lockfile within a day of its fix, which its security update moves;
- * - `worker`: every other pin, which the GitHub worker moves: a chart within its major among them.
+ * - `worker`: every other pin, which the GitHub worker moves: a chart among them, at one Application or several.
+ *
+ * No lane says a move waits for Martin. A major is in the lane it would be in without its major: the review gate names
+ * it (`major`), and the autonomy level decides whether it is queued (`ENQUEUES`, `policy/line.ts`).
  *
  * `moves.json`, the scan's artifact, is `MovesFile`: what the log prints, no more. A lockfile's move is "a package in
  * `pnpm-lock.yaml`", with neither its versions nor its lines, which name the package in a public lockfile; the alerts
@@ -44,8 +44,8 @@ export const APP = APP_REPOSITORY;
 /** The shape of `moves.json`: a reader refuses a version it does not know. */
 export const MOVES_VERSION = 1;
 
-export type Lane = 'line' | 'worker' | 'dependabot' | 'approval' | 'cluster' | 'issue' | 'none';
-export const LANES: Lane[] = ['line', 'worker', 'dependabot', 'approval', 'cluster', 'issue', 'none'];
+export type Lane = 'line' | 'worker' | 'dependabot' | 'cluster' | 'issue' | 'none';
+export const LANES: Lane[] = ['line', 'worker', 'dependabot', 'cluster', 'issue', 'none'];
 
 /** A pin a move writes: its file and line. */
 export interface Pin {
@@ -144,22 +144,9 @@ const isLockfile = (file: string) => /(^|\/)pnpm-lock\.yaml$/.test(file);
 /** Playwright's image, whose browsers are one release with the lockfile's library. */
 export const PLAYWRIGHT_IMAGE = 'mcr.microsoft.com/playwright';
 
-/**
- * What judges a move, by its name and pins: Kyverno (its chart, and each image of it a values file pins), Trivy and
- * Syft. Their moves are in the `approval` lane, whose pull requests the pin watch opens as any other's.
- */
-export const JUDGES: Record<string, (move: Pick<Move, 'name' | 'pins'>) => boolean> = {
-  Kyverno: (move) => /^kyverno(:|$)/.test(move.name) || /(^|[\s/])kyverno\//.test(move.name),
-  Trivy: (move) =>
-    move.pins.some((pin) => pin.file.startsWith('deploy/images/trivy/')) ||
-    /(^|\/)aquasec(urity)?\/trivy$/.test(move.name),
-  Syft: (move) =>
-    move.pins.some((pin) => pin.file.startsWith('deploy/images/syft/')) || /(^|\/)anchore\/syft$/.test(move.name),
-};
-
 /** A move's lane, worked out from what it is: see the module's comment for the order. */
 export function laneOf(
-  move: Pick<Move, 'to' | 'major' | 'pins' | 'name' | 'lockfile'>,
+  move: Pick<Move, 'to' | 'pins' | 'name' | 'lockfile'>,
   kinds: Set<Kind>,
   members: Judged[],
   context: Context,
@@ -180,7 +167,7 @@ export function laneOf(
     return 'line';
   }
   if (target.kind === 'k3s' || kinds.has('k3s') || kinds.has('k3s-release')) return 'cluster';
-  // What mise or the Makefile pins (Argo CD's chart with its CLI) no pull request of the App's writes, a major or not.
+  // What mise or the Makefile pins (Argo CD's chart with its CLI) no pull request of the App's writes.
   if (
     target.kind === 'tool' ||
     kinds.has('k3d') ||
@@ -188,16 +175,9 @@ export function laneOf(
   )
     return 'issue';
   if (move.name === PLAYWRIGHT_IMAGE) return 'issue';
-  // What judges a move.
-  if (Object.values(JUDGES).some((judge) => judge(move))) return 'approval';
-  // A major, of any kind: the one move the scan can tell needs more than its pins' lines written. Whether a chart on its
-  // major changes more than its images is the gate's to prove from the pull request, not the scan's to assume.
-  if (move.major) return 'approval';
   if (move.pins.some((pin) => pin.file.startsWith('.github/workflows/'))) return 'issue';
-  // One chart two Applications run.
-  if (target.kind === 'chart' && move.pins.length > 1) return 'approval';
-  // An Application's chart within its major, the worker's: Dependabot's docker entries read no Application's
-  // targetRevision, though they read the directory it is in.
+  // An Application's chart, the worker's: Dependabot's docker entries read no Application's targetRevision, though
+  // they read the directory it is in.
   if (target.kind === 'chart') return 'worker';
   if (move.lockfile) {
     // An image of ours that carries the same package: its other half is the lockfile, which no pin move writes.
