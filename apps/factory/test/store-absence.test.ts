@@ -1,6 +1,6 @@
 import type { Logger } from 'pino';
 import { describe, expect, it } from 'vitest';
-import { PassLog, STORE_AWAY_MS } from '../../src/line/store-absence.ts';
+import { PassLog, STORE_AWAY_MS } from '../src/store-absence.ts';
 
 /** A pass log on a clock the test moves, and the level and message of each line it logs. */
 function passLog() {
@@ -8,14 +8,19 @@ function passLog() {
   const lines: string[] = [];
   const say = (level: string) => (_: unknown, message: string) => lines.push(`${level}: ${message}`);
   const log = { info: say('info'), warn: say('warn'), error: say('error') } as unknown as Logger;
-  const passes = new PassLog(log, () => new Date(at));
+  const passes = new PassLog(log, () => new Date(at), {
+    away: 'a pass could not reach the store',
+    stillAway: 'a pass failed: the store is still away',
+    failed: 'a pass failed',
+    back: (seconds) => `the store is back, after ${seconds} s`,
+  });
   return { passes, lines, after: (ms: number) => (at += ms) };
 }
 
 const refused = Object.assign(new Error('connect ECONNREFUSED 10.43.0.7:5432'), { code: 'ECONNREFUSED' });
 const restarting = Object.assign(new Error('terminating connection due to administrator command'), { code: '57P01' });
 
-describe('a pass of the line', () => {
+describe('a pass at the store', () => {
   it('warns while the store is away for a restart, and says when it is back', () => {
     const { passes, lines, after } = passLog();
     passes.passed();
@@ -26,9 +31,9 @@ describe('a pass of the line', () => {
     passes.passed();
     passes.passed();
     expect(lines).toEqual([
-      'warn: a pass of the line could not reach the store: the next pass tries again',
-      'warn: a pass of the line could not reach the store: the next pass tries again',
-      'info: the line reached the store again, after 30 s',
+      'warn: a pass could not reach the store',
+      'warn: a pass could not reach the store',
+      'info: the store is back, after 30 s',
     ]);
   });
 
@@ -58,6 +63,6 @@ describe('a pass of the line', () => {
     const { passes, lines } = passLog();
     passes.failed(Object.assign(new Error('relation "events" does not exist'), { code: '42P01' }));
     passes.failed(new TypeError('cannot read properties of undefined'));
-    expect(lines).toEqual(['error: a pass of the line failed', 'error: a pass of the line failed']);
+    expect(lines).toEqual(['error: a pass failed', 'error: a pass failed']);
   });
 });
