@@ -298,7 +298,7 @@ export interface Actions {
   /** Applies a runner's patch to the files at the branch's head, outside the sandbox, and commits it. */
   applyPatch(repo: string, patch: PatchCommit): Promise<string>;
   /**
-   * Commits a pin move on `main`'s head and moves its branch, `factory/pin/<move>`, to the commit, in one forced update
+   * Commits a pin move on `main`'s head and moves its branch, `factory/pin/<files>`, to the commit, in one forced update
    * from a branch of its own, so an open pull request on it never has nothing to merge; returns the commit. Its guard
    * (`pin-guard.ts`) reads each pin from the repository and refuses anything but a version or digest replaced at a pin.
    */

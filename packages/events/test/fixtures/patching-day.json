@@ -19,7 +19,6 @@
           "line": 0,
           "worker": 1,
           "dependabot": 1,
-          "approval": 0,
           "cluster": 1,
           "issue": 0,
           "none": 0
@@ -160,7 +159,6 @@
           "line": 1,
           "worker": 0,
           "dependabot": 0,
-          "approval": 0,
           "cluster": 0,
           "issue": 0,
           "none": 0
