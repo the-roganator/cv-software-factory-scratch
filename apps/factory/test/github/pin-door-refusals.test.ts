@@ -381,7 +381,7 @@ describe('the pin queue’s own conditions', () => {
 
   it('takes the verdict only at this head, as pin-move, not pending; and no check the factory’s App ran', () => {
     const judged = { number: PIN, head: HEAD, rule: 'move' as const, tags: [] };
-    expect(verdictWait({ head: HEAD, judged, problem: null }, HEAD, 'move')).toBeUndefined();
+    expect(verdictWait({ head: HEAD, judged, problem: null }, HEAD, ['move'])).toBeUndefined();
     const older = 'd'.repeat(40);
     const not = [
       { head: HEAD, judged: null, problem: 'none' },
@@ -394,7 +394,7 @@ describe('the pin queue’s own conditions', () => {
       { head: HEAD, judged: { ...judged, rule: 'held' as const }, problem: null },
       { head: HEAD, judged: { ...judged, pending: 'a read' }, problem: null },
     ];
-    for (const verdict of not) expect(verdictWait(verdict as never, HEAD, 'move')?.waits).toBe('verdict');
+    for (const verdict of not) expect(verdictWait(verdict as never, HEAD, ['move'])?.waits).toBe('verdict');
 
     const required = ['platform', 'lint, types, tests', 'review'];
     const actions = [run('platform', 'github-actions'), run('lint, types, tests', 'github-actions')];
