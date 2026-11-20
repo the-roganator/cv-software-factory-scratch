@@ -938,6 +938,13 @@ describe('platform.yml', () => {
       expression("(failure() || cancelled()) && env.QUEUE_GONE != 'true'"),
     );
     expect((kept as { 'timeout-minutes'?: number } | undefined)?.['timeout-minutes']).toBe(5);
+    // Why the cluster did not come up, said by the step after it in its name, which GitHub keeps when a runner dies.
+    const making = names.indexOf('Make the cluster');
+    const why = steps[making + 1] as { name?: string; if?: string; run?: string } | undefined;
+    expect(why?.name).toBe(`Why: ${expression('env.PLATFORM_FAULT')}`);
+    expect(why?.if).toBe(expression("failure() && env.PLATFORM_FAULT != ''"));
+    expect(steps[making]?.run).toContain('fault "make $status"');
+    expect(steps[making]?.run).toContain('scripts/platform-fault.sh "$1" "$RUNNER_TEMP/measure"');
     expect(runs).not.toMatch(/get secrets?\b/);
     // Each record the scripts take, with its own script, uploaded beside what the change checks in.
     for (const file of readdirSync('deploy/test').filter((f) => f.endsWith('-refusals.json'))) {
