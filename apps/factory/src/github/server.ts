@@ -455,8 +455,8 @@ const READS = {
 
 type ReadName = keyof typeof READS;
 
-/** The reads the dependency sense's door serves (`factory patching`): the scan's moves and Dependabot's pull requests. */
-export const PATCHING_READS: readonly ReadName[] = ['moves', 'dependencyPulls'];
+/** The reads the dependency sense's door serves (`factory patching`): the scan's moves. */
+export const PATCHING_READS: readonly ReadName[] = ['moves'];
 
 /** The reads a worker may ask for, each with its arguments after the repository, and what it gives back. */
 export type { ReadName };
