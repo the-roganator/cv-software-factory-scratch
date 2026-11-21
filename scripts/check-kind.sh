@@ -10,10 +10,9 @@
 #              files of the local profile pin, on a pull request or in the queue.
 #   manifests  a pull request, anyone's, that changes only files under deploy/, but for the Postgres the console's
 #              browser tests run beside. On a pull request only.
-#   code       anything else: every check runs. A pin move of the App's (scripts/pin-move.ts) is this kind: the review
-#              gate passes one only once the job that runs its pin (ZAP scan, image builds, tests) succeeded at its
-#              head, so none of them may be skipped for it. One under deploy/ that only a cluster runs is `manifests`,
-#              and the gate passes it once `platform`, which every change to deploy/ runs, succeeded at its head.
+#   code       anything else: every check runs. A move of a pin outside deploy/ (scripts/move.ts) is this kind, so the
+#              job that runs its pin (ZAP scan, image builds, tests) runs on it. One under deploy/ is `manifests`, and
+#              `platform` runs on it.
 #
 # `scripts/check-kind.sh platform` says instead whether platform.yml's cluster runs, `cluster` or `none`: `cluster` when
 # HEAD changes from HEAD^1 any input, which is any path outside the classes a cluster is not made from (is_input, below:
@@ -253,7 +252,7 @@ passed_at_head() {
   inputs_still "$b0" HEAD^1 || return 1
 
   # The pull request ran it for itself alone: never retargeted, no other from its branch since it was opened, and no
-  # other with its head. A run's pull requests are those it matches now, not the one it ran for (scripts/pin-moves.ts).
+  # other with its head. A run's pull requests are those it matches now, not the one it ran for.
   events=$(gh api --paginate "repos/$repo/issues/$number/events?per_page=100" | jq -r '.[].event') ||
     { why "GitHub did not list #$number's events"; return 1; }
   ! grep -qxE 'base_ref_changed|automatic_base_change_succeeded' <<< "$events" ||

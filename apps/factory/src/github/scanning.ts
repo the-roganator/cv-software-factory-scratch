@@ -234,7 +234,7 @@ const ALL_COUNTS: Exclude<keyof DayCounts, keyof typeof DAY_COUNTS> extends neve
 void ALL_COUNTS;
 
 /** `moves.json`, as moves.ts writes it: a reader refuses a version it does not know. */
-const MOVES_FILE_SCHEMA = z.strictObject({
+export const MOVES_FILE_SCHEMA = z.strictObject({
   version: z.literal(MOVES_VERSION),
   repository: z.string(),
   judged: DAY,
