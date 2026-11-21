@@ -24,7 +24,7 @@ describe('the sheet the address asks for', () => {
   });
 
   it('is Patching’s at a row for `?move=`, and Guardrails’ at one for `?open=`, with or without the panel named', () => {
-    const key = 'the-roganator/cv-software-factory example-logs';
+    const key = 'the-roganator/cv-software-factory-scratch example-logs';
     expect(asked(`?move=${encodeURIComponent(key)}`)).toEqual({ kind: 'patching', row: key });
     expect(asked(`?sheet=patching&move=${encodeURIComponent(key)}`)).toEqual({ kind: 'patching', row: key });
     expect(asked('?open=5')).toEqual({ kind: 'guardrails', row: 5 });

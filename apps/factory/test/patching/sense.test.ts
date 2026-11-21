@@ -73,7 +73,7 @@ describe('the dependency sense', () => {
     expect(more).toEqual([]);
     expect(day?.appended_by).toBe('factory_patching');
     expect(day?.summary).toBe(
-      "The day's moves: 2 in cv-software-factory, 0 in cv-worlds-worst-website; the cluster runs what the list says",
+      "The day's moves: 2 in cv-software-factory-scratch, 0 in cv-worlds-worst-website-scratch; the cluster runs what the list says",
     );
     const payload = PAYLOADS['patching.read'].parse(day?.payload);
     expect(payload.repositories.map((r) => [r.repository, r.moves.length, r.scanned, r.failed])).toEqual([
@@ -187,7 +187,7 @@ describe('the dependency sense', () => {
     expect(said).toHaveLength(3);
     expect(said[0]?.msg).toBe('patching: 2 of the reads failed, so the day is not appended');
     expect(said[0]?.failed?.[0]).toBe(
-      "the moves of the-roganator/cv-software-factory: The factory's App cannot read the scan's moves: it lacks `actions: read`.",
+      "the moves of the-roganator/cv-software-factory-scratch: The factory's App cannot read the scan's moves: it lacks `actions: read`.",
     );
     expect(said[2]?.failed).toEqual(["the cluster's pods: GET /api/v1/pods answered 403: forbidden"]);
   });

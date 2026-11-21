@@ -26,7 +26,7 @@ describe('the harness’s call to the attack door', () => {
 
   const within = { signal: new AbortController().signal, limitMs: 2000 };
   const refusal = {
-    repo: 'the-roganator/cv-software-factory',
+    repo: 'the-roganator/cv-software-factory-scratch',
     number: null,
     at: '2026-11-03T12:00:00.000Z',
     payload: { mechanism: 'github-guard', action: 'commit a workflow', output: 'refused', guardrails: [1] },
