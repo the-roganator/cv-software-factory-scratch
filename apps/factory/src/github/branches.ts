@@ -56,7 +56,8 @@ export const plainBranch = (branch: string): boolean =>
  * The commit each of the worker's own watches last wrote to a branch of its own, by repository and branch: what that
  * watch's queue may add to the merge queue, and nothing else. A branch at any other commit, however it got there, is
  * not the watch's work; the watch puts its own back on its next pass. Kept in memory: a worker that starts again knows
- * none, and each watch writes its commit again before its queue adds anything.
+ * none, and its queues add nothing until each watch has looked. The pin watch then records a head that is already the
+ * commit it would write (`pins.ts`); the deploy watch writes its commit again.
  */
 export class WatchedHeads {
   readonly #heads = new Map<string, string>();
