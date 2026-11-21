@@ -1,19 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { NEVER } from '../../src/github/paths.ts';
 import type { Target } from '../../src/vulnerabilities/fixes.ts';
 import {
   APP,
   type Context,
-  dependabotDirectories,
-  directPackages,
   furthest,
   isMajor,
   type Judged,
-  LINE_NEVER,
   MOVES_VERSION,
   moves,
   movesFile,
-  PLAYWRIGHT_IMAGE,
   table,
 } from '../../src/vulnerabilities/moves.ts';
 import type { Finding, Severity } from '../../src/vulnerabilities/sarif.ts';
@@ -29,8 +24,6 @@ const DIGEST = `sha256:${'e'.repeat(64)}`;
 const context = (over: Partial<Context> = {}): Context => ({
   repository: REPOSITORY,
   app: false,
-  dependabot: ['/apps/factory', '/deploy/base/postgres'],
-  direct: new Set(['example-a']),
   now: NOW,
   ...over,
 });
@@ -113,7 +106,7 @@ describe('the day’s moves', () => {
       });
     const list = moves(
       [node('apps/factory/Dockerfile'), node('apps/runner/Dockerfile'), node('apps/console/Dockerfile')],
-      context({ dependabot: ['/apps/factory', '/apps/runner', '/apps/console'] }),
+      context(),
     );
     expect(list).toHaveLength(1);
     expect(list[0]?.pins).toEqual([
@@ -165,16 +158,11 @@ describe('the day’s moves', () => {
     it('line: the app’s', () => {
       expect(laneOf(result(), { repository: APP, app: true })).toBe('line');
     });
-    it('dependabot, in the app: a pin where the line may not write, in a directory Dependabot reads, on a deadline or not', () => {
-      const app = { repository: APP, app: true, dependabot: ['/', '/deploy/images/syft'] };
+    it('line, in the app: an image under deploy/ as one at the root, on a deadline or not', () => {
+      const app = { repository: APP, app: true };
       const syft = { pin: { file: 'deploy/images/syft/Dockerfile', line: 5 } };
-      expect(laneOf(result(syft), app)).toBe('dependabot');
-      expect(laneOf(result({ ...syft, severity: 'LOW', due: undefined }), app)).toBe('dependabot');
-      // One Dependabot does not read stays the line's, whose guard refuses it: nobody else is there to move it.
-      expect(laneOf(result({ pin: { file: 'deploy/base/rollout.yaml', line: 67 } }), app)).toBe('line');
-      // Only an image's: a version there is nothing Dependabot's docker entries move.
-      expect(laneOf(result({ ...syft, target: { kind: 'version', versions: ['1.0.1'] } }), app)).toBe('line');
-      // The root Dockerfile is the line's to write, though Dependabot reads it too.
+      expect(laneOf(result(syft), app)).toBe('line');
+      expect(laneOf(result({ ...syft, severity: 'LOW', due: undefined }), app)).toBe('line');
       expect(laneOf(result({ pin: { file: 'Dockerfile', line: 5 } }), app)).toBe('line');
     });
     it('worker: what judges a move (Kyverno, Trivy, Syft) is a move as any other', () => {
@@ -183,10 +171,7 @@ describe('the day’s moves', () => {
       expect(value('kyverno: ghcr.io/kyverno/readiness-checker')).toBe('worker');
       const trivy = { name: 'ghcr.io/aquasecurity/trivy', pin: { file: 'deploy/images/trivy/Dockerfile', line: 3 } };
       expect(laneOf(result(trivy))).toBe('worker');
-      // With nothing urgent, where Dependabot reads its pin, it is Dependabot's, as any image there is.
-      expect(
-        laneOf(result({ ...trivy, severity: 'LOW', due: undefined }), { dependabot: ['/deploy/images/trivy'] }),
-      ).toBe('dependabot');
+      expect(laneOf(result({ ...trivy, severity: 'LOW', due: undefined }))).toBe('worker');
       expect(laneOf(result({ name: 'ghcr.io/anchore/syft' }))).toBe('worker');
     });
     it('worker: one chart at two Applications’ pins, as one move', () => {
@@ -203,19 +188,16 @@ describe('the day’s moves', () => {
       expect(list[0]).toMatchObject({ name: 'opentelemetry-collector', lane: 'worker' });
       expect(list[0]?.pins).toHaveLength(2);
     });
-    it('dependabot, or an issue: Playwright’s image, whose library in the lockfile is the same release', () => {
-      const image = () =>
-        result({ name: PLAYWRIGHT_IMAGE, pin: { file: 'apps/factory/Dockerfile.browser', line: 26 } });
-      // On a deadline or not, where Dependabot reads the pin: its group moves the image and the library together.
-      expect(laneOf(image())).toBe('dependabot');
-      expect(laneOf(image(), { dependabot: [] })).toBe('issue');
-      // In the app too, where Dependabot reads it; where it does not, the app's moves are the line's.
-      const app = { repository: APP, app: true };
-      expect(laneOf(image(), app)).toBe('dependabot');
-      expect(laneOf(image(), { ...app, dependabot: [] })).toBe('line');
-    });
-    it('holds where the line may not write to the GitHub worker’s own list', () => {
-      expect(LINE_NEVER).toEqual(NEVER);
+    it('worker: Playwright’s image, whose library the pin step moves with it; in the app, the line', () => {
+      const image = (over: Partial<Judged> = {}) =>
+        result({
+          name: 'mcr.microsoft.com/playwright',
+          pin: { file: 'apps/factory/Dockerfile.browser', line: 26 },
+          ...over,
+        });
+      expect(laneOf(image())).toBe('worker');
+      expect(laneOf(image({ severity: 'LOW', due: undefined }))).toBe('worker');
+      expect(laneOf(image(), { repository: APP, app: true })).toBe('line');
     });
     it('cluster: k3s', () => {
       expect(
@@ -233,7 +215,7 @@ describe('the day’s moves', () => {
           due: NOW + 20 * DAY,
         });
       expect(laneOf(chart(true))).toBe('worker');
-      expect(laneOf(chart(false), { dependabot: ['/deploy/base/telemetry'] })).toBe('worker');
+      expect(laneOf(chart(false))).toBe('worker');
       expect(moves([chart(true)], context())[0]?.major).toBe(true);
     });
     it('issue: what the Makefile pins, and a workflow', () => {
@@ -270,7 +252,7 @@ describe('the day’s moves', () => {
         laneOf(result({ kind: 'k3d', pin: { file: 'mise.lock', line: 40 } }), { repository: APP, app: true }),
       ).toBe('line');
     });
-    it('a lockfile’s package: Dependabot’s while direct, alone and within its day, else the worker’s', () => {
+    it('a lockfile’s package: the worker’s, direct or not, and within a day of its fix', () => {
       const npm = (name: string, over: Partial<Judged> = {}) => {
         const each = result({
           kind: 'lockfile',
@@ -284,8 +266,7 @@ describe('the day’s moves', () => {
       };
       const recent = npm('example-a');
       if (recent.finding.fix) recent.finding.fix.day = NOW - DAY / 2;
-      expect(laneOf(recent)).toBe('dependabot');
-      // Dependabot has had its day.
+      expect(laneOf(recent)).toBe('worker');
       expect(laneOf(npm('example-a'))).toBe('worker');
       // An indirect package.
       const indirect = npm('example-b');
@@ -301,11 +282,11 @@ describe('the day’s moves', () => {
       ];
       expect(moves(both, context())[0]?.lane).toBe('worker');
     });
-    it('dependabot: a pin its docker entries read, with no High or Critical on a deadline; else the worker', () => {
+    it('worker: an image’s pin, whatever its severity or deadline; none waits for Dependabot', () => {
       const postgres = (severity: Severity, due?: number) =>
         result({ severity, due, name: 'postgres', pin: { file: 'deploy/base/postgres/statefulset.yaml', line: 20 } });
-      expect(laneOf(postgres('MEDIUM', NOW + 20 * DAY))).toBe('dependabot');
-      expect(laneOf(postgres('HIGH', undefined))).toBe('dependabot');
+      expect(laneOf(postgres('MEDIUM', NOW + 20 * DAY))).toBe('worker');
+      expect(laneOf(postgres('HIGH', undefined))).toBe('worker');
       expect(laneOf(postgres('HIGH', NOW + 4 * DAY))).toBe('worker');
       expect(laneOf(result())).toBe('worker');
     });
@@ -348,49 +329,6 @@ describe('the day’s moves', () => {
   });
 });
 
-describe('what the lanes are read from', () => {
-  it('reads dependabot.yml’s docker directories, and no other ecosystem’s', () => {
-    const text = [
-      'version: 2',
-      'updates:',
-      '  - package-ecosystem: npm',
-      '    directory: /',
-      '  - package-ecosystem: docker',
-      '    directory: /apps/factory # the factory',
-      '  - package-ecosystem: docker',
-      '    directories:',
-      '      - /apps/console',
-      "      - '/deploy/base/postgres'",
-      '    schedule:',
-      '      interval: weekly',
-      '  - package-ecosystem: github-actions',
-      '    directory: /',
-    ].join('\n');
-    expect(dependabotDirectories(text)).toEqual(['/apps/factory', '/apps/console', '/deploy/base/postgres']);
-  });
-
-  it('reads a lockfile’s direct dependencies from its importers alone', () => {
-    const lockfile = [
-      "lockfileVersion: '9.0'",
-      'importers:',
-      '  .:',
-      '    devDependencies:',
-      '      example-a:',
-      '        specifier: ^1.0.0',
-      '        version: 1.0.0',
-      '  apps/factory:',
-      '    dependencies:',
-      "      '@example/b':",
-      '        specifier: ^2.0.0',
-      '        version: 2.0.0',
-      'packages:',
-      '  example-c@3.0.0:',
-      '    resolution: {}',
-    ].join('\n');
-    expect([...directPackages(lockfile)]).toEqual(['example-a', '@example/b']);
-  });
-});
-
 describe('one pin with several targets', () => {
   it('is one move, to the furthest target any of its results needs', () => {
     const chart = (version: string, major: boolean) =>
@@ -419,18 +357,6 @@ describe('a pin’s target, joined', () => {
         { kind: 'version', versions: ['1.0.5', '2.0.0'] },
       ]),
     ).toEqual({ kind: 'version', versions: ['1.0.5', '2.0.1'] });
-  });
-
-  it('reads dependabot.yml’s globs', () => {
-    const pin = { file: 'apps/console/Dockerfile', line: 1 };
-    const list = moves(
-      [result({ pin, severity: 'MEDIUM', due: NOW + 20 * DAY })],
-      context({ dependabot: ['/apps/*'] }),
-    );
-    expect(list[0]?.lane).toBe('dependabot');
-    expect(moves([result({ pin, severity: 'MEDIUM' })], context({ dependabot: ['/deploy/**'] }))[0]?.lane).toBe(
-      'worker',
-    );
   });
 });
 

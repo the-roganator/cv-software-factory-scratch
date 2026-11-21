@@ -1,6 +1,6 @@
 /**
  * A repository behind the fake GitHub, for the pin watch's tests: commits as whole trees of files, branches, the App's
- * pull requests and issues, and Dependabot's pull requests, answered as GitHub answers the calls the watch and its
+ * pull requests and issues, and Dependabot's pull requests, which the watch leaves alone, answered as GitHub answers the calls the watch and its
  * guard make. `createCommitOnBranch` makes a commit as GitHub would, on the branch's head alone.
  *
  * The fixture day (`factoryDay`) is invented: each name is the kind of thing the factory pins, under `example`, and
@@ -470,7 +470,7 @@ export function day(scanned: string, moves: ReadMove[], run = 42_000_000_101): M
       totals: {
         fixed: 0,
         moves: moves.length,
-        lanes: { line: 0, worker: 0, dependabot: 0, cluster: 0, issue: 0, none: 0 },
+        lanes: { line: 0, worker: 0, cluster: 0, issue: 0, none: 0 },
         noFix: 0,
         excepted: 0,
         overdue: 0,
@@ -630,13 +630,6 @@ export function factoryMoves(): ReadMove[] {
           firstSeen: '2026-11-10T06:00:00Z',
         },
       ],
-    }),
-    move({
-      name: 'ghcr.io/example/sbom-tool',
-      pins: [{ file: 'deploy/images/sbom-tool/Dockerfile', line: 2 }],
-      from: 'v1.54.0',
-      to: `image v1.55.1@${digest('sbom-tool/new')}`,
-      lane: 'dependabot',
     }),
   ];
 }
