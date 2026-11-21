@@ -136,7 +136,9 @@ import { type Controls, controlsInForce, takeSet } from '../../../../policy/line
 import { release as RELEASE } from '../../../../policy/release.ts';
 import { sendCounts } from '../counts.ts';
 import { DRY_RUN_NUMBERS_FROM } from '../github/actions.ts';
+import { spentComment } from '../github/deploy-queue.ts';
 import { type Carry, DEPLOYS, type DeployProposal, MAX_CARRIES } from '../github/deploys.ts';
+import { failedChecks } from '../github/merging.ts';
 import { outcomeOf } from '../github/reads.ts';
 import type {
   ActingFor,
@@ -150,9 +152,10 @@ import type {
 import { GitHubWorkerError, issueGone } from '../github/worker-client.ts';
 import type { PictureIndex } from '../pictures/index.ts';
 import { APP_REPOSITORY } from '../repositories.ts';
-import { EMPTY_PINS, type Step, type StepOutcome, type StepRequest } from '../runners/steps.ts';
+import type { Step, StepOutcome, StepRequest } from '../runners/steps.ts';
 import { verifyRefusal } from '../signed-refusals.ts';
 import { ATTRIBUTES as A, inSpan } from '../spans.ts';
+import { PassLog } from '../store-absence.ts';
 import {
   type Bounds,
   boundsOn,
@@ -784,8 +787,18 @@ export class Line {
       for (const stop of unobserved) stop();
     };
     try {
+      // A store restarting, as patching Postgres restarts it, fails a pass or two: a warning, not a fault, for a minute.
+      const passes = new PassLog(this.#o.log, this.#o.now, {
+        away: 'a pass of the line could not reach the store: the next pass tries again',
+        stillAway: 'a pass of the line failed: the store has been away for over a minute',
+        failed: 'a pass of the line failed',
+        back: (seconds) => `the line reached the store again, after ${seconds} s`,
+      });
       while (!abort.aborted) {
-        await this.tick().catch((error: unknown) => this.#o.log.error({ err: error }, 'a pass of the line failed'));
+        await this.tick().then(
+          () => passes.passed(),
+          (error: unknown) => passes.failed(error),
+        );
         const timer = setTimeout(nudge, 15_000);
         await wake.promise;
         clearTimeout(timer);
@@ -1125,6 +1138,18 @@ export class Line {
       case 'hold': {
         const draft = holdDraft('factory', next.hold);
         const { spentUsd } = next.hold;
+        const queue = next.hold.merge?.queue;
+        if (next.hold.merge?.why === 'queue' && queue && failedChecks(queue.reason)) {
+          // Out of tries: said on the pull request before the hold, so a comment that could not be made is tried
+          // again on the next pass, and once the hold is made, never again. One the App may not make is only logged.
+          const { pullRequest: number, head } = next.hold.merge;
+          await this.#o.github
+            .act('comment', this.#o.repo, { number, body: spentComment(head, queue.failed) }, { workItem })
+            .catch((error) => {
+              if (!issueGone(error)) throw error;
+              this.#o.log.warn({ workItem, number, err: error }, 'the pull request cannot be commented on');
+            });
+        }
         const guard = this.#o.settings?.holdForSpend;
         if (next.hold.cause === 'spend' && spentUsd !== undefined && guard) {
           // The cap was raised since this pass read it: no hold, and the next pass decides again under the new one.
@@ -1970,9 +1995,8 @@ export class Line {
         return;
       }
       if (outcome.kind === 'pinned') {
-        if (!outcome.pins) {
-          return await this.#failed(workItem, agent, outcome.job, [], EMPTY_PINS);
-        }
+        // A move main already has is done, not failed: another change made it, and nothing is left to make.
+        if (!outcome.pins && move) return await this.#madeAlready(item, agent, provider, outcome.job, move, commit);
         this.#o.log.info({ workItem, agent, job: outcome.job }, 'the move asks for nothing but its pins: no coder');
         // The move is the whole change, as a coder says it (`{"moved": true}`): the line titles and notes it.
         const moved: Pending = {
@@ -1983,7 +2007,7 @@ export class Line {
           commit,
           base,
           handback: { ending: 'finished', patch: '', note: '', turns: 0, session: null, result: { moved: true } },
-          pinned: { pins: outcome.pins, alone: true },
+          pinned: { pins: outcome.pins, alone: true, ...(outcome.made ? { made: outcome.made } : {}) },
           ...(move ? { move } : {}),
           called: [],
           begun: [],
@@ -2041,6 +2065,7 @@ export class Line {
           ? {
               pinned: {
                 ...(outcome.pins ? { pins: outcome.pins } : {}),
+                ...(outcome.made ? { made: outcome.made } : {}),
                 ...(outcome.lockfile ? { lockfile: outcome.lockfile } : {}),
               },
             }
@@ -2135,6 +2160,48 @@ export class Line {
   /** Where an agent's calls go under the settings in force. */
   #providerOf(agent: LineAgent): Provider {
     return (this.#inForce?.providerOf ?? this.#o.providerOf)(agent);
+  }
+
+  /**
+   * A move the pin step found main has already, as the second of two moves that overlap finds it once the first merged:
+   * nothing is left to make, so the work item closes with no change of its own, and its issue as completed, saying so.
+   */
+  async #madeAlready(
+    item: QueueItem,
+    agent: LineAgent,
+    provider: Provider,
+    job: string,
+    move: NonNullable<Step['move']>,
+    commit: string,
+  ): Promise<void> {
+    const { workItem } = item;
+    const reason = cutTo(`Main already has its move, at ${commit.slice(0, 7)}: ${move.name} at ${move.to}`, 200);
+    if (item.issue) {
+      const comment = [
+        `Main already has this move, at ${commit.slice(0, 7)}: \`${move.name}\` at \`${move.to}\`. Another change made it.`,
+        '',
+        `The factory’s work item #${workItem} is closed with no change of its own.`,
+      ].join('\n');
+      // One that is gone, or that the App may not change, has nothing to close.
+      await closeIssue(
+        this.#o.github,
+        this.#o.repo,
+        { number: item.issue, reason: 'completed', comment },
+        workItem,
+        this.#o.log,
+      );
+    }
+    await this.#append(workItem, [
+      {
+        type: 'work-item.closed',
+        actor: 'factory',
+        summary: 'Closed: main already has its move',
+        payload: { outcome: 'no-change', reason },
+      },
+    ]);
+    await this.#queue.moved(workItem);
+    countStep(agent, provider, 'done');
+    this.#o.log.info({ workItem, agent, job, commit }, 'main already has the move: closed');
   }
 
   /**
