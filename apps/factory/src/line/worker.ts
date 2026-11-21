@@ -153,6 +153,7 @@ import { APP_REPOSITORY } from '../repositories.ts';
 import { EMPTY_PINS, type Step, type StepOutcome, type StepRequest } from '../runners/steps.ts';
 import { verifyRefusal } from '../signed-refusals.ts';
 import { ATTRIBUTES as A, inSpan } from '../spans.ts';
+import { PassLog } from '../store-absence.ts';
 import {
   type Bounds,
   boundsOn,
@@ -218,7 +219,6 @@ import { type Own, pagesFor } from './pictures.ts';
 import { type Pending, Queue, type QueueItem, type Takes, takesOf } from './queue.ts';
 import { type Carried, carried, Releases, type ReleaseWatchOptions } from './release.ts';
 import { acceptedThreads, resolveThreads } from './review.ts';
-import { PassLog } from './store-absence.ts';
 import {
   closingComment,
   closingPullComment,
@@ -750,7 +750,12 @@ export class Line {
     };
     try {
       // A store restarting, as patching Postgres restarts it, fails a pass or two: a warning, not a fault, for a minute.
-      const passes = new PassLog(this.#o.log, this.#o.now);
+      const passes = new PassLog(this.#o.log, this.#o.now, {
+        away: 'a pass of the line could not reach the store: the next pass tries again',
+        stillAway: 'a pass of the line failed: the store has been away for over a minute',
+        failed: 'a pass of the line failed',
+        back: (seconds) => `the line reached the store again, after ${seconds} s`,
+      });
       while (!abort.aborted) {
         await this.tick().then(
           () => passes.passed(),
