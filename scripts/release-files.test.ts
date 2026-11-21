@@ -88,16 +88,10 @@ describe('the files a release changes', () => {
       // own, written for a scratch repository to try it on.
       'scripts/check-kind.sh',
       'scripts/check-kind.test.ts',
-      // The review gate's Critical fix, which has the pin step write package.json on the base and compares the head's
-      // with it, and its tests.
-      'scripts/critical-fix-readers.ts',
-      'scripts/critical-fix.adversarial.test.ts',
-      'scripts/critical-fix.read-2.test.ts',
-      'scripts/critical-fix.read-3.test.ts',
-      'scripts/critical-fix.test.ts',
-      'scripts/critical-fix.ts',
       // flagd's evaluation library's own package.json, as for the test above.
       'scripts/flagd-sides.ts',
+      // The move rule's tests, whose pin step writes a package.json of their own, and a package's version in it.
+      'scripts/move.test.ts',
       // The review gate's tests, which tag a change to package.json, and read its verdict's version.
       'scripts/review-routing.test.ts',
       // package.json's packageManager, beside mise.lock's pnpm, and not its version line.
