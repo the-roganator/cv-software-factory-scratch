@@ -122,9 +122,9 @@ export const APPS = {
    * their `moves` artifact (actions) and its code-scanning alerts (security events), and changes neither.
    */
   factory: {
-    slug: 'mrogan-software-factory',
-    id: 5187559,
-    clientId: 'Iv23liE1Dj3iYkwWX59z',
+    slug: 'the-roganator-scratch-factory',
+    id: 5774780,
+    clientId: 'Iv23liy57XMhlWYlOe5i',
     holder: 'the GitHub worker (deploy/base/factory/github.yaml), alone',
     permissions: {
       actions: 'read',

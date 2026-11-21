@@ -23,7 +23,7 @@ export const PATCH = (path: string) => `diff --git a/${path} b/${path}
 
 export const STEP: Step = {
   agent: 'coder',
-  repository: 'https://github.com/the-roganator/cv-worlds-worst-website.git',
+  repository: 'https://github.com/the-roganator/cv-worlds-worst-website-scratch.git',
   commit: 'a'.repeat(40),
   prompt: 'Fix it.',
   maxTurns: 10,
