@@ -14,8 +14,9 @@
  * Each pass reads the open pull requests it watches, and adds each to the queue at its head only when every one of
  * these holds; otherwise it waits, and says why once for each head:
  *
- * - **the positive check, first**: its head is the very commit its watch last wrote to its branch (`WatchedHeads`), so
- *   a branch moved by anyone, by any route, is not the watch's work and is not added; the watch writes its own again;
+ * - **the positive check, first**: its head is the very commit its watch last wrote to its branch (`WatchedHeads`), or,
+ *   for the pin watch after a restart, one it found already to be the commit it would write (`pins.ts`), so a branch
+ *   moved by anyone, by any route, is not the watch's work and is not added; the watch writes its own again;
  * - **the deploy pin**: it is the App's (`APP_USER`), from this repository's deploy branch into main, not a draft, with
  *   the profile's label (`deploy: local`) and a title the deploy watch writes (`chore(deploy): run … on the local
  *   cluster`), and the gate's rule is `exact-pin`;
