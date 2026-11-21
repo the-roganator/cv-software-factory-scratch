@@ -24,7 +24,7 @@ import { OTHER_SHA, quiet, REPO, SHA } from './fake.ts';
  * actions are fakes that keep what they were asked; the recorder is real, so each answer's signature verifies.
  */
 const { privateKey, publicKey } = generateKeyPairSync('ed25519');
-const FACTORY = 'the-roganator/cv-software-factory';
+const FACTORY = 'the-roganator/cv-software-factory-scratch';
 const AT = () => new Date('2026-11-03T12:00:00Z');
 
 interface Call {
@@ -66,7 +66,7 @@ const PENDING = 'test integrity is still running at bbbbbbb';
 const COMPLETED_AT = '2026-11-03T11:45:00Z';
 
 /** The factory's own App, which can post a check named `review` too. */
-const FACTORY_APP = 5187559;
+const FACTORY_APP = 5774780;
 
 /** A `review` run as GitHub lists it on a commit, by the app that posted it, with the gate's block for #77 at `sha`. */
 function run(

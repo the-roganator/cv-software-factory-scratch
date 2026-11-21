@@ -21,7 +21,7 @@ patches:
       # The factory's image, signed by the factory's build.yml.
       - op: replace
         path: /spec/variables/1/expression
-        value: "['ghcr.io/the-roganator/cv-software-factory/factory']"
+        value: "['ghcr.io/the-roganator/cv-software-factory-scratch/factory']"
       # None of the app's.
       - op: replace
         path: /spec/variables/2/expression
