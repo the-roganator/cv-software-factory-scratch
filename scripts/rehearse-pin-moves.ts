@@ -1,5 +1,6 @@
 /**
- * A rehearsal of this repository's pin moves, on the Mac, pushing nothing: for each move one row, with the files it
+ * A rehearsal of this repository's pin moves, on the Mac, pushing nothing: for each pull request the pin watch would
+ * open (the day's moves at one file) one row, and one for each move it would not make, with the files it
  * changes and which of the repository's unit and database tests fail on it that pass on the base. The review gate's
  * verdict is not rehearsed: it makes the same moves with the watch's own edit (scripts/move.ts), so a move the watch
  * makes from a day's `moves.json` is that day's `move`.
@@ -13,7 +14,7 @@
  * of git's, and its `commitPins` is the guard's own `pinChanges` (`pin-guard.ts`), whose files become a local commit on
  * the base. `--compare` then says whether each such tree is the tree of origin's branch of the same name.
  *
- * Also: `--only <name>` (a move's name or its branch's last segment; may repeat), `--no-tests`,
+ * Also: `--only <name>` (a move's name, or a branch's last segment; may repeat), `--no-tests`,
  * `--work <dir>` (default `scratch/rehearse`), `--scanned <ref>` (the commit the scan read; default the base).
  *
  * Everything is made in a repository of its own under the work directory, which borrows this checkout's objects and
@@ -28,13 +29,13 @@ import type { Actions } from '../apps/factory/src/github/actions.ts';
 import { PIN_PREFIX } from '../apps/factory/src/github/branches.ts';
 import type { GitHub } from '../apps/factory/src/github/client.ts';
 import {
+  segmentOf as keyOf,
   type PinCommit,
   type PinEdit,
   type PinSource,
-  pinBranchFor,
   pinChanges,
 } from '../apps/factory/src/github/pin-guard.ts';
-import { PIN_REPOS, type PinWatchDependencies, pinWatch } from '../apps/factory/src/github/pins.ts';
+import { branchOf, PIN_REPOS, type PinWatchDependencies, pinWatch } from '../apps/factory/src/github/pins.ts';
 import type { Moves, ReadMove } from '../apps/factory/src/github/scanning.ts';
 
 const exec = promisify(execFile);
@@ -93,7 +94,7 @@ function options(argv: string[]): Options {
 const here = (...args: string[]) =>
   execFileSync('git', ['-C', ROOT, ...args], { encoding: 'utf-8', maxBuffer: 64 * 1024 * 1024 }).trim();
 
-/** One move to rehearse: its name, the commit that makes it, and what the watch said where it made none. */
+/** One row to rehearse: a pull request's moves by name, the commit that makes them, and what the watch said of a move it made no commit for. */
 interface Candidate {
   name: string;
   branch: string;
@@ -260,32 +261,38 @@ async function fromMoves(o: Options, work: Work, base: string): Promise<Candidat
       actions: actions as Pick<Actions, keyof PinWatchDependencies['actions']>,
       source,
       log: { info: log('info'), warn: log('warn'), error: log('error') } as unknown as PinWatchDependencies['log'],
-      only: o.only.length ? moves.filter((move) => wanted(o, move.name)).map((move) => move.name) : '*',
+      only: o.only.length ? moves.filter((move) => wanted(o, move)).map((move) => move.name) : '*',
     },
     REPO,
   );
   await watch();
 
-  return moves
-    .filter((move) => wanted(o, move.name))
-    .map((move): Candidate => {
-      const branch = pinBranchFor(move.name);
-      const commit = made.get(branch);
-      if (commit) return { ...commit, name: move.name };
-      // An issue is found by its mark (`issueKey` in pins.ts): a lockfile's by its place in the day, any other by its branch.
-      const mark = `<!-- factory: pin-issue ${move.lockfile ? `lockfile-${move.index}` : segmentOf(branch)} -->`;
-      const issue = issues.find((each) => each.body.includes(mark));
-      const why =
-        unmade.get(branch) ??
-        (issue
-          ? `an issue, not a pull request (lane ${move.lane}${move.lockfile ? ', a lockfile’s' : ''}): ${issue.title}`
-          : `the watch makes nothing of it (lane ${move.lane})`);
-      return { name: move.name, branch, unmade: why };
-    });
+  const rows = new Map<string, Candidate>();
+  for (const move of moves.filter((each) => wanted(o, each))) {
+    const branch = branchOf(move);
+    const commit = made.get(branch);
+    // The pull request it is in, when the commit on its branch writes its pins: one row for all its moves.
+    if (commit?.edits?.some((edit) => move.pins.some((pin) => pin.file === edit.file && pin.line === edit.line))) {
+      const row = rows.get(branch);
+      rows.set(branch, { ...commit, name: row ? `${row.name}, ${move.name}` : move.name });
+      continue;
+    }
+    // An issue is found by its mark (`issueKey` in pins.ts): a lockfile's by its place in the day, any other by its name.
+    const mark = `<!-- factory: pin-issue ${move.lockfile ? `lockfile-${move.index}` : keyOf(move.name)} -->`;
+    const issue = issues.find((each) => each.body.includes(mark));
+    const why =
+      (issue
+        ? `an issue, not a pull request (lane ${move.lane}${move.lockfile ? ', a lockfile’s' : ''}): ${issue.title}`
+        : undefined) ??
+      unmade.get(branch) ??
+      `the watch makes nothing of it (lane ${move.lane})`;
+    rows.set(`${branch} ${move.name}`, { name: move.name, branch, unmade: why });
+  }
+  return [...rows.values()];
 }
 
-const wanted = (o: Options, name: string) =>
-  !o.only.length || o.only.includes(name) || o.only.includes(segmentOf(pinBranchFor(name)));
+const wanted = (o: Options, move: ReadMove) =>
+  !o.only.length || o.only.includes(move.name) || o.only.includes(segmentOf(branchOf(move)));
 
 /** Origin's pin branches as they are now: one it deleted is gone here too. */
 const fetchPins = () =>
@@ -303,7 +310,7 @@ function fromBranches(o: Options, work: Work): Candidate[] {
       const segment = ref.slice(prefix.length);
       return { name: segment, branch: `${PIN_PREFIX}${segment}`, head: sha };
     })
-    .filter((each) => wanted(o, each.name))
+    .filter((each) => !o.only.length || o.only.includes(each.name))
     .map((each) => {
       work.git('update-ref', `refs/rehearse/${each.name}`, each.head);
       return each;

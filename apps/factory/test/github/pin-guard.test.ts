@@ -156,16 +156,36 @@ describe('the pin guard', () => {
     await refuses(repo, { branch }, BranchRefused, /not a pin move's branch/);
   });
 
-  it('makes every name a branch under factory/pin/, of one segment the guard takes', () => {
+  it('makes of any files a branch under factory/pin/, of one segment the guard takes, the majors’ apart', () => {
     fc.assert(
-      fc.property(fc.string({ maxLength: 200 }), (name) => {
-        const branch = pinBranchFor(name);
-        expect(branch.startsWith(PIN_PREFIX)).toBe(true);
-        if (branch !== PIN_PREFIX) expect(() => guardPinBranch(branch)).not.toThrow();
-      }),
+      fc.property(
+        fc.array(fc.string({ maxLength: 200 }), { minLength: 1, maxLength: 4 }),
+        fc.boolean(),
+        (files, major) => {
+          const branch = pinBranchFor(files, major);
+          expect(branch.startsWith(PIN_PREFIX)).toBe(true);
+          expect(() => guardPinBranch(branch)).not.toThrow();
+          // The same files give the same branch in any order, and the majors' is another.
+          expect(pinBranchFor([...files].reverse(), major)).toBe(branch);
+          expect(pinBranchFor(files, !major)).not.toBe(branch);
+        },
+      ),
     );
-    expect(pinBranchFor('../../main')).toBe('factory/pin/main');
-    expect(pinBranchFor('docker.io/library/postgres')).toBe('factory/pin/docker.io-library-postgres');
+    expect(pinBranchFor(['../../main'])).toMatch(/^factory\/pin\/main-[0-9a-f]{8}$/);
+    expect(pinBranchFor(['deploy/base/postgres/statefulset.yaml'])).toMatch(
+      /^factory\/pin\/deploy-base-postgres-statefulset\.yaml-[0-9a-f]{8}$/,
+    );
+    expect(pinBranchFor(['deploy/base/telemetry/logs.yaml'], true)).toMatch(
+      /^factory\/pin\/deploy-base-telemetry-logs\.yaml-major-[0-9a-f]{8}$/,
+    );
+    // Paths that fold to one segment, or are cut to one, are still two branches; a lockfile's name ends no ref `.lock`.
+    expect(pinBranchFor(['a/b.yaml'])).not.toBe(pinBranchFor(['a-b.yaml']));
+    expect(pinBranchFor([`${'x'.repeat(90)}/one`])).not.toBe(pinBranchFor([`${'x'.repeat(90)}/two`]));
+    expect(pinBranchFor(['mise.lock'])).not.toMatch(/\.lock$/);
+    // A move at two files is on the branch of both, named by the first.
+    const two = pinBranchFor(['deploy/b.yaml', 'deploy/a.yaml']);
+    expect(two).toMatch(/^factory\/pin\/deploy-a\.yaml-[0-9a-f]{8}$/);
+    expect(two).not.toBe(pinBranchFor(['deploy/a.yaml']));
   });
 
   it('refuses two pins at one line', async () => {
@@ -353,10 +373,5 @@ describe('the pin guard, as review found it', () => {
       PatchRefused,
       /nowhere/,
     );
-  });
-
-  it('gives a name ending .lock a branch the guard takes, within its length', () => {
-    for (const name of ['example/foo.lock', `${'a'.repeat(75)}.lock`, 'x.lock'])
-      expect(() => guardPinBranch(pinBranchFor(name))).not.toThrow();
   });
 });
