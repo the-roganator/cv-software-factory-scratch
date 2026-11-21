@@ -14,10 +14,10 @@ admissionController:
     prometheus.io/port: "8000"
   initContainer:
     image:
-      tag: v1.19.1@sha256:c25c47461f06f2845a48c319ae86fbbc1730a7b9ed5b701889c9dc1f9ee94b09
+      tag: v1.20.0@sha256:339067e083430e0c97007541bef9cfdbac89bee13f7228772c77ae8aead14b8b
   container:
     image:
-      tag: v1.19.1@sha256:b31d8511ae5fd6010e2a01ea72ebae08eb82fa51d91af14a1d9fe989949b4edb
+      tag: v1.20.0@sha256:9de49c5416ea536f00a205527197ac048abdf32c5a75d633cd9afff8928f359d
     # To verify an image's signature it reads every Sigstore bundle attached to the image, its attestations' included,
     # so its memory grows with the largest of them: `factory-browser`'s SBOMs are about 23 MB for each platform, and
     # verifying that image peaks at about 600 Mi.
@@ -33,7 +33,7 @@ reportsController:
     prometheus.io/scrape: "true"
     prometheus.io/port: "8000"
   image:
-    tag: v1.19.1@sha256:c0eee97b9b44a0dd35805d56b358fa52548480f79d4944602b9609538eccd64c
+    tag: v1.20.0@sha256:f54e3cc106fadb1a615d0ec11c42f741f51d3580a5f70dfbe7bd7ec58864ef03
   resources:
     requests:
       cpu: 10m
@@ -53,7 +53,7 @@ cleanupController:
 # webhook.kyverno.io/managed-by=kyverno`, and its CRDs, which were left too.
 webhooksCleanup:
   image:
-    tag: v1.19.1@sha256:31bb42ce7f5b2e27c1cf633aeff4f0cad1f5bb63761e2cb09f0e25cdd26572bf
+    tag: v1.20.0@sha256:6079a30d75fe7ba868a5a7e5dfa71ee92a3a8bae97adcea1c8cfb1009280ee6c
 
 # The CRDs' storage migration is a Helm hook for upgrades across Kyverno's API versions; Argo CD would run it after every
 # sync. An upgrade that needs it says so in its notes, and runs it then.
