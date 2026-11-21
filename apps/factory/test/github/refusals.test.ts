@@ -192,7 +192,7 @@ describe('the GitHub worker’s refusals', () => {
   });
 
   it('refuses, signed, a check run named as the gate’s, or here as one main requires, and posts any other', async () => {
-    const FACTORY = 'the-roganator/cv-software-factory';
+    const FACTORY = 'the-roganator/cv-software-factory-scratch';
     const dir = await mkdtemp(join(tmpdir(), 'refusals-'));
     const server = createWorkerServer({
       actions: failing(new Error('the action was reached')),

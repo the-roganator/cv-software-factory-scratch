@@ -35,7 +35,7 @@
  *
  * These catch a change made by mistake or by hand, not one hidden on purpose by an administrator of the cluster, who
  * could write as Argo CD's manager; that is admission's and RBAC's to keep from them, not this check's.
- * `KUBE_CONTEXT` names the cluster (`k3d-software-factory` by default).
+ * `KUBE_CONTEXT` names the cluster (`k3d-software-factory-scratch` by default).
  */
 import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -531,7 +531,7 @@ if (import.meta.main) {
     console.error(`usage: node scripts/policy-hash.ts <${Object.keys(RECORDS).join(' | ')}>`);
     process.exit(2);
   }
-  const context = process.env.KUBE_CONTEXT ?? 'k3d-software-factory';
+  const context = process.env.KUBE_CONTEXT ?? 'k3d-software-factory-scratch';
   const manifests = render();
   const { problems, revision } = unlike(context, record, named(record, manifests));
   if (problems.length) {

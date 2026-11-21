@@ -17,7 +17,7 @@ import type { GitHub, PullRequest, Run } from './review-gate.ts';
 // them: what a pull request's head makes on main's tip, and what the merge queue's commit makes on the one it was made
 // on.
 
-const APP = 'the-roganator/cv-worlds-worst-website';
+const APP = 'the-roganator/cv-worlds-worst-website-scratch';
 const LOCK = 'pnpm-lock.yaml';
 const CHART = 'deploy/base/telemetry/prometheus.yaml';
 const ICON = 'apps/console/public/icon.png';
@@ -145,7 +145,7 @@ describe('what the move job reads of a file (S-M2)', () => {
     const scan: ScanMove[] = [
       {
         ...packageMove(1, '', 0),
-        repository: 'the-roganator/cv-software-factory',
+        repository: 'the-roganator/cv-software-factory-scratch',
         name: 'prometheus',
         lockfile: false,
         lane: 'worker',
