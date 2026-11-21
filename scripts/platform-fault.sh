@@ -19,7 +19,7 @@ set -uo pipefail
 
 why=${1:?why}
 measure=${2:?measure}
-read -r -a kubectl <<<"${KUBECTL:-kubectl --context k3d-software-factory}"
+read -r -a kubectl <<<"${KUBECTL:-kubectl --context k3d-software-factory-scratch}"
 
 # The last line of a log that is not blank, without its timestamps' noise.
 last() { [ -r "$1" ] && grep -v '^[[:space:]]*$' "$1" | tail -1 | tr -s ' \t' ' '; }

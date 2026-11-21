@@ -41,7 +41,7 @@ import {
 
 withLineStore();
 
-const REPO = 'the-roganator/cv-worlds-worst-website';
+const REPO = 'the-roganator/cv-worlds-worst-website-scratch';
 const MOVE = { name: 'invented-pkg', ecosystem: 'npm' as const, from: '2.0.0', to: '2.0.1' };
 const PINS = [{ file: 'pnpm-lock.yaml', line: 41 }];
 
