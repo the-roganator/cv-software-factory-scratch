@@ -7,10 +7,10 @@
  * with what the merge makes, file by file, byte for byte. Each move is made as the one who makes it makes it:
  *
  * - a pin's line, by the pin watch's own edit (`editAt`): an image's tag and digest, a chart's version, k3s's release;
- * - a lockfile's package, in the app each image that runs Node, with the Node it brings, and in the factory anything
- *   mise pins, by the pin step (apps/runner/src/pins.ts's `writePins`), run on main's tip with this repository's pnpm
- *   and mise (scripts/derive.ts): the derivation, in `MoveIO.derive`. In the factory it is what the scan ran to make
- *   the moves the pin watch commits, in the same order (github/made.ts).
+ * - a lockfile's package, each image that brings another pin with it (the Node it runs, or its library: `bringsPins`),
+ *   and in the factory anything mise pins, by the pin step (apps/runner/src/pins.ts's `writePins`), run on main's tip
+ *   with this repository's pnpm and mise (scripts/derive.ts): the derivation, in `MoveIO.derive`. In the factory it is
+ *   what the scan ran to make the moves the pin watch commits, in the same order (github/made.ts).
  *
  * The pull request carries a move when it rewrites a line one of the move's pins is on (a lockfile's, where the scan
  * found its package); it may carry several of the day's moves, and must carry each whole. Anything that differs is refused, and the
@@ -30,7 +30,7 @@ import type { ReadMove } from '../apps/factory/src/github/scanning.ts';
 import { moveOf } from '../apps/factory/src/patching/sends.ts';
 import { repositoryOfImage } from '../apps/factory/src/repositories.ts';
 import { readTarget, type Target } from '../apps/factory/src/vulnerabilities/fixes.ts';
-import { type Move as PinStepMove, runsNode } from '../apps/runner/src/pins.ts';
+import { bringsPins, type Move as PinStepMove } from '../apps/runner/src/pins.ts';
 import type { MoveResult } from './review-routing.ts';
 
 export type { MoveResult } from './review-routing.ts';
@@ -102,13 +102,14 @@ function differing(a: string, b: string): number[] {
 }
 
 /**
- * The pin step's move for one it makes, or undefined for an edit: a lockfile's package; in the app each image that
- * runs Node, which brings its Node (Node's own move, from the build stage's image, or the runtime's at a digest that
- * runs another release); in the factory anything mise pins, as its scan made it for the pin watch (github/made.ts).
+ * The pin step's move for one it makes, or undefined for an edit: a lockfile's package; each image that brings another
+ * pin with it (`bringsPins`): one that runs Node brings its Node (Node's own move, from the build stage's image, or the
+ * runtime's at a digest that runs another release), and Playwright's its library; in the factory anything mise pins,
+ * as its scan made it for the pin watch (github/made.ts).
  */
 function stepMove(move: ScanMove, app: boolean, base: MoveIO['base']): PinStepMove | string | undefined {
   if (!app) return madeByStep(move) ? stepOf(move, base('mise.lock')) : undefined;
-  if (!move.lockfile && !runsNode(move.name)) return undefined;
+  if (!move.lockfile && !bringsPins(move.name)) return undefined;
   const made = moveOf(move.repository, move);
   if (typeof made === 'string') return made;
   return { ecosystem: made.ecosystem, name: made.name, from: made.from, to: made.to };
