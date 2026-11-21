@@ -258,19 +258,33 @@ export async function latest(
     )
     .sort((a, b) => b.id - a.id);
   for (const run of runs) {
-    const listed = (await api.json(
-      `/repos/${repository}/actions/runs/${run.id}/artifacts?name=${artifactName}&per_page=10`,
-    )) as Artifacts | null;
-    const artifact = listOf(listed?.artifacts, 'artifacts').find(
-      (each) => typeof each === 'object' && each !== null && each.name === artifactName && !each.expired,
-    );
-    if (typeof artifact?.id !== 'number') continue;
-    if ((artifact.size_in_bytes ?? 0) > MAX_SEALED_BYTES)
-      throw new StateError(`run ${run.id}'s ${artifactName} is too large`);
-    const archive = await api.bytes(`/repos/${repository}/actions/artifacts/${artifact.id}/zip`);
-    if (archive) return { run: String(run.id), archive };
+    const kept = await keptBy(api, repository, String(run.id), artifactName);
+    if (kept) return kept;
   }
   return undefined;
+}
+
+/**
+ * One run's artifact of that name, sealed still, or undefined where the run kept none that is still there: the review
+ * gate reads the `pins` of the run whose moves it read so (scripts/moves.ts).
+ */
+export async function keptBy(
+  api: StateApi,
+  repository: string,
+  run: string,
+  artifactName: string,
+): Promise<Kept | undefined> {
+  const listed = (await api.json(
+    `/repos/${repository}/actions/runs/${run}/artifacts?name=${artifactName}&per_page=10`,
+  )) as Artifacts | null;
+  const artifact = listOf(listed?.artifacts, 'artifacts').find(
+    (each) => typeof each === 'object' && each !== null && each.name === artifactName && !each.expired,
+  );
+  if (typeof artifact?.id !== 'number') return undefined;
+  if ((artifact.size_in_bytes ?? 0) > MAX_SEALED_BYTES)
+    throw new StateError(`run ${run}'s ${artifactName} is too large`);
+  const archive = await api.bytes(`/repos/${repository}/actions/artifacts/${artifact.id}/zip`);
+  return archive ? { run, archive } : undefined;
 }
 
 /** A list GitHub answered with, or an error that says it gave none: its answers are held to their shape here. */

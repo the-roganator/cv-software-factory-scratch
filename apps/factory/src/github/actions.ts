@@ -15,7 +15,8 @@
  * Both refuse to move, delete or commit to a branch the factory does not own (`branches.ts`), and to act on an issue
  * or pull request the App did not open (`issues.ts`), whatever they are asked: only opening one takes none. A pin
  * watch's branch is written by `commitPins` alone, whose guard (`pin-guard.ts`) lets a commit replace the version or
- * digest at each pin and nothing else; every other action that writes a branch refuses one.
+ * digest at each pin, and write what a move writes in the files the scan's pin step made, and nothing else; every other
+ * action that writes a branch refuses one.
  *
  * A pull request's description is where test integrity reads the tests its spec contradicts (`gates/contradicts.ts`).
  * Only the worker writes that section, rendered from the list the line gives it (`contradicts`), replacing any the
@@ -300,7 +301,8 @@ export interface Actions {
   /**
    * Commits a pin move on `main`'s head and moves its branch, `factory/pin/<files>`, to the commit, in one forced update
    * from a branch of its own, so an open pull request on it never has nothing to merge; returns the commit. Its guard
-   * (`pin-guard.ts`) reads each pin from the repository and refuses anything but a version or digest replaced at a pin.
+   * (`pin-guard.ts`) reads each pin from the repository and refuses anything but a version or digest replaced at a pin,
+   * and, in a file the scan's pin step wrote, anything but what a move writes there.
    */
   commitPins(repo: string, commit: PinCommit): Promise<string>;
   openPullRequest(repo: string, draft: PullRequestDraft): Promise<PullRequestRef>;

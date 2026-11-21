@@ -259,8 +259,26 @@ export function spentComment(queue: Pick<MergeQueue, 'head' | 'checks'>): string
   return (
     `The merge queue has taken this pull request out ${QUEUE_TRIES} times at ${queue.head.slice(0, 7)}, each time ` +
     `because a required check failed on the queue's commit.${last} The factory adds this head no more: it is Martin's ` +
-    'to add to the queue again or close. A new head starts again.'
+    'to add to the queue again or close. A new head starts again.\n\n' +
+    `<!-- factory: out of tries ${queue.head} -->`
   );
+}
+
+/** The mark of the comment that says a head is out of tries, by the head it names. */
+const SPENT_MARK = /<!-- factory: out of tries ([0-9a-f]{40}) -->/;
+
+/**
+ * Whether the App has already said on the pull request that this head is out of tries, by the mark its comment carries:
+ * read from GitHub, so a worker that restarts says it no more than once, whichever checks failed last when it reads.
+ * One page, as the actions read one: a pin pull request has a handful of comments.
+ */
+async function spentSaid(github: GitHub, repo: string, number: number, head: string): Promise<boolean> {
+  const comments = await github.read(
+    repo,
+    `/repos/${repo}/issues/${number}/comments?per_page=100`,
+    z.array(z.object({ body: z.string().nullable(), user: z.object({ login: z.string() }).nullable() })),
+  );
+  return comments.some((made) => made.user?.login === APP_LOGIN && SPENT_MARK.exec(made.body ?? '')?.[1] === head);
 }
 
 /** The failures that may pass: a 409, or a GraphQL error that does not fit the state now; a limit; an outage. */
@@ -358,7 +376,7 @@ async function queueOne(
   confirm?: () => Promise<QueueWait | undefined>,
   level?: LevelReader,
 ): Promise<void> {
-  const { reads, actions, recorder, log } = deps;
+  const { github, reads, actions, recorder, log } = deps;
   const { number } = pull;
   const head = pull.head.sha;
   // Each a conditional request, read together: one that has not changed costs nothing against the rate limit.
@@ -387,8 +405,10 @@ async function queueOne(
   const out = queue.head === head ? queue.removed : null;
   const failed = out !== null && failedChecks(out.reason);
   if (failed && out.failures >= QUEUE_TRIES) {
-    // Said before the head is left, so a comment that could not be made is tried on the next pass: it is made once.
-    await actions.comment?.(repo, number, spentComment(queue));
+    // Said before the head is left, so a comment that could not be made is tried on the next pass, and only when the
+    // pull request does not say it already: it is made once, across restarts.
+    if (actions.comment && !(await spentSaid(github, repo, number, head)))
+      await actions.comment(repo, number, spentComment(queue));
     attempt.done = true;
     log.warn(
       { repo, number, head, failures: out.failures },

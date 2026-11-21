@@ -272,7 +272,7 @@ describe('the moves the scan made with the pin step', () => {
     });
   });
 
-  it('waits when a file the step wrote has changed on main, when the scan made none, or made other moves', async () => {
+  it('waits when a file the step wrote has changed on main, or when the scan made none', async () => {
     const changed = new FakeRepo(files());
     const scanned = changed.main;
     changed.push({ 'pnpm-lock.yaml': `${LOCK}\n` });
@@ -284,14 +284,35 @@ describe('the moves the scan made with the pin step', () => {
     const b = harness(none, () => day(none.main, scan().slice(0, 2)));
     await b.pass();
     expect(writes(b.sent)).toEqual([]);
+  });
 
-    // Told one of the two, the watch takes it alone, and the scan made both together: it waits for the scan.
-    const some = new FakeRepo(files());
-    const told = scan()[0]?.name as string;
+  it('told one move of a group the step made, commits the group whole, as the scan made it and the gate makes it', async () => {
+    const repo = new FakeRepo(files());
     const moves = [scan()[0] as ReadMove, { ...(scan()[1] as ReadMove), name: 'a package in `pnpm-lock.yaml`' }];
-    const c = harness(some, () => made(some.main, moves, [lockGroup()]), [told]);
-    await c.pass();
-    expect(writes(c.sent)).toEqual([]);
+    const told = moves[0]?.name as string;
+    const w = harness(repo, () => made(repo.main, moves, [lockGroup()]), [told]);
+    await w.pass();
+    const [pull] = openPins(repo);
+    expect(pull?.head).toBe(LOCK_BRANCH);
+    expect(repo.file(repo.refs.get(LOCK_BRANCH) as string, 'pnpm-lock.yaml')).toBe(MOVED);
+    expect(carriedBy(pull?.body)).toEqual(moves.map((move) => move.name));
+    expect((await gate(repo, LOCK_BRANCH, moves, () => new Map([['pnpm-lock.yaml', MOVED]]))).result).toMatchObject({
+      rule: 'move',
+    });
+    // A move of the group it was not told, refused by the step, has no issue of the watch's: one told has.
+    const refused = (index: number) =>
+      lockGroup({
+        moves: [3 - index],
+        refused: [{ move: index, reason: 'ERR_PNPM_TRUST_DOWNGRADE' }],
+        changed: [{ path: 'pnpm-lock.yaml', text: MOVED }],
+      });
+    const other = new FakeRepo(files());
+    await harness(other, () => made(other.main, moves, [refused(2)]), [told]).pass();
+    expect(other.issues).toEqual([]);
+    expect(openPins(other)).toHaveLength(1);
+    const own = new FakeRepo(files());
+    await harness(own, () => made(own.main, moves, [refused(1)]), [told]).pass();
+    expect(own.issues).toHaveLength(1);
   });
 
   it('writes nothing again while the scan makes the same bytes, and moves its branch when they change', async () => {

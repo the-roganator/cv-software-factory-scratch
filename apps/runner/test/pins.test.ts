@@ -1,4 +1,5 @@
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { mkdtempSync, readFileSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -431,6 +432,47 @@ describe('a tool mise pins (the factory’s moves)', () => {
     ).rejects.toThrow('mise.lock has no entry for helm.');
     expect(asked).toEqual([]);
   });
+
+  it('waits for mise.toml’s minimum_release_age from the day the tool’s repository published the release', async () => {
+    const NOW = Date.parse('2026-11-10T04:30:00Z');
+    const urls: string[] = [];
+    const get: Get = async (url) => {
+      urls.push(url);
+      return new Response(
+        JSON.stringify([
+          { tag_name: 'v5.9.1', published_at: '2026-11-09T00:00:00Z' },
+          { tag_name: 'v5.9.0', published_at: '2026-11-06T00:00:00Z' },
+          { tag_name: '5.9.2', published_at: '2026-11-01T00:00:00Z', draft: true },
+        ]),
+      );
+    };
+    const asked: string[][] = [];
+    const mise: Mise = async (_, args) => {
+      asked.push(args);
+    };
+    const aged = `[settings]\nminimum_release_age = "3d"\n\n${MISE_TOML}`;
+    const move = (to: string, now: number) =>
+      writePins(
+        checkout({ 'mise.toml': aged, 'mise.lock': lockAt('5.8.3') }),
+        { ecosystem: 'tool', name: 'k3d', from: '5.8.3', to },
+        { ...tools(mise), get, now },
+      );
+    // A day old: within the three days, so no move and no mise.
+    await expect(move('5.9.1', NOW)).rejects.toThrow(
+      "k3d 5.9.1 came out on 2026-11-09T00:00:00Z, within mise.toml's minimum_release_age.",
+    );
+    // A draft is no release to count from.
+    await expect(move('5.9.2', NOW)).rejects.toThrow("k3d 5.9.2 is not a published release of k3d-io/k3d's.");
+    expect(asked).toEqual([]);
+    expect(urls[0]).toBe('https://api.github.com/repos/k3d-io/k3d/releases?per_page=100');
+    // Four days old, and the young one once its three days are up.
+    await move('5.9.0', NOW);
+    await move('5.9.1', Date.parse('2026-11-12T00:00:00Z'));
+    expect(asked).toEqual([
+      ['lock', 'k3d'],
+      ['lock', 'k3d'],
+    ]);
+  });
 });
 
 describe('Node’s move', () => {
@@ -543,46 +585,67 @@ describe('Node’s move', () => {
 
   describe('brought by the runtime image’s move (test 10)', () => {
     const RUNTIME = 'gcr.io/distroless/nodejs24-debian13';
-    const MOVED = `sha256:${'5'.repeat(64)}`;
-    const PLATFORM = `sha256:${'6'.repeat(64)}`;
-    const CONFIG = `sha256:${'7'.repeat(64)}`;
-    const LAYERS = [`sha256:${'8'.repeat(64)}`, `sha256:${'9'.repeat(64)}`];
-    /** The runtime at MOVED: an index, linux on amd64's manifest, a configuration with no NODE_VERSION, two layers. */
-    const runtime =
-      (release: string): Get =>
-      async (url, init) => {
-        const base = 'https://gcr.io/v2/distroless/nodejs24-debian13';
-        if (url === `${base}/manifests/nonroot`)
-          return new Response(null, { headers: { 'docker-content-digest': MOVED } });
-        if (url === `${base}/manifests/${MOVED}`)
-          return Response.json({
-            manifests: [
-              { digest: `sha256:${'0'.repeat(64)}`, platform: { os: 'linux', architecture: 'arm64' } },
-              { digest: PLATFORM, platform: { os: 'linux', architecture: 'amd64' } },
+    /**
+     * The runtime at the digest it gives, running a release: an index, linux on amd64's manifest, a configuration with
+     * no NODE_VERSION, two layers, each the bytes its digest names.
+     */
+    const image = (release: string) => {
+      // The last layer holds Node, as distroless's does; the first is never read.
+      const layers = [
+        gzipSync(tar([['etc/os-release', 'debian']])),
+        gzipSync(
+          tar([
+            ['nodejs/LICENSE', 'MIT'],
+            [
+              'nodejs/bin/node',
+              `\x7fELF…https://nodejs.org/download/release/v${release}/node-v${release}-headers.tar.gz…`,
             ],
-          });
-        if (url === `${base}/manifests/${PLATFORM}`)
-          return Response.json({
-            config: { digest: CONFIG },
-            layers: LAYERS.map((digest) => ({ digest, mediaType: 'application/vnd.oci.image.layer.v1.tar+gzip' })),
-          });
-        if (url === `${base}/blobs/${CONFIG}`) return Response.json({ config: { Env: ['PATH=/usr/bin'] } });
-        // The last layer holds Node, as distroless's does; the first is never read.
-        if (url === `${base}/blobs/${LAYERS[1]}`)
-          return new Response(
-            gzipSync(
-              tar([
-                ['nodejs/LICENSE', 'MIT'],
-                [
-                  'nodejs/bin/node',
-                  `\x7fELF…https://nodejs.org/download/release/v${release}/node-v${release}-headers.tar.gz…`,
-                ],
-              ]),
-            ),
-          );
+          ]),
+        ),
+      ];
+      const config = Buffer.from(JSON.stringify({ config: { Env: ['PATH=/usr/bin'] } }));
+      const platform = Buffer.from(
+        JSON.stringify({
+          config: { digest: sha256(config) },
+          layers: layers.map((layer) => ({
+            digest: sha256(layer),
+            mediaType: 'application/vnd.oci.image.layer.v1.tar+gzip',
+          })),
+        }),
+      );
+      const index = Buffer.from(
+        JSON.stringify({
+          manifests: [
+            { digest: `sha256:${'0'.repeat(64)}`, platform: { os: 'linux', architecture: 'arm64' } },
+            { digest: sha256(platform), platform: { os: 'linux', architecture: 'amd64' } },
+          ],
+        }),
+      );
+      const base = 'https://gcr.io/v2/distroless/nodejs24-debian13';
+      const blobs = new Map<string, Buffer>([
+        [`${base}/manifests/${sha256(index)}`, index],
+        [`${base}/manifests/${sha256(platform)}`, platform],
+        [`${base}/blobs/${sha256(config)}`, config],
+        [`${base}/blobs/${sha256(layers[1] as Buffer)}`, layers[1] as Buffer],
+      ]);
+      const get: Get = async (url, init) => {
+        if (url === `${base}/manifests/nonroot`)
+          return new Response(null, { headers: { 'docker-content-digest': sha256(index) } });
+        const blob = blobs.get(url);
+        if (blob) return new Response(new Uint8Array(blob));
         return registries(url, init);
       };
-    const move = { ecosystem: 'docker' as const, name: RUNTIME, from: 'nonroot', to: `nonroot@${MOVED}` };
+      return { digest: sha256(index), get };
+    };
+    /** The runtime's move to the image that runs a release. */
+    const moveTo = (release: string) => ({
+      ecosystem: 'docker' as const,
+      name: RUNTIME,
+      from: 'nonroot',
+      to: `nonroot@${image(release).digest}`,
+    });
+    const MOVED = image('24.22.2').digest;
+    const move = moveTo('24.22.2');
     const files = () => ({
       'mise.toml': MISE_TOML,
       'mise.lock': MISE_LOCK('24.22.1', 'f'.repeat(64)),
@@ -593,7 +656,7 @@ describe('Node’s move', () => {
       const dir = checkout(files());
       const tools = {
         pnpm: fakePnpm(() => {}).pnpm,
-        get: runtime('24.22.2'),
+        get: image('24.22.2').get,
         aside: dir,
         now: Date.parse('2026-11-11'),
       };
@@ -607,9 +670,10 @@ describe('Node’s move', () => {
 
     it('moves the image alone where it runs the Node mise.toml pins', async () => {
       const dir = checkout(files());
-      await writePins(dir, move, { pnpm: fakePnpm(() => {}).pnpm, get: runtime('24.22.1'), aside: dir });
+      const same = image('24.22.1');
+      await writePins(dir, moveTo('24.22.1'), { pnpm: fakePnpm(() => {}).pnpm, get: same.get, aside: dir });
       expect(read(dir, 'mise.toml')).toBe(MISE_TOML);
-      expect(read(dir, 'Dockerfile')).toBe(DOCKERFILE.replace(`sha256:${'2'.repeat(64)}`, MOVED));
+      expect(read(dir, 'Dockerfile')).toBe(DOCKERFILE.replace(`sha256:${'2'.repeat(64)}`, same.digest));
     });
 
     it('refuses a Node behind mise.toml’s, and one younger than its minimum_release_age, writing nothing', async () => {
@@ -618,8 +682,8 @@ describe('Node’s move', () => {
         ['24.22.2', '2026-11-02', 'within mise.toml'],
       ] as const) {
         const dir = checkout(files());
-        const tools = { pnpm: fakePnpm(() => {}).pnpm, get: runtime(release), aside: dir, now: Date.parse(now) };
-        await expect(writePins(dir, move, tools)).rejects.toThrow(why);
+        const tools = { pnpm: fakePnpm(() => {}).pnpm, get: image(release).get, aside: dir, now: Date.parse(now) };
+        await expect(writePins(dir, moveTo(release), tools)).rejects.toThrow(why);
         for (const [path, text] of Object.entries(files())) expect(read(dir, path)).toBe(text);
       }
     });
@@ -627,16 +691,36 @@ describe('Node’s move', () => {
 });
 
 describe('the Node an image runs', () => {
+  /** Node's own image, as its registry answers: a manifest and a configuration that sets NODE_VERSION. */
+  const config = Buffer.from(
+    JSON.stringify({ config: { Env: ['PATH=/usr/bin', 'NODE_VERSION=24.22.3', 'YARN_VERSION=1.22.22'] } }),
+  );
+  const manifest = Buffer.from(JSON.stringify({ config: { digest: sha256(config) }, layers: [] }));
+  const nodeImage =
+    (asked: string[], answer = config): Get =>
+    async (url) => {
+      asked.push(url);
+      if (url.endsWith(`/manifests/${sha256(manifest)}`)) return new Response(new Uint8Array(manifest));
+      if (url.endsWith(`/blobs/${sha256(config)}`)) return new Response(new Uint8Array(answer));
+      return new Response(null, { status: 404 });
+    };
+
   it('reads Node’s own images’ NODE_VERSION, with no layer fetched', async () => {
     const asked: string[] = [];
-    const get: Get = async (url) => {
-      asked.push(url);
-      if (url.endsWith(`/manifests/sha256:${'1'.repeat(64)}`))
-        return Response.json({ config: { digest: `sha256:${'2'.repeat(64)}` }, layers: [] });
-      return Response.json({ config: { Env: ['PATH=/usr/bin', 'NODE_VERSION=24.22.3', 'YARN_VERSION=1.22.22'] } });
-    };
-    expect(await nodeInImage('node', `sha256:${'1'.repeat(64)}`, get)).toBe('24.22.3');
+    expect(await nodeInImage('node', sha256(manifest), nodeImage(asked))).toBe('24.22.3');
     expect(asked).toHaveLength(2);
+  });
+
+  it('refuses an answer that is not the bytes its digest names (S-L4)', async () => {
+    // A registry, or a mirror, that answers the configuration's digest with another release's.
+    const other = Buffer.from(JSON.stringify({ config: { Env: ['NODE_VERSION=25.0.0'] } }));
+    await expect(nodeInImage('node', sha256(manifest), nodeImage([], other))).rejects.toThrow(
+      /answers blobs\/sha256:[0-9a-f]{64} with bytes that are not its digest's/,
+    );
+    // And a manifest asked for by a digest it is not.
+    await expect(
+      nodeInImage('node', `sha256:${'1'.repeat(64)}`, async () => new Response(new Uint8Array(manifest))),
+    ).rejects.toThrow(/answers manifests\/sha256:1{64} with bytes that are not its digest's/);
   });
 
   it('reads a tar’s bin/node by its ustar prefix or a GNU long name, plain or gzipped, and nothing else', async () => {
@@ -651,6 +735,9 @@ describe('the Node an image runs', () => {
     expect(await nodeInTar(Readable.from([tar([['nodejs/bin/nodejs-helper', binary]])]), false)).toBeUndefined();
   });
 });
+
+/** The digest of some bytes, as a registry names them. */
+const sha256 = (bytes: Buffer) => `sha256:${createHash('sha256').update(bytes).digest('hex')}`;
 
 /** A tar of these files, a GNU long-name entry before any name past 100 bytes, or under a ustar prefix. */
 function tar(files: [string, string][], prefix = ''): Buffer {

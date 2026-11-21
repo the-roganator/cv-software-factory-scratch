@@ -7,9 +7,16 @@
 import { describe, expect, it } from 'vitest';
 import type { Finding } from '../../src/vulnerabilities/sarif.ts';
 import type { ReadTarget } from '../../src/vulnerabilities/scan.ts';
-import { type Carried, carry, fileOf, type World } from './path.ts';
+import { type Carried, carry, fileOf, runningNode, type World } from './path.ts';
 
 const digest = (c: string) => `sha256:${c.repeat(64)}`;
+const RUNTIME = 'gcr.io/distroless/nodejs24-debian13';
+/** The world with the runtime's newer image, at its tag, running a Node release. */
+const runtimeRuns = (world: World, release: string): World => ({
+  ...world,
+  digests: { ...world.digests, [`${RUNTIME}:nonroot`]: runningNode(RUNTIME, release) },
+  runs: { [`${RUNTIME}@${runningNode(RUNTIME, release)}`]: release },
+});
 const NODE = 'node:24.22.2-alpine3.24@sha256:8a32c8cf649a49915a66e81e7a609223c708d0adabf288ee3f4077d765542f85';
 const DISTROLESS =
   'gcr.io/distroless/nodejs24-debian13:nonroot@sha256:b8cec4b2f2126ff7bd034ec9ac207ffb3272667dfdc48376e3b035d3270549ba';
@@ -72,8 +79,8 @@ const WORLD: World = {
     'mcr.microsoft.com/devcontainers/base': ['ubuntu-24.04'],
   },
   digests: {
-    'node:24.22.3-alpine3.24': digest('1'),
-    'gcr.io/distroless/nodejs24-debian13:nonroot': digest('2'),
+    'node:24.22.3-alpine3.24': runningNode('node', '24.22.3'),
+    [`${RUNTIME}:nonroot`]: runningNode(RUNTIME, '24.22.2'),
     'ghcr.io/anchore/syft:v1.58.0': digest('3'),
     'mcr.microsoft.com/devcontainers/base:ubuntu-24.04': digest('4'),
   },
@@ -82,8 +89,8 @@ const WORLD: World = {
     { version: 'v24.22.2', date: '2026-10-01' },
   ],
   runs: {
-    [`node@${digest('1')}`]: '24.22.3',
-    [`gcr.io/distroless/nodejs24-debian13@${digest('2')}`]: '24.22.2',
+    [`node@${runningNode('node', '24.22.3')}`]: '24.22.3',
+    [`${RUNTIME}@${runningNode(RUNTIME, '24.22.2')}`]: '24.22.2',
   },
   published: {
     'example-direct@1.0.1': '2026-11-01T00:00:00Z',
@@ -176,25 +183,24 @@ const CASES: Case[] = [
   {
     name: 'the Dockerfile’s runtime stage: its newer image runs a newer Node, which moves with it (test 10)',
     findings: () => [found(T.distroless, {})],
-    world: { ...WORLD, runs: { [`gcr.io/distroless/nodejs24-debian13@${digest('2')}`]: '24.22.3' } },
+    world: runtimeRuns(WORLD, '24.22.3'),
     // One pull request: the runtime at its digest, and mise's pin, its lock and the build stage at the Node it runs.
     ends: [{ ends: 'pull request', tags: ['code-owned'], wrote: ['Dockerfile', 'mise.lock', 'mise.toml'] }],
   },
   {
     name: 'the Dockerfile’s runtime stage: its newer image runs a Node younger than mise.toml’s minimum_release_age',
     findings: () => [found(T.distroless, {})],
-    world: {
-      ...WORLD,
-      node: [{ version: 'v24.22.3', date: '2026-11-14' }, ...(WORLD.node ?? []).slice(1)],
-      runs: { [`gcr.io/distroless/nodejs24-debian13@${digest('2')}`]: '24.22.3' },
-    },
+    world: runtimeRuns(
+      { ...WORLD, node: [{ version: 'v24.22.3', date: '2026-11-14' }, ...(WORLD.node ?? []).slice(1)] },
+      '24.22.3',
+    ),
     // No fix yet, so no move: the scan lists it once mise may install that Node, and the line makes it then.
     ends: [],
   },
   {
     name: 'the Dockerfile’s runtime stage: its newer image runs a Node behind mise.toml’s',
     findings: () => [found(T.distroless, {})],
-    world: { ...WORLD, runs: { [`gcr.io/distroless/nodejs24-debian13@${digest('2')}`]: '24.22.1' } },
+    world: runtimeRuns(WORLD, '24.22.1'),
     ends: [],
   },
   {

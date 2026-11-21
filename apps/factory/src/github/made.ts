@@ -10,7 +10,8 @@
  * every lockfile move of the day in one, every move of mise's in another. Each group's moves are made in the order of
  * `moves.json`, each on what the ones before it wrote, and a move the step refuses is undone and named with the step's
  * words, which may name its package; the rest of its group go on. The review gate makes the same moves in the same
- * order again on main's tip (scripts/move.ts), with the same step, and compares.
+ * order again on main's tip (scripts/move.ts), with the same step, as of the scan's time and with the digests the
+ * scan's step was given for each tag it asked (`MadeGroup.asked`), and compares.
  *
  * Nothing here runs anything: it says which move is made so and what it is, and seals and opens what the scan made.
  */
@@ -45,6 +46,18 @@ export interface MadeGroup {
    * after (`npm`), or a tool, Node or an image and the version it pinned and pins.
    */
   steps: MadeStep[];
+  /**
+   * Each tag of an image the step asked its registry for, with the digest it was given (scripts/derive.ts), so the
+   * review gate makes the same moves with the same answers. Absent from a run before it was kept.
+   */
+  asked?: Asked[] | undefined;
+}
+
+/** A tag of an image, and the digest its registry gave it when the scan's step asked. */
+export interface Asked {
+  image: string;
+  tag: string;
+  digest: string;
 }
 
 /** One made move, as its pull request's diff shows it. */
@@ -151,6 +164,8 @@ const isText = (value: unknown, most = 4096): value is string =>
   typeof value === 'string' && value.length > 0 && value.length <= most && !/\p{Cc}/u.test(value);
 const isPlace = (value: unknown) => Number.isInteger(value) && (value as number) >= 1;
 const PATH = /^(?!\/)(?!.*(^|\/)\.\.(\/|$))[^\p{Cc}]+$/u;
+const TAG = /^[\w][\w.-]{0,127}$/;
+const DIGEST = /^sha256:[0-9a-f]{64}$/;
 const ECOSYSTEMS: unknown[] = ['npm', 'node', 'docker', 'tool'] satisfies PinStepMove['ecosystem'][];
 
 /** What the scan made, opened for its repository and run and held to its shape, or a `StateError`. */
@@ -196,6 +211,15 @@ function problemOf(made: unknown, repository: string, run: string): string | und
       )
     )
       return `give ${at} a move that is not one`;
+    if (
+      g.asked !== undefined &&
+      (!Array.isArray(g.asked) ||
+        !g.asked.every(
+          (a) =>
+            isText(a?.image, 512) && TAG.test(a?.tag ?? '') && typeof a?.digest === 'string' && DIGEST.test(a.digest),
+        ))
+    )
+      return `give ${at} a registry's answer that is not one`;
   }
   return undefined;
 }

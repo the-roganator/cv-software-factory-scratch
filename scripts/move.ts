@@ -3,8 +3,9 @@
  * `move`, or as `major` when one of its moves crosses a major and clears no Critical (scripts/review-routing.ts).
  *
  * The gate takes the moves the daily scan of `main` asked for (`ScanMove`: `moves.json` joined with the state the scan
- * sealed, read by scripts/moves.ts), makes them itself on the pull request's base, main's tip, and compares the result
- * with what the merge makes, file by file, byte for byte. Each move is made as the one who makes it makes it:
+ * sealed, read by scripts/moves.ts), makes them itself on the pull request's base, main's tip (for the merge queue's
+ * commit, the commit it was made on), and compares the result with what the merge makes, file by file, byte for byte.
+ * Each move is made as the one who makes it makes it:
  *
  * - a pin's line, by the pin watch's own edit (`editAt`): an image's tag and digest, a chart's version, k3s's release;
  * - a lockfile's package, each image that brings another pin with it (the Node it runs, or its library: `bringsPins`),
@@ -38,14 +39,17 @@ export type { MoveResult } from './review-routing.ts';
 /** One of the scan's moves, as the GitHub worker reads it (github/scanning.ts): `moves.json` and the sealed state. */
 export type ScanMove = ReadMove;
 
-/** One file the change touches, as git's `--raw` list gives it, with its text on each side where it has one. */
+/**
+ * One file the change touches, as git's `--raw` list gives it, with its text on each side where it has one
+ * (`exactText`): `null` where its bytes there are not UTF-8.
+ */
 export interface Changed {
   path: string;
   /** git's status letter: `M` modified, `A` added, `D` deleted, `T` its type changed. */
   status: string;
   modes: [string, string];
-  base?: string | undefined;
-  head?: string | undefined;
+  base?: string | null | undefined;
+  head?: string | null | undefined;
   /** The lines of main's text it rewrites or removes, from 1, as git's hunks give them; by position where absent. */
   rewrites?: readonly number[] | undefined;
 }
@@ -62,6 +66,21 @@ export interface MoveIO {
 }
 
 const REGULAR = /^100(644|755)$/;
+
+const UTF8 = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
+
+/**
+ * A file's bytes as the text the rule compares, or `null` where they are not UTF-8. Decoded strictly, with any mark at
+ * its start kept, two texts are the same exactly when their bytes are: a lenient decoding reads different invalid bytes
+ * as one replacement character, and would compare them equal.
+ */
+export function exactText(bytes: Uint8Array): string | null {
+  try {
+    return UTF8.decode(bytes);
+  } catch {
+    return null;
+  }
+}
 const LOCKFILE = /(^|\/)pnpm-lock\.yaml$/;
 
 const short = (text: string) => (text.length > 120 ? `${text.slice(0, 117)}…` : text);
@@ -178,10 +197,13 @@ export async function proveMove(
       };
     if (file.modes[0] !== file.modes[1] || !REGULAR.test(file.modes[0]))
       return { reason: `${file.path} changes its mode, or is not a regular file` };
+    if (file.base === null || file.head === null)
+      return { reason: `${file.path} is not UTF-8 text, and a move writes text alone` };
     if (file.base === undefined || file.head === undefined)
       return { reason: `the gate did not read ${file.path} on both sides` };
   }
-  const byPath = new Map(changed.map((file) => [file.path, file]));
+  // Every file now has its text on both sides.
+  const byPath = new Map(changed.map((file) => [file.path, { ...file, base: file.base ?? '', head: file.head ?? '' }]));
   // The moves it carries: each with a pin on a line the change rewrites, or in a lockfile it changes.
   const touched = new Map(
     changed.map((file) => [file.path, new Set(file.rewrites ?? differing(file.base ?? '', file.head ?? ''))]),
@@ -191,9 +213,10 @@ export async function proveMove(
   // carries no move, and nothing of the move writes it.
   const pinsOf = (move: ScanMove) =>
     move.lockfile ? (move.withheld?.pins ?? move.pins).filter((pin) => LOCKFILE.test(pin.file)) : move.pins;
-  // One the scan found at no line (0) is carried by any change to its file.
+  // One the scan found at no line (0) is carried by none: any change to its file would carry it, and a pull request
+  // that makes another move there would have to make it too.
   const carried = scan.filter((move) =>
-    pinsOf(move).some((pin) => (pin.line < 1 ? touched.has(pin.file) : touched.get(pin.file)?.has(pin.line))),
+    pinsOf(move).some((pin) => pin.line >= 1 && touched.get(pin.file)?.has(pin.line)),
   );
   if (!carried.length) {
     const first = changed[0] as Changed;

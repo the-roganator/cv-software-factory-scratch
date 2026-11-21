@@ -1,6 +1,7 @@
 /**
  * The pin watch's guard (`pins.ts`): what lets a commit onto `factory/pin/<files>` replace the version or digest at each
- * pin of the moves it carries, and refuses everything else. It is the guard, not the watch's good behaviour, that holds "nothing
+ * pin of the moves it carries, and write the files the scan's pin step made for them where a move writes them, and
+ * refuses everything else. It is the guard, not the watch's good behaviour, that holds "nothing
  * else": `commitPins` is the one action that writes a pin branch (`branches.ts`), and it writes only what this gives
  * back, worked out here from the repository itself, never from the file text its caller read.
  *
@@ -21,15 +22,18 @@
  *
  * A move no pin's line writes (a lockfile's package, what mise pins) is made by the pin step in the scan's run, and
  * its commit carries the files that step wrote, whole (github/made.ts). The guard cannot make them itself, and holds
- * what it can:
+ * each to what a move writes in it:
  *
  * - **Each such file** is one the step writes (`madeFile`): a pnpm lockfile, a manifest, mise's two files, or a
  *   Dockerfile whose `FROM`s an image's move writes with what it brings; of the files CODEOWNERS gives a person, only
  *   mise's and a pin's place (`ownedPinPlace`); never under `.github/` or `policy/`, and never a file the commit's edits
  *   also write.
  * - **It is the same** at `main`'s head as at the commit the scan made it on, an ordinary file in both, and the commit
- *   changes it. What it then holds is the scan's, which the review gate makes again on main and compares, byte for
- *   byte, before anything merges.
+ *   changes it.
+ * - **What changes** is what a move writes there (`madeRefusal`), and nothing that runs: a Dockerfile's `FROM`s, a
+ *   manifest's ranges, a lockfile's registry packages, `mise.toml`'s Node, `mise.lock`'s tools' entries. Which
+ *   versions they move to is the scan's, which the review gate makes again on main and compares, byte for byte,
+ *   before anything merges.
  *
  * `main`'s head is read here, and a commit is made on it alone: one that moved since the watch read it is no refusal,
  * the watch tries again on its next pass.
@@ -41,7 +45,15 @@ import { DIGEST, splitReference } from '../vulnerabilities/reference.ts';
 import { BranchRefused, PIN_NEXT_PREFIX, PIN_PREFIX } from './branches.ts';
 import { type GitHub, GitHubError } from './client.ts';
 import { PatchRefused } from './patches.ts';
-import { CODEOWNERS_PATHS, inScope, LOCKFILES, plainPath, protectedFrom } from './paths.ts';
+import {
+  CODEOWNERS_PATHS,
+  inScope,
+  LOCKFILES,
+  manifestRefusals,
+  notFromRegistry,
+  plainPath,
+  protectedFrom,
+} from './paths.ts';
 
 /** One pin a commit moves: where it is, and the text it pins before and after (`2.14.2@sha256:…`, `13.7.0`). */
 export interface PinEdit {
@@ -68,6 +80,8 @@ export interface PinCommit {
   files?: { path: string; text: string }[] | undefined;
 }
 
+const DOCKERFILE = /(^|\/)(Dockerfile(\.(?!dockerignore$)[a-z]+)?|[^/]+\.Dockerfile)$/;
+
 /**
  * Whether a file is one the scan's pin step writes for a move: a pnpm lockfile, a manifest whose range a package's move
  * moves, mise's `mise.toml` and `mise.lock` at the root, which a move of what mise pins writes (the App may write
@@ -78,7 +92,108 @@ export const madeFile = (path: string): boolean =>
   /(^|\/)(pnpm-lock\.yaml|package\.json)$/.test(path) ||
   path === 'mise.toml' ||
   path === 'mise.lock' ||
-  /(^|\/)(Dockerfile(\.(?!dockerignore$)[a-z]+)?|[^/]+\.Dockerfile)$/.test(path);
+  DOCKERFILE.test(path);
+
+/** A Dockerfile's `FROM` that pins an image by its tag and digest, in parts, as the pin step reads one. */
+const FROM =
+  /^(\s*FROM\s+(?:--platform=\S+\s+)?)([^\s:@/]+(?::\d+)?(?:\/[^\s:@/]+)*):([\w][\w.-]{0,127})@(sha256:[0-9a-f]{64})(.*)$/i;
+
+/** `mise.toml`'s pin of Node, the one line of it a move writes: an exact release. */
+const NODE_PIN = /^node\s*=\s*"\d+\.\d+\.\d+"\s*$/;
+
+/** The lines two texts of one file differ at, each line of one against the same line of the other, by place; or why not. */
+function changedLines(before: string, after: string): [number, string, string][] | string {
+  const [was, now] = [before.split('\n'), after.split('\n')];
+  if (was.length !== now.length) return 'adds or removes a line';
+  return was.flatMap((line, i) => (line === now[i] ? [] : [[i, line, now[i] as string] as [number, string, string]]));
+}
+
+/** The table of a TOML file a line is in: the nearest header at or above it, or none at the top. */
+const tableAt = (lines: readonly string[], at: number): string | undefined => {
+  for (let i = at; i >= 0; i--) if (/^\s*\[/.test(lines[i] ?? '')) return (lines[i] as string).trim();
+  return undefined;
+};
+
+/** `mise.lock` in its entries: what comes before the first, and each tool's, by the header that starts it. */
+function entriesOf(lock: string): { head: string; entries: { header: string; text: string }[] } {
+  // A split before the text's first character makes no part, so an entry at the top has nothing before it.
+  const [head = '', ...rest] = `\n${lock}`.split(/^(?=\[\[)/m);
+  return { head: head.slice(1), entries: rest.map((text) => ({ header: text.split('\n')[0] as string, text })) };
+}
+
+/** Where a text's addresses point: each `https://host` in it. */
+const origins = (text: string) => new Set([...text.matchAll(/\bhttps?:\/\/[^/\s"']+/g)].map(([origin]) => origin));
+
+/**
+ * Why a change to `mise.lock` is not a move of what it pins, or nothing: every entry is a tool's, the same tools in
+ * the same order, and what is before them as it was; each entry that changes keeps its tool's own sections, its
+ * backend, and its downloads where they were.
+ */
+function miseLockRefusal(before: string, after: string): string | undefined {
+  const [was, now] = [entriesOf(before), entriesOf(after)];
+  if (was.head !== now.head) return 'changes what is before its tools’ entries';
+  const headers = (lock: typeof was) => JSON.stringify(lock.entries.map((entry) => entry.header));
+  if (headers(was) !== headers(now)) return 'adds, removes or reorders a tool’s entry';
+  for (const [i, entry] of now.entries.entries()) {
+    const old = was.entries[i] as (typeof was.entries)[number];
+    if (old.text === entry.text) continue;
+    const tool = /^\[\[tools\.((?:"[^"]+"|[\w.-]+?))\]\]$/.exec(entry.header)?.[1];
+    if (!tool) return `changes ${JSON.stringify(entry.header)}, which is no tool’s entry`;
+    const header = entry.text
+      .split('\n')
+      .slice(1)
+      .find((line) => /^\s*\[/.test(line) && !line.startsWith(`[tools.${tool}.`));
+    if (header) return `gives ${tool}’s entry ${JSON.stringify(header.trim())}, which is not its own`;
+    const backend = (text: string) => text.split('\n').filter((line) => /^\s*backend\s*=/.test(line));
+    if (JSON.stringify(backend(old.text)) !== JSON.stringify(backend(entry.text))) return `changes ${tool}’s backend`;
+    const from = origins(old.text);
+    const elsewhere = [...origins(entry.text)].find((origin) => !from.has(origin));
+    if (elsewhere) return `downloads ${tool} from ${elsewhere}, where it did not`;
+  }
+  return undefined;
+}
+
+/**
+ * Why a file the pin step wrote is not what a move writes in it, or nothing: in a Dockerfile, a `FROM`'s tag and digest
+ * alone; in a manifest, its dependencies' ranges (`manifestRefusals`); in a pnpm lockfile, no line added that resolves
+ * anything but a registry's package; in `mise.toml`, its pin of Node; in `mise.lock`, what each tool's entry pins. A
+ * script, a `RUN`, an `[env]` or a hook, each of which runs, is none of them.
+ */
+export function madeRefusal(path: string, before: string, after: string): string | undefined {
+  if (DOCKERFILE.test(path)) {
+    const changed = changedLines(before, after);
+    if (typeof changed === 'string') return changed;
+    for (const [, was, now] of changed) {
+      const [a, b] = [FROM.exec(was), FROM.exec(now)];
+      if (!a || !b || a[1] !== b[1] || a[2] !== b[2] || a[5] !== b[5])
+        return `changes ${JSON.stringify(was.trim())}, which is not an image’s tag and digest at a FROM`;
+    }
+    return undefined;
+  }
+  if (/(^|\/)package\.json$/.test(path)) return manifestRefusals(path, before, after)[0];
+  if (/(^|\/)pnpm-lock\.yaml$/.test(path)) {
+    const had = new Map<string, number>();
+    for (const line of before.split('\n')) had.set(line, (had.get(line) ?? 0) + 1);
+    for (const line of after.split('\n')) {
+      const left = had.get(line) ?? 0;
+      if (left) had.set(line, left - 1);
+      else if (notFromRegistry(line)) return `resolves ${JSON.stringify(line.trim())}, not a registry’s package`;
+    }
+    return undefined;
+  }
+  if (path === 'mise.toml') {
+    const changed = changedLines(before, after);
+    if (typeof changed === 'string') return changed;
+    const lines = after.split('\n');
+    for (const [at, was, now] of changed) {
+      if (!NODE_PIN.test(was) || !NODE_PIN.test(now) || tableAt(lines, at) !== '[tools]')
+        return `changes ${JSON.stringify(was.trim())}, which is not its pin of Node`;
+    }
+    return undefined;
+  }
+  if (path === 'mise.lock') return miseLockRefusal(before, after);
+  return 'is not a file the scan’s pin step writes';
+}
 
 /** A file as git's tree has it at a commit: its mode, and its text. */
 export interface TreeFile {
@@ -299,6 +414,8 @@ export async function pinChanges(
     if ((now as TreeFile).text !== (then as TreeFile).text)
       refuse(`${file.path} has changed since the scan made its moves: they are not made on main’s file.`);
     if ((now as TreeFile).text === file.text) refuse(`${file.path} would be written as it is.`);
+    const why = madeRefusal(file.path, (now as TreeFile).text, file.text);
+    if (why) refuse(`${file.path} is not what a move writes in it: it ${why}.`);
     out.push({ path: file.path, contents: new TextEncoder().encode(file.text) });
   }
   for (const file of [...new Set(pins.map((pin) => pin.file))]) {
