@@ -61,7 +61,7 @@ spec:
     - name: runnerRepo
       expression: "'ghcr.io/the-roganator/cv-software-factory-scratch/factory-runner'"
     - name: unsignedImage
-      expression: "'ghcr.io/the-roganator/cv-software-factory-scratch/factory@sha256:f8298adaffea60fac0d3238e3d6bf81dc918b78ab95a82f74b330ac4b3c6db9d'"
+      expression: "'ghcr.io/the-roganator/cv-software-factory-scratch/factory@sha256:486acbebb00f8b96a5fe8e643f95db7d891f61da33d35c99099751a28169668b'"
   validations:
     # The marker, whose value is the attack's id: a pod of the harness's without it would escape this rule's shape.
     - expression: >-
