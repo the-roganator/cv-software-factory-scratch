@@ -202,7 +202,7 @@ describe('the door, asked for actions that name no pull request', () => {
         reads,
         actions: none,
         heads: { get: () => undefined },
-        level: async () => 'guarded' as const,
+        level: async () => ({ autonomy: 'guarded', autoMerge: true }) as const,
         log: quiet,
       },
       FACTORY,
