@@ -67,7 +67,7 @@ export async function run(args: string[]): Promise<number> {
     return 2;
   }
   if (!app) {
-    console.error('Set APP_URL to the app’s address, such as http://website.localhost:8080.');
+    console.error('Set APP_URL to the app’s address, such as http://website.localhost:9080.');
     return 2;
   }
   if (command === 'run' && !process.env.ARTIFACTS_DIR) {

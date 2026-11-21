@@ -31,7 +31,7 @@ type Env = Record<string, string | undefined>;
  * text or markers: the summary hands no one a section to paste. On `main`, as the docs say how the gate works now.
  */
 export const CONTRADICTS_DOC =
-  'https://github.com/the-roganator/cv-software-factory/blob/main/docs/COMPONENTS/TEST-INTEGRITY.md#tests-the-spec-contradicts';
+  'https://github.com/the-roganator/cv-software-factory-scratch/blob/main/docs/COMPONENTS/TEST-INTEGRITY.md#tests-the-spec-contradicts';
 
 /**
  * The warning on each test excused as one the spec contradicts. The review gate reads these from the run's annotations

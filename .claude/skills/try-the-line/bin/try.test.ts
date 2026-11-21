@@ -1153,8 +1153,8 @@ describe("objects from the branch's render", () => {
             namespace: 'flagd',
           },
           before: null,
-          apply: `kubectl --context k3d-software-factory apply --server-side --field-manager=try -f ${join(dir, 'try', 'by-hand', `${FLAGD}.json`)}`,
-          undo: 'kubectl --context k3d-software-factory delete rolebinding.rbac.authorization.k8s.io patching-lists-pods -n flagd --ignore-not-found',
+          apply: `kubectl --context k3d-software-factory-scratch apply --server-side --field-manager=try -f ${join(dir, 'try', 'by-hand', `${FLAGD}.json`)}`,
+          undo: 'kubectl --context k3d-software-factory-scratch delete rolebinding.rbac.authorization.k8s.io patching-lists-pods -n flagd --ignore-not-found',
         },
       ]);
       expect(c.calls.some((x) => x.includes('/flagd/'))).toBe(false);
@@ -1229,10 +1229,10 @@ describe("objects from the branch's render", () => {
       expect(await begin(c, '--only', 'patching', ...ALL)).toBe(0);
       const [b] = (readState(path) as State).byHand;
       expect(b?.apply).toBe(
-        `kubectl --context k3d-software-factory replace --force -f '${join(dir, 'with space', 'by-hand', `${FLAGD}.json`)}'`,
+        `kubectl --context k3d-software-factory-scratch replace --force -f '${join(dir, 'with space', 'by-hand', `${FLAGD}.json`)}'`,
       );
       expect(b?.undo).toBe(
-        `kubectl --context k3d-software-factory replace --force -f '${join(dir, 'with space', 'by-hand', `${FLAGD}.before.json`)}'`,
+        `kubectl --context k3d-software-factory-scratch replace --force -f '${join(dir, 'with space', 'by-hand', `${FLAGD}.before.json`)}'`,
       );
       expect(readFileSync(join(dir, 'with space', 'by-hand', `${FLAGD}.before.json`), 'utf8')).toContain('"old"');
     });

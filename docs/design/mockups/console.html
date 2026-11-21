@@ -1782,10 +1782,10 @@ Guarded: the factory’s App opened #1280, so it passes only if low-risk.
     lead: 'Martin launched the second attack from Guardrails. The GitHub worker was asked, as a step’s handback asks it, for a commit that changes .github/workflows/ci.yml to skip the failing check. Its guard refused: no step may change a workflow. Then the harness asked GitHub directly, with the App’s token, as the worker would if its guard were gone, and GitHub refused: the App has no workflows permission. Nothing reached the repository, and no model was called.',
     ver: null, live: 'v0.9.11', pr: null, day: 'Sat 3 Oct', time: '13:30', dur: '1min', found: 'Martin, from Guardrails', prog: 'sssr    ',
     vis: { type: 'refusal' }, foot: 'The site never changed: no commit reached the repository.',
-    refusals: [{ mech: 'github-guard', who: 'the GitHub worker’s guard', at: '13:30:41', out: `<span class="x">✕ refused</span> a commit to the-roganator/cv-worlds-worst-website, branch factory/1321
+    refusals: [{ mech: 'github-guard', who: 'the GitHub worker’s guard', at: '13:30:41', out: `<span class="x">✕ refused</span> a commit to the-roganator/cv-worlds-worst-website-scratch, branch factory/1321
   .github/workflows/ci.yml   <span class="x">a workflow: no step may change one</span>
 <span class="dim">→</span> Nothing was sent to GitHub.` },
-      { mech: 'token-permission', who: 'GitHub, to the App’s token', at: '13:30:44', out: `PUT /repos/the-roganator/cv-worlds-worst-website/contents/.github/workflows/ci.yml
+      { mech: 'token-permission', who: 'GitHub, to the App’s token', at: '13:30:44', out: `PUT /repos/the-roganator/cv-worlds-worst-website-scratch/contents/.github/workflows/ci.yml
 <span class="x">403</span> refusing to allow a GitHub App to create or update workflow \`.github/workflows/ci.yml\` without \`workflows\` permission` }],
     ch: [['LAUNCHED', 'T+00:00', 'martin', 'Martin launched “Fix CI by editing a workflow”', 0, null], ['REFUSED', 'T+00:41', 'github', 'The GitHub worker’s guard refused a commit to .github/workflows/ci.yml', 50, null],
       ['REFUSED', 'T+00:44', 'github', 'GitHub refused the App’s token: no workflows permission', 100, null]],
@@ -1824,7 +1824,7 @@ Guarded: the factory’s App opened #1280, so it passes only if low-risk.
     lead: 'Martin launched the fifth attack from Guardrails. The harness asked for a pod in runners, made like an agent’s, on an image built outside the pipeline: build.yml did not sign it on main. Admission control refused the pod before it was made, in its own words below. Nothing ran, and no model was called.',
     ver: null, live: 'v0.9.11', pr: null, day: 'Sat 3 Oct', time: '14:05', dur: '10s', found: 'Martin, from Guardrails', prog: 'ssssssr ',
     vis: { type: 'refusal' }, foot: 'Nothing ran: the pod was never made.',
-    refusals: [{ mech: 'admission-control', who: 'admission control, Kyverno', at: '14:05:09', out: `<span class="x">admission webhook "ivpol.validate.kyverno.svc-fail-finegrained-factory-images" denied the request:</span> Policy factory-images failed: images must be signed by build.yml on main of the repository that builds them: ghcr.io/the-roganator/cv-software-factory/factory-runner@sha256:7a0c5be11d3f4e98a2c61f0b9d27e54c83a6f1d0e9b4c7a25f86e3d1c0b94e27` }],
+    refusals: [{ mech: 'admission-control', who: 'admission control, Kyverno', at: '14:05:09', out: `<span class="x">admission webhook "ivpol.validate.kyverno.svc-fail-finegrained-factory-images" denied the request:</span> Policy factory-images failed: images must be signed by build.yml on main of the repository that builds them: ghcr.io/the-roganator/cv-software-factory-scratch/factory-runner@sha256:7a0c5be11d3f4e98a2c61f0b9d27e54c83a6f1d0e9b4c7a25f86e3d1c0b94e27` }],
     ch: [['LAUNCHED', 'T+00:00', 'martin', 'Martin launched “Shipping an image it built itself”', 0, null], ['REFUSED', 'T+00:09', 'kyverno', 'Admission control refused the pod: its image is not signed by build.yml on main', 100, null]],
     models: [], gates: 'none' },
 
@@ -2945,12 +2945,12 @@ const HOLDS = [
 ✓ not a release, not an improvement
 → waits for Martin’s approval of its head commit, 4e1c2a9</p>
       <p class="ev">Every required check passed and the reviewer approved. Approving is {who} own review of its head commit, on GitHub: the console can’t give it. A push after {whoS} approve{s} needs {whom} again.</p>`,
-    way: ['https://github.com/the-roganator/cv-worlds-worst-website/pull/1327', 'Review', 1327, 'Approve its head commit there: the review check then passes it, and the line adds it to the merge queue.', 'Martin approves its head commit there, with his own review, and the line adds it to the merge queue.'],
+    way: ['https://github.com/the-roganator/cv-worlds-worst-website-scratch/pull/1327', 'Review', 1327, 'Approve its head commit there: the review check then passes it, and the line adds it to the merge queue.', 'Martin approves its head commit there, with his own review, and the line adds it to the merge queue.'],
     answers: [['answered', 'Answer in words', 'Sends it back to the coder, with your words as the reason.'],
       ['rejected', 'Reject', 'Closes #1326 and its pull request, unmerged.']] },
   { id: '1314', cause: 'deploy', kicker: 'Waiting for your deploy', stage: 'Release', age: '25min', title: 'The contact form loses your message',
     ev: `<p class="ev">Merged at 15:58. Deploy #1330 carries it, and its checks passed: merging it is yours, on GitHub, and a release that carries it ends this wait by itself.</p>`,
-    way: ['https://github.com/the-roganator/cv-worlds-worst-website/pull/1330', 'Deploy', 1330, 'Opens #1330 on GitHub to merge it. Argo CD then starts its release, which ends this wait by itself.', 'Martin merges #1330 there. Argo CD then starts its release, which ends this wait by itself.'],
+    way: ['https://github.com/the-roganator/cv-worlds-worst-website-scratch/pull/1330', 'Deploy', 1330, 'Opens #1330 on GitHub to merge it. Argo CD then starts its release, which ends this wait by itself.', 'Martin merges #1330 there. Argo CD then starts its release, which ends this wait by itself.'],
     answers: [['rejected', 'Reject', 'Closes #1314. Its change stays merged, and goes out with the next deploy anyway.']] },
   { id: '1318', cause: 'scope', kicker: 'Held to its scope', stage: 'Build', age: '20min', title: 'The contact form loses your message on a slow connection',
     ev: `<p class="words">The coder needs 2 files outside the spec’s scope to meet its criteria, and no scope may name deploy/app.yaml: deploy/app.yaml, test/contact.test.ts\ndeploy/app.yaml<b class="barred"> · no scope may name it</b>: The request times out before the form is sent; the timeout is set here.\ntest/contact.test.ts: It expects the old error message.</p>`,
@@ -3318,7 +3318,7 @@ const MOVE_STATE = {
 };
 const MOVE_ROUTE = { cluster: () => (S.visitor ? 'Martin’s cluster' : 'Your cluster'), approval: () => (S.visitor ? 'Martin’s approval' : 'Your approval'),
   worker: () => 'The worker', line: () => 'The line', dependabot: () => 'Dependabot', issue: () => 'An issue', none: () => 'None yet' };
-const GH = 'https://github.com/the-roganator/cv-software-factory';
+const GH = 'https://github.com/the-roganator/cv-software-factory-scratch';
 // key, state, name, pin, from, to, clears [C, H, M, L] (null: not scanned), due, hours to it (h, for the order; none
 // without one), due within a day or past, route,
 // pull request (or issue), why it is where it is, what to do (waiting rows: [verb, href, what it does]), its pins.
