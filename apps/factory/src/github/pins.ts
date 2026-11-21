@@ -119,8 +119,8 @@ export interface PinWatchDependencies {
   now?: () => number;
   /**
    * The moves it takes (`PIN_WATCH_ONLY`): `'*'` for every move of the day, or their names. A move outside it is in
-   * no pull request the watch writes, and its issue is never opened, updated or closed; told nothing (no names, the
-   * default), the watch takes no move at all.
+   * no pull request the watch writes but the one of a group the pin step made whole with a move it names, and its
+   * issue is never opened, updated or closed; told nothing (no names, the default), the watch takes no move at all.
    */
   only?: PinScope;
 }
@@ -815,10 +815,13 @@ export function pinWatch(deps: PinWatchDependencies, repo: string): Watch {
     // The moves the pin step makes: what the scan made of each group, on the commit it read, committed whole once each
     // file it wrote is the same at main's head. A move the step refused is the one thing of its group that waits, with
     // an issue that says so and names no package; the step's own words are logged here, where the public cannot read.
+    // A group is made whole, its files written for every move in it, so a move told takes its group's others with it:
+    // the scan's pins job makes every group, whatever the watch is told, and the gate makes the group again whole.
     const writtenOf = new Map<string, Written>();
-    for (const [branch, moves] of stepped) {
-      const [first] = moves;
+    for (const [branch, told] of stepped) {
+      const [first] = told;
       if (!first) continue;
+      const moves = read.moves.filter((move) => writable(move) && madeByStep(move) && branchOf(move) === branch);
       const made = day.made?.groups.find((group) => groupKey(group) === groupKey(groupOf(first)));
       if (!made) {
         keep.add(branch);
@@ -832,7 +835,8 @@ export function pinWatch(deps: PinWatchDependencies, repo: string): Watch {
       for (const { move: index, reason } of made.refused) {
         const move = moves.find((each) => each.index === index);
         if (!move) continue;
-        want(move, STEP_REFUSED);
+        // Its issue only for a move told: the issue of one not told is never opened, updated or closed.
+        if (told.includes(move)) want(move, STEP_REFUSED);
         if (!said.has(`refused ${run} ${index}`)) {
           said.add(`refused ${run} ${index}`);
           log.warn(

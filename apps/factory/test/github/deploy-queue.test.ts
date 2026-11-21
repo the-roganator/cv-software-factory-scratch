@@ -8,7 +8,7 @@ import type { Autonomy } from '@software-factory/events';
 import { type Logger, pino } from 'pino';
 import { describe, expect, it } from 'vitest';
 import { ENQUEUES, enqueues } from '../../../../policy/line.ts';
-import { DryRunActions } from '../../src/github/actions.ts';
+import { APP_LOGIN, DryRunActions } from '../../src/github/actions.ts';
 import { GitHubError } from '../../src/github/client.ts';
 import {
   checksWait,
@@ -104,6 +104,11 @@ const vouching = (pulls: () => QueuePull[]) => ({
   get: (_repo: string, branch: string) => pulls().find((p) => p.head.ref === branch)?.head.sha,
 });
 
+interface Comment {
+  body: string;
+  user: { login: string };
+}
+
 /** A worker's deploy queue watch against a deploy branch with these open pull requests, as each pass reads them. */
 function harness(o: {
   heads?: DeployQueueDependencies['heads'];
@@ -115,6 +120,8 @@ function harness(o: {
   enqueue?: (number: number, head: string) => Promise<{ position: number | null; state: string | null }>;
   actions?: DeployQueueDependencies['actions'];
   recorder?: RefusalRecorder;
+  /** The pull request's comments, as GitHub keeps them: shared by two harnesses, a worker and its restart. */
+  comments?: Comment[];
 }) {
   const sent: Sent[] = [];
   const { github } = client(
@@ -123,6 +130,11 @@ function harness(o: {
         method: 'GET',
         path: `/repos/${REPO}/pulls?state=open&per_page=10&head=the-roganator:deploy%2Flocal`,
         answer: () => ({ body: (o.pulls ?? (() => [pull()]))() }),
+      },
+      {
+        method: 'GET',
+        path: `/repos/${REPO}/issues/973/comments?per_page=100`,
+        answer: () => ({ body: o.comments ?? [] }),
       },
     ],
     sent,
@@ -369,6 +381,43 @@ describe('the deploy queue watch', () => {
     const moved = harness({ queued: () => out(0) });
     await moved.pass();
     expect(moved.enqueued).toEqual([[973, HEAD]]);
+  });
+
+  it('says a head is out of tries once across restarts, by the mark on its comment, whichever checks failed last', async () => {
+    const comments: Comment[] = [];
+    const spent = (checks: CheckRun[]) =>
+      queue({
+        removed: {
+          at: '2026-11-18T04:53:12Z',
+          by: 'github-merge-queue',
+          reason: 'failed_checks',
+          commit: 'c'.repeat(40),
+          failures: QUEUE_TRIES,
+        },
+        checks,
+      });
+    const worker = (checks: CheckRun[]) =>
+      harness({
+        queued: () => spent(checks),
+        comments,
+        actions: {
+          enqueuePullRequest: async () => ({ position: 1, state: 'QUEUED' }),
+          comment: async (_repo, _number, body) => {
+            comments.push({ body, user: { login: APP_LOGIN } });
+          },
+        },
+      });
+    await worker([run('lint, types, tests', 'failure')]).pass();
+    expect(comments).toHaveLength(1);
+    // Restarted, it reads another check failed since on the queue's commit: its words differ, its mark does not.
+    await worker([run('lint, types, tests', 'failure'), run('browser tests', 'failure')]).pass();
+    expect(comments).toHaveLength(1);
+    // A mark in a comment another account made, or for another head, is not the App's word for this one.
+    comments.splice(0, 1, { body: comments[0]?.body as string, user: { login: 'someone' } });
+    comments.push({ body: `<!-- factory: out of tries ${NEWER} -->`, user: { login: APP_LOGIN } });
+    await worker([]).pass();
+    expect(comments).toHaveLength(3);
+    expect(comments[2]?.body).toContain(`<!-- factory: out of tries ${HEAD} -->`);
   });
 
   it('tries the comment again on the next pass when it could not be made, and adds nothing meanwhile', async () => {
