@@ -6,7 +6,7 @@
  * and Martin's branches above all, is refused before GitHub is asked, as a patch to a protected path is: the rulesets
  * guard `main` too, and this does not lean on them.
  *
- * The pin watch's branches (`factory/pin/<move>`, and `factory/pin-next/<move>` where each commit is made before its
+ * The pin watch's branches (`factory/pin/<files>`, and `factory/pin-next/<files>` where each commit is made before its
  * branch moves to it) are written by one action alone, `commitPins`, whose guard lets a commit replace the version or
  * digest at each pin and nothing else (`pin-guard.ts`): every other action that moves, deletes or commits to a branch
  * refuses them, so no patch, commit or branch move asked of the worker can put anything else on one.

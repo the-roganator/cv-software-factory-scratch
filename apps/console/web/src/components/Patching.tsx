@@ -58,8 +58,6 @@ function route(row: PatchingRow, who: Who): string {
       return 'The worker';
     case 'dependabot':
       return 'Dependabot';
-    case 'approval':
-      return `${your(who)} approval`;
     case 'cluster':
       return `${your(who)} cluster`;
     case 'issue':
@@ -153,7 +151,9 @@ function why(row: PatchingRow, who: Who): string {
             ? `The app’s move goes down the line as work item #${row.link.number}: its pins are written, then its gates and review, as any change.`
             : 'The app’s moves are the line’s: it takes one as a work item, as it takes any ticket.';
         case 'worker':
-          return 'A pin forward on its own line, which the review gate can prove from its pull request: the factory’s App moves it.';
+          return source.major
+            ? 'Its fix is a major one. The factory’s App opens its pull request as any other, the review gate names it a major, and the autonomy level decides whether it merges unasked.'
+            : 'A pin forward on its own line, which the review gate can prove from its pull request: the factory’s App moves it.';
         case 'dependabot':
           // In the app, a pin where the line may not write: Dependabot's whatever its deadline.
           if (isApp(row))
@@ -166,8 +166,6 @@ function why(row: PatchingRow, who: Who): string {
           return row.link?.kind === 'pull'
             ? `Dependabot opened #${row.link.number}, to ${row.link.version}, and the move has no High or Critical on a deadline, so the pin stays Dependabot’s.`
             : 'A pin Dependabot reads, with no High or Critical on a deadline, so it stays Dependabot’s.';
-        case 'approval':
-          return `${source.major ? 'Its fix is a major one, so' : 'It changes more than a pin, so'} the review gate passes it only with ${yours(who)} approval.`;
         case 'cluster':
           return 'Only the cluster’s own command applies a new k3s, with the line stopped: no pull request can show it works.';
         case 'issue':
@@ -191,8 +189,6 @@ function whatToDo(row: PatchingRow, who: Who): string {
     return 'Sync it in Argo CD, or for k3s run make upgrade-cluster with the line stopped. The row goes once the sense reads it running.';
   if (source.lane === 'cluster')
     return 'Run make upgrade-cluster, with the line stopped. It loses nothing in the store.';
-  if (source.lane === 'approval')
-    return `Move it in a pull request ${who.martin ? 'of your own' : 'of his own'}, and review it there.`;
   if (source.lane === 'dependabot')
     return `Review Dependabot’s pull request${row.link?.kind === 'pull' ? `, #${row.link.number},` : ''} and approve it there: it merges once ${who.martin ? 'you have' : 'Martin has'}.`;
   return 'Move it by hand in a pull request: the App writes no mise file, workflow or lockfile.';

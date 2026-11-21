@@ -23,7 +23,6 @@ import {
   QUEUE_TRIES,
   QUEUED_DEPLOYS,
   type QueuePull,
-  toldWait,
   verdictWait,
 } from '../../src/github/deploy-queue.ts';
 import { DEPLOYS, type DeployTarget } from '../../src/github/deploys.ts';
@@ -812,17 +811,11 @@ describe('the pin queue watch', () => {
     expect(() => pinQueueWatch(deps, APP.repo)).toThrow(/does not queue/);
   });
 
-  it('queues only a move the pin watch is told to take, as the watch opens only those, and reads nothing told none', async () => {
-    // `zap` folds to factory/pin/zap, the branch the pin watch opens for it.
+  it('queues what the pin watch wrote, whatever moves it is told to take, and reads nothing told none', async () => {
+    // The watch commits only the moves it is told to take, and the queue adds only a head the watch wrote (`headWait`).
     const told = pinHarness({ only: ['zap'] });
     await told.pass();
     expect(told.enqueued).toEqual([[1040, PIN_HEAD]]);
-
-    // One left open from an earlier setting, or opened by hand on a pin branch: the watch is told another move.
-    const other = pinHarness({ only: ['argo-rollouts: quay.io/argoproj/argo-rollouts'] });
-    await other.pass();
-    expect(other.enqueued).toEqual([]);
-    expect(calls(other.sent).some((s) => s.path.includes('/events'))).toBe(false);
 
     for (const none of [[], undefined]) {
       const { github } = client([]);
@@ -835,34 +828,6 @@ describe('the pin queue watch', () => {
       await (none === undefined ? pinQueueWatch(deps, REPO) : pinQueueWatch(deps, REPO, none))();
       expect(sent).toEqual([]);
     }
-    const at = (ref: string, title = 'chore(pin): move zap to 2.17.0') => ({
-      title,
-      head: { ref, sha: PIN_HEAD, repo: null },
-    });
-    expect(toldWait(['zap'], at('factory/pin/zap'))).toBeUndefined();
-    expect(toldWait('*', at('factory/pin/anything'))).toBeUndefined();
-    expect(toldWait(['zap'], at('factory/pin/zap2'))?.waits).toBe('not-a-pin');
-  });
-
-  it('takes the setting by the exact move name, as the watch does: no name that only folds to the branch', async () => {
-    const at = (ref: string, title: string) => ({ title, head: { ref, sha: PIN_HEAD, repo: null } });
-    const dashboards = at('factory/pin/example-dashboards', 'chore(pin): move example-dashboards to 13.7.2');
-    // Each folds to the same branch, and the watch takes no move by any of them.
-    for (const name of ['Example-Dashboards', 'example_dashboards', 'example.dashboards*', 'example-dashboards ']) {
-      expect(toldWait([name], dashboards)?.waits, name).toBe('not-a-pin');
-    }
-    expect(toldWait(['example-dashboards'], dashboards)).toBeUndefined();
-    // A told name whose title prefixes another move's on the same branch (names cut at 80 characters fold to one).
-    const long = 'x'.repeat(80);
-    expect(toldWait([long], at(`factory/pin/${long}`, `chore(pin): move ${long} to x to 1.0`))?.waits).toBe(
-      'not-a-pin',
-    );
-    expect(toldWait([long], at(`factory/pin/${long}`, `chore(pin): move ${long} to 1.0`))).toBeUndefined();
-    // A told name whose title prefixes another move's is still on its own branch.
-    expect(toldWait(['zap'], at('factory/pin/zap-to-x', 'chore(pin): move zap to x to 1.0'))?.waits).toBe('not-a-pin');
-    const folded = pinHarness({ only: ['Zap'] });
-    await folded.pass();
-    expect(folded.enqueued).toEqual([]);
   });
 
   it('carries Martin’s hold to a pull request the watch opened again for the move, at any target, until a merge', async () => {
