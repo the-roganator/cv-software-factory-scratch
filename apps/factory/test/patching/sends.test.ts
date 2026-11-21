@@ -226,6 +226,22 @@ describe("the sense's sends", () => {
     expect(scan?.kind === 'scan' ? scan.findings.map((f) => f.advisory) : []).not.toContain('not an advisory id');
   });
 
+  it('sends a package at two versions under one advisory, which the scan finds from both, as one word', () => {
+    const both: ReadMove = {
+      ...lockfile,
+      withheld: {
+        package: 'left-pad',
+        from: '1.2.3, 2.0.0',
+        to: 'versions 1.2.4 and 2.0.1',
+        pins: [{ file: 'pnpm-lock.yaml', line: 812 }],
+      },
+    };
+    const { sends, skipped } = sendsOf(read([both]), '2026-11-11T04:59:00Z');
+    expect(skipped).toEqual([]);
+    expect(sends[0]?.signal.move).toMatchObject({ name: 'left-pad', from: '1.2.3,2.0.0', to: '1.2.4,2.0.1' });
+    expect(validateSignal(sends[0]?.signal)).toEqual({ ok: true });
+  });
+
   it('sends one signal for a name the scan moves from two versions, as triage keeps one ticket for it', () => {
     const second: ReadMove = {
       ...lockfile,
