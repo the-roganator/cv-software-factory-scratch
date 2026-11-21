@@ -11,13 +11,17 @@
  *     the fix does not need. pnpm takes the newest release the range admits under the app's own release age and trust
  *     policy (`pnpm-workspace.yaml`). A package no manifest names is moved where its parents' ranges admit the fix; a
  *     copy left below it needs an override in `pnpm-workspace.yaml`, which is Martin's file, so the step stops and the
- *     work item waits for him (`PinsHeld`).
+ *     work item waits for him (`PinsHeld`). A package at two versions is one move to two (`1.0.0, 2.0.0` to
+ *     `1.0.1,2.0.3`, as the scan names them): each copy moves to the target on its own line.
  *   - Node (`node`): `mise.toml`'s version, `mise.lock`'s entry, with the checksum of each platform's download from
  *     Node's own `SHASUMS256.txt`, and each `FROM` of a Node image, its tag moved where it names the version and its
  *     digest the registry's for that tag. Not before the release is as old as `mise.toml`'s `minimum_release_age`.
  *   - a base image (`docker`): each `FROM` of the image at the move's `from`, given its `to`, once the registry says
  *     the tag is that digest. An image that runs Node brings its Node: where the image at that digest runs another
  *     release than `mise.toml` pins, Node moves to it as above, and the image to the move's digest.
+ *   - a tool mise pins (`tool`): its version in `mise.lock`, and then `mise lock <tool>`, which writes each
+ *     platform's download and checksum for that version, within the range `mise.toml` gives it. Only where the step
+ *     is given mise (`PinTools.mise`): the factory's moves, made by its scan and its review gate, never the runner.
  * - **After a coder's step** that changed a `package.json` (`writeLockfile`), it applies the pins and the coder's
  *   patch to a fresh checkout and writes the lockfile with `pnpm install --lockfile-only`, printing only the
  *   lockfile's change.
@@ -32,6 +36,10 @@
  * mise is not run, and not in the image: nothing in this repository pins mise's own version, and `mise lock`'s entry
  * for Node is the version, its download for each platform, and that download's checksum, which the step writes from
  * the same file mise reads. So nothing of the app's `mise.toml` runs here either.
+ *
+ * The factory's own moves are made by the same step, from its scan and its review gate (scripts/derive.ts), on a
+ * checkout of its `main`: a workspace whose projects name each other as `workspace:` and its lockfile as `link:`, which
+ * the step takes there alone (`PinTools.workspace`), never from a checkout an agent may have written.
  */
 import { execFile } from 'node:child_process';
 import { copyFile, readFile, rm, writeFile } from 'node:fs/promises';
@@ -62,7 +70,7 @@ const exec = promisify(execFile);
 
 /** What moves: as the work item names it (`work-item.opened`'s `dependency`). */
 export interface Move {
-  ecosystem: 'npm' | 'node' | 'docker';
+  ecosystem: 'npm' | 'node' | 'docker' | 'tool';
   name: string;
   from: string;
   to: string;
@@ -131,12 +139,17 @@ const COMPARATOR = /^(?:[\^~]|[<>]=?|=)?\d+(?:\.(?:\d+|[xX*])){0,2}(?:-[0-9A-Za-
 const VERSION = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
 const DIGEST = /^sha256:[0-9a-f]{64}$/;
 
+/** A workspace's own project, as a manifest names it: `workspace:*`, `workspace:^`, or a range after it. */
+const WORKSPACE_SPEC = /^workspace:(?:[*^~]|[\^~]?\d+(?:\.\d+){0,2})$/;
+
 /**
  * Whether a manifest's spec is a range of the registry's versions: comparators, joined by spaces or `||`, or `*`.
- * Never a tarball, a git source, an alias (`npm:`), a `file:`, `link:` or `workspace:`, a URL or a dist-tag.
+ * Never a tarball, a git source, an alias (`npm:`), a `file:`, `link:` or `workspace:`, a URL or a dist-tag; with
+ * `workspace`, a project of the checkout's own workspace too (`workspace:*`).
  */
-export function registryRange(spec: string): boolean {
+export function registryRange(spec: string, workspace = false): boolean {
   if (spec.trim() === '*') return true;
+  if (workspace && WORKSPACE_SPEC.test(spec.trim())) return true;
   return spec.split('||').every(
     (part) =>
       part.trim() !== '' &&
@@ -147,13 +160,17 @@ export function registryRange(spec: string): boolean {
   );
 }
 
-/** Every dependency a checkout's manifests name with a spec that is not a range of the registry's. */
-export function notFromRegistry(manifests: readonly { path: string; json: Manifest }[]): string[] {
+/**
+ * Every dependency a checkout's manifests name with a spec that is not a range of the registry's; with `workspace`, a
+ * dependency on a project of the checkout's own workspace is one too, and never an override's.
+ */
+export function notFromRegistry(manifests: readonly { path: string; json: Manifest }[], workspace = false): string[] {
   const refused: string[] = [];
   for (const { path, json } of manifests) {
     for (const field of DEPENDENCY_FIELDS) {
       for (const [name, spec] of Object.entries(json[field] ?? {})) {
-        if (typeof spec !== 'string' || !registryRange(spec)) refused.push(`${path}: ${name} ${JSON.stringify(spec)}`);
+        if (typeof spec !== 'string' || !registryRange(spec, workspace))
+          refused.push(`${path}: ${name} ${JSON.stringify(spec)}`);
       }
     }
     // An override's value is a spec too: one may name a tarball as well as any dependency can.
@@ -170,15 +187,21 @@ export function notFromRegistry(manifests: readonly { path: string; json: Manife
 /**
  * The lines of a pnpm lockfile that resolve something other than a package of the registry: a tarball, a git source,
  * a folder, or an importer's `link:` or `file:`. pnpm writes a registry package's resolution as its integrity alone.
+ * With `workspace`, an importer's `workspace:` specifier and its `link:` to a relative folder are the workspace's own.
  */
-export function registryOnly(lock: string): string[] {
+export function registryOnly(lock: string, workspace = false): string[] {
+  const own = (line: string) =>
+    workspace &&
+    (/^\s+specifier: ['"]?workspace:[^\s'"]*['"]?$/.test(line) ||
+      /^\s+version: ['"]?link:(?!\/)[\w@./-]+['"]?$/.test(line));
   return lock
     .split('\n')
     .filter(
       (line) =>
         (/\bresolution: \{/.test(line) &&
           (!/\bintegrity: /.test(line) || /\b(tarball|type|repo|directory):/.test(line))) ||
-        /^\s+(version|specifier): ['"]?(link|file|git|git\+[a-z]+|https?|npm|github|workspace):/.test(line),
+        (/^\s+(version|specifier): ['"]?(link|file|git|git\+[a-z]+|https?|npm|github|workspace):/.test(line) &&
+          !own(line)),
     )
     .map((line) => line.trim());
 }
@@ -285,6 +308,12 @@ export function admits(spec: string, version: string): boolean {
   return compareVersions(version, base) === 0;
 }
 
+/** The line a caret range keeps a version on: its major, or below 1.0 its minor. */
+const lineOf = (version: string) => {
+  const [major, minor] = version.split('.');
+  return major === '0' ? `0.${minor}` : major;
+};
+
 /** The same range, moved to a version: its operator kept, so it never admits a major the version does not need. */
 export const movedRange = (spec: string, version: string): string =>
   `${/^[\^~]?/.exec(spec.trim())?.[0] ?? ''}${version}`;
@@ -296,18 +325,25 @@ export const movedRange = (spec: string, version: string): string =>
  * part of the move.
  */
 export async function movePackage(dir: string, move: Move, pnpm: Pnpm): Promise<void> {
+  // A package at two versions: each copy to the target on its own line, the older line first.
+  const tos = move.to.split(',').map((each) => each.trim());
+  const froms = move.from.split(',').map((each) => each.trim());
+  if (tos.length > 1 || froms.length > 1) {
+    for (const to of [...tos].sort(compareVersions)) {
+      if (!VERSION.test(to)) throw new PinsRefused(`${to} is not a version, so ${move.name} cannot move to it.`);
+      const from = froms.find((each) => VERSION.test(each) && lineOf(each) === lineOf(to));
+      if (!from) throw new PinsRefused(`${move.name} is at no version on the line of ${to}: ${move.from}.`);
+      await movePackage(dir, { ...move, from, to }, pnpm);
+    }
+    return;
+  }
   if (!VERSION.test(move.to)) throw new PinsRefused(`${move.to} is not a version, so ${move.name} cannot move to it.`);
   const lockPath = join(dir, 'pnpm-lock.yaml');
   const before = await readFile(lockPath, 'utf8');
   const versions = lockedVersions(before, move.name);
   if (!versions.length) throw new PinsRefused(`The lockfile resolves no ${move.name}.`);
   // A copy on another major that the move does not name has no advisory this move fixes: it stays where it is.
-  // The line a caret range keeps a version on: its major, or below 1.0 its minor.
-  const line = (version: string) => {
-    const [major, minor] = version.split('.');
-    return major === '0' ? `0.${minor}` : major;
-  };
-  const itsOwn = (version: string) => version === move.from || line(version) === line(move.to);
+  const itsOwn = (version: string) => version === move.from || lineOf(version) === lineOf(move.to);
   const own = versions.filter(itsOwn);
   // Already made: every copy is at the target or past it, or every copy of the move's own is, and there is one.
   const there = (list: string[]) => list.every((v) => compareVersions(v, move.to) >= 0);
@@ -508,6 +544,36 @@ export async function moveImage(dir: string, move: Move, get: Get, now = Date.no
   if (!moved) throw new PinsRefused(`No FROM pins ${move.name} at ${move.from}.`);
 }
 
+/** Runs mise in a checkout, as the factory's scan and review gate do. Injected so tests need no mise. */
+export type Mise = (dir: string, args: string[]) => Promise<void>;
+
+/**
+ * Moves a tool mise pins: its entry's version in `mise.lock`, then `mise lock <tool>`, which writes that version's
+ * download and checksum for each platform the lockfile keeps. Within the range `mise.toml` gives the tool, which is
+ * left as it is: a version outside it is refused, as `mise upgrade` would not take it. A lockfile that already pins
+ * the target has the move, and nothing is written.
+ */
+export async function moveTool(dir: string, move: Move, mise: Mise | undefined): Promise<void> {
+  if (!/^[a-z0-9][a-z0-9_-]*$/.test(move.name)) throw new PinsRefused(`${move.name} is not a tool's name in mise.`);
+  if (!VERSION.test(move.from) || !VERSION.test(move.to))
+    throw new PinsRefused(`A tool moves from a version to a version, not ${move.from} to ${move.to}.`);
+  if (!mise) throw new PinsRefused(`The pin step runs no mise here, so ${move.name} cannot move.`);
+  const path = join(dir, 'mise.lock');
+  const lock = await readFile(path, 'utf8');
+  const entry = new RegExp(`^\\[\\[tools\\.${escaped(move.name)}\\]\\]\\nversion = "([^"]+)"\\n`, 'm').exec(lock);
+  if (!entry) throw new PinsRefused(`mise.lock has no entry for ${move.name}.`);
+  if (entry[1] === move.to) return;
+  if (entry[1] !== move.from) throw new PinsRefused(`mise.lock's ${move.name} is ${entry[1]}, not ${move.from}.`);
+  const range = new RegExp(`^${escaped(move.name)}\\s*=\\s*"([^"]+)"\\s*$`, 'm').exec(
+    await readFile(join(dir, 'mise.toml'), 'utf8'),
+  )?.[1];
+  if (range === undefined) throw new PinsRefused(`mise.toml names no ${move.name}.`);
+  if (move.to !== range && !move.to.startsWith(`${range}.`))
+    throw new PinsRefused(`${move.name} ${move.to} is outside the range mise.toml gives it, ${range}.`);
+  await writeFile(path, lock.replace(entry[0], entry[0].replace(`"${move.from}"`, `"${move.to}"`)));
+  await mise(dir, ['lock', move.name]);
+}
+
 async function text(get: Get, url: string): Promise<string> {
   const response = await get(url);
   if (!response.ok) throw new PinsRefused(`${url}: ${response.status}`);
@@ -559,6 +625,13 @@ export interface PinTools {
   /** The prepare pod's own folder, which the agent never sees. */
   aside: string;
   now?: number;
+  /** mise, for a tool's move: given by the factory's scan and review gate alone. */
+  mise?: Mise;
+  /**
+   * Whether the checkout's own workspace projects may be named (`workspace:`, and `link:` in the lockfile): the
+   * factory's `main`, which its scan and review gate check out, and never a checkout an agent may have written.
+   */
+  workspace?: boolean;
 }
 
 /**
@@ -568,19 +641,21 @@ export interface PinTools {
 export async function writePins(dir: string, move: Move, tools: PinTools): Promise<void> {
   if (move.ecosystem === 'node') return moveNode(dir, move, tools.get, tools.now);
   if (move.ecosystem === 'docker') return moveImage(dir, move, tools.get, tools.now);
-  await refuseUnlessRegistry(dir);
+  if (move.ecosystem === 'tool') return moveTool(dir, move, tools.mise);
+  const workspace = tools.workspace ?? false;
+  await refuseUnlessRegistry(dir, workspace);
   await withoutNpmrc(dir, join(tools.aside, 'checkout.npmrc'), () => movePackage(dir, move, tools.pnpm));
-  await refuseUnlessRegistryLock(dir);
+  await refuseUnlessRegistryLock(dir, workspace);
 }
 
-async function refuseUnlessRegistry(dir: string): Promise<void> {
-  const refused = notFromRegistry(await manifestsOf(dir));
+async function refuseUnlessRegistry(dir: string, workspace = false): Promise<void> {
+  const refused = notFromRegistry(await manifestsOf(dir), workspace);
   if (refused.length)
     throw new PinsRefused(`Only versions from the registry are pinned, and the manifests name ${refused.join('; ')}.`);
 }
 
-async function refuseUnlessRegistryLock(dir: string): Promise<void> {
-  const lines = registryOnly(await readFile(join(dir, 'pnpm-lock.yaml'), 'utf8'));
+async function refuseUnlessRegistryLock(dir: string, workspace = false): Promise<void> {
+  const lines = registryOnly(await readFile(join(dir, 'pnpm-lock.yaml'), 'utf8'), workspace);
   if (lines.length)
     throw new PinsRefused(`The lockfile resolves something not from the registry: ${lines.slice(0, 5).join('; ')}.`);
 }

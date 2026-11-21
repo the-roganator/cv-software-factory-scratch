@@ -436,7 +436,7 @@ describe('the pin watch’s issues', () => {
       expect(issue.body).not.toMatch(/@example\/tokens|3\.0\.[12]|GHSA-/);
     }
     const cd = repo.issues.find((i) => i.title.startsWith('Move example-cd'));
-    expect(cd?.body).toContain('`mise upgrade`');
+    expect(cd?.body).toContain('no pull request of the App’s writes the Makefile');
     expect(cd?.body).toContain('- `mise.toml:2`, pinning `10.9.5`');
     expect(cd?.body).toContain('**Deadline** 2026-11-18T06:00:00Z.');
   });
@@ -525,15 +525,13 @@ describe('the pin watch’s refusals', () => {
 });
 
 describe('the pin watch, as review found it', () => {
-  it('opens an issue for a lockfile’s move in a lane it would otherwise write, a major’s among them', async () => {
+  it('opens nothing for a lockfile’s move in a lane it writes until the scan has made it, a major’s among them', async () => {
     const repo = new FakeRepo(FILES);
     const scanned = repo.main;
     const lockfile = factoryMoves().find((m) => m.lockfile) as ReadMove;
-    await harness(repo, () => day(scanned, [{ ...lockfile, lane: 'worker', major: true }])).pass();
-    expect(appPulls(repo)).toEqual([]);
-    expect(repo.issues.map((i) => i.title)).toEqual([
-      'Move a package in pnpm-lock.yaml (3f9a1c0b7e2d) to the version its alerts name',
-    ]);
+    const w = harness(repo, () => day(scanned, [{ ...lockfile, lane: 'worker', major: true }]));
+    await w.pass();
+    expect(writes(w.sent)).toEqual([]);
   });
 
   it('leaves a lockfile’s move to Dependabot on its first day, opening nothing', async () => {

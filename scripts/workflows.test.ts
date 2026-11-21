@@ -27,6 +27,8 @@ const WITH_A_SECRET: Record<string, string[]> = {
 /** The scan, whose `scan` job holds the key its state is sealed with: a pull request starts its other jobs alone. */
 const SCAN = 'vulnerabilities.yml';
 const SCAN_JOB = 'scan';
+/** The scan's job that makes the factory's moves no pin's line writes, after the scan, with the same key. */
+const PINS_JOB = 'pins';
 
 /**
  * The files each of those checks out, and copilot-held-runs.yml, whose token may delete runs: the toolchain's pins and
@@ -198,12 +200,13 @@ describe('every workflow', () => {
     }
   });
 
-  it('gives the scan’s key to the one job no pull request reaches, and in it to the one step that seals the state', () => {
+  it('gives the scan’s key to the two jobs no pull request reaches, and in the scan to the one step that seals the state', () => {
     const workflow = read(SCAN);
+    const keyed = [SCAN_JOB, PINS_JOB];
     for (const [id, job] of Object.entries(workflow.jobs)) {
       const holds = secretsOf(workflow, job).names.length > 0;
-      expect(holds, id).toBe(id === SCAN_JOB);
-      expect(environmentOf(job), id).toBe(id === SCAN_JOB ? SCAN_STATE_ENVIRONMENT.name : undefined);
+      expect(holds, id).toBe(keyed.includes(id));
+      expect(environmentOf(job), id).toBe(keyed.includes(id) ? SCAN_STATE_ENVIRONMENT.name : undefined);
     }
     // A repository that calls the scan passes the key by name, from its own environment: GitHub gives a called job no
     // secret its caller does not pass, so the workflow declares that one, not required, and no other.
@@ -237,6 +240,38 @@ describe('every workflow', () => {
         expect(script, step.name).toMatch(/^factory\/apps\/factory\/src\/vulnerabilities\//);
       expect(step.run ?? '', step.name).not.toMatch(/(^|[\s;&|(])(\.\/)?scanned\/\S*(\s|$)/m);
     }
+  });
+
+  it('makes the factory’s moves with the scan’s key in one step, after the scan, in the factory alone, with main’s code', () => {
+    const workflow = read(SCAN);
+    const job = workflow.jobs[PINS_JOB] as Job & { needs?: unknown };
+    expect(job.needs).toBe(SCAN_JOB);
+    // No pull request's run reaches it, and it runs only in this repository, once the scan kept its moves and state.
+    expect(job.if).toContain("github.event_name != 'pull_request'");
+    expect(job.if).toContain("needs.scan.outputs.kept == 'true'");
+    expect(job.if).toContain('github.repository == vars.FACTORY_REPOSITORY');
+    expect(job.permissions).toEqual({ contents: 'read' });
+    const steps = job.steps ?? [];
+    expect(steps[0]?.name).toBe('Refuse a privileged context');
+    expect(steps[0]?.run).toContain('The scan runs only on a push to the default branch');
+    const given = steps.filter((step) => JSON.stringify(step).includes('secrets.'));
+    expect(given).toHaveLength(1);
+    expect(given[0]?.env?.[SCAN_STATE_ENVIRONMENT.key]).toBe(expression(`secrets.${SCAN_STATE_ENVIRONMENT.key}`));
+    expect(given[0]?.run?.trim()).toMatch(/^node scripts\/pins\.ts /);
+    // This repository's code at the workflow's commit; the scanned checkout is data, and no step runs a file of it.
+    const own = steps.find((step) => step.uses?.startsWith('actions/checkout@') && step.with?.path === 'factory');
+    expect(own?.with?.ref).toBe(expression('job.workflow_sha'));
+    expect(own?.with?.repository).toBe(expression('job.workflow_repository'));
+    for (const step of steps) {
+      if (step.uses?.startsWith('actions/checkout@')) expect(step.with?.['persist-credentials'], step.name).toBe(false);
+      expect(step.run ?? '', step.name).not.toMatch(/(^|[\s;&|(])(\.\/)?scanned\/\S*(\s|$)/m);
+    }
+    expect(
+      steps
+        .map((step) => step.run)
+        .filter(Boolean)
+        .slice(1),
+    ).toEqual(['pnpm install --frozen-lockfile --ignore-scripts', expect.stringMatching(/^node scripts\/pins\.ts /)]);
   });
 
   it('checks out nothing but main’s own files where an App’s key or a write to Actions is: a sparse copy at its commit', () => {
