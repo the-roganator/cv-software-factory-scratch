@@ -42,15 +42,15 @@ out="${REFUSALS_OUT:-$here/../deploy/test/admission-refusals.json}"
 taken=$(node "$here/policy-hash.ts" admission-refusals)
 
 # Signed builds: the factory's and its browser's from commit 22bcfa0, the app's from f68c10c.
-factory=ghcr.io/the-roganator/cv-software-factory-scratch/factory@sha256:a717cec3e06dd4a0df6c6e7b945c4208807560fa03008149e7b096e8a134a667
-website=ghcr.io/the-roganator/cv-worlds-worst-website-scratch@sha256:7ae8f3ef5a89017e77917ee68a4b62aae65c2e95d3d9f1f6b327a6d608927142
-browser=ghcr.io/the-roganator/cv-software-factory-scratch/factory-browser@sha256:b05dba2a5e0ab0188a39e37f0cc23090d8af30430283f89b603407e52af2ab86
+factory=ghcr.io/the-roganator/cv-software-factory-scratch/factory@sha256:03f5f991a2c0fb48d1d2869ca51b5c1430a5f13d78625bb5d37616bc7ac45b15
+website=ghcr.io/the-roganator/cv-worlds-worst-website-scratch@sha256:4e1ae93b4dc6892141d43ad42628b4443a2d9e144117103d4de5b5ee7c190512
+browser=ghcr.io/the-roganator/cv-software-factory-scratch/factory-browser@sha256:79881846c6e97b8cfe163211dbbe025e8efe7b8d19d798e185827d7617a3c55a
 # The amd64 manifests inside the factory's build and the app's, which carry no signature of their own.
-factory_unsigned=ghcr.io/the-roganator/cv-software-factory-scratch/factory@sha256:f8298adaffea60fac0d3238e3d6bf81dc918b78ab95a82f74b330ac4b3c6db9d
-website_unsigned=ghcr.io/the-roganator/cv-worlds-worst-website-scratch@sha256:9d3c63c55c4307cdcc2f38f96b7006be274c353302e9ee0a3d2d8bdb13a152c8
+factory_unsigned=ghcr.io/the-roganator/cv-software-factory-scratch/factory@sha256:a84a708768f7b5361812ef916f8b47fa360d1561ed4283f344285f78b8d74006
+website_unsigned=ghcr.io/the-roganator/cv-worlds-worst-website-scratch@sha256:e643ef3aa38160ccea81bb5a3e852c6f2446cf86801cc92c65b6d7bed78beac8
 # The arm64 manifests inside the factory's build and its browser's, which other-identity.yml signed.
-factory_other=ghcr.io/the-roganator/cv-software-factory-scratch/factory@sha256:abbfbe0ced09e4f8913dcecba14703bf80a1bdea16d208eaa090c5d863b807d6
-browser_other=ghcr.io/the-roganator/cv-software-factory-scratch/factory-browser@sha256:ba64363b2157a0acd8409c71ccb17d2d76288939a804e175cdc4fe858564568a
+factory_other=ghcr.io/the-roganator/cv-software-factory-scratch/factory@sha256:13642a3e7ed4fd584db5cff4bc94d4f343e352b8896fa7f0ab207d715bf5fd30
+browser_other=ghcr.io/the-roganator/cv-software-factory-scratch/factory-browser@sha256:ee1b4ab55074f66750848805d977480778579a1bdad192a74eef542c5636da33
 flagd=ghcr.io/open-feature/flagd:v0.16.3@sha256:a11ae82ec6e40e89edae4327392a1e4ffc03e211f1b724879bb35b2e4f271bb3
 
 # Who signed each image of ours, read once, by digest, and what each case needs of it. Kept aside with the answers.
