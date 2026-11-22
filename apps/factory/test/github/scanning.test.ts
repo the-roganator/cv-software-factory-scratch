@@ -3,8 +3,10 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { GitHub, GitHubError } from '../../src/github/client.ts';
 import { branchPin, ecosystemsOf, groupMovesTo, rewrittenLines } from '../../src/github/dependabot.ts';
+import { type Made, sealMade } from '../../src/github/made.ts';
 import { LiveReads } from '../../src/github/reads.ts';
 import { ScanReads } from '../../src/github/scanning.ts';
+import { FACTORY_REPOSITORY } from '../../src/repositories.ts';
 import { newKey, readKey, type State, type StateFinding, seal } from '../../src/vulnerabilities/state.ts';
 import { zipEntry } from '../../src/vulnerabilities/zip.ts';
 import { zipOf } from '../vulnerabilities/zip-of.ts';
@@ -891,5 +893,82 @@ describe('the scan’s moves, kept for each run', () => {
     const first = await reads.moves(REPO);
     first.moves.length = 0;
     expect((await reads.moves(REPO)).moves).toHaveLength(2);
+  });
+});
+
+describe('the moves the scan made with the pin step, in the factory', () => {
+  const swap = <T>(value: T): T => JSON.parse(JSON.stringify(value).replaceAll(REPO, FACTORY_REPOSITORY));
+  const COMMIT = 'c'.repeat(40);
+  const made = (over: Partial<Made> = {}): Made => ({
+    version: 1,
+    repository: FACTORY_REPOSITORY,
+    run: String(RUN),
+    commit: COMMIT,
+    groups: [
+      {
+        files: ['pnpm-lock.yaml'],
+        major: false,
+        moves: [2],
+        refused: [],
+        changed: [{ path: 'pnpm-lock.yaml', text: 'moved' }],
+        steps: [{ move: 2, ecosystem: 'npm', name: '@example/tokens', before: ['3.0.1'], after: ['3.0.2'] }],
+      },
+    ],
+    ...over,
+  });
+  /** The fixtures' day as the factory's, with the run's `pins` artifact, or none. */
+  function factoryRead(pins: Buffer | undefined, sent: Sent[] = []) {
+    const day: Day = {
+      runs: swap(fixture('runs.json')),
+      moves: swap({ ...fixture('moves.json'), run: String(RUN) }),
+      state: swap({ ...state(), run: String(RUN) }),
+    };
+    const listed = {
+      total_count: pins ? 1 : 0,
+      artifacts: pins ? [{ ...fixture('artifacts.json').artifacts[0], id: 81, name: 'pins' }] : [],
+    };
+    const all: Route[] = [
+      ...routes(day).map((route) => ({
+        ...route,
+        path: typeof route.path === 'string' ? route.path.replaceAll(REPO, FACTORY_REPOSITORY) : route.path,
+      })),
+      {
+        method: 'GET',
+        path: artifactsPath(RUN, 'pins').replace(REPO, FACTORY_REPOSITORY),
+        answer: () => ({ body: listed }),
+      },
+      {
+        method: 'GET',
+        path: `/repos/${FACTORY_REPOSITORY}/actions/artifacts/81/zip`,
+        answer: () => ({ status: 302, headers: { location: 'https://storage.test/artifact/81/pins.zip?sig=x' } }),
+      },
+      {
+        method: 'GET',
+        path: '/artifact/81/pins.zip?sig=x',
+        answer: () => ({ body: zipOf({ 'pins.sealed': pins ?? Buffer.alloc(0) }) }),
+      },
+    ];
+    return new LiveReads(client(all, sent).github, undefined, { stateKeys: keys }).moves(FACTORY_REPOSITORY);
+  }
+
+  it('come with the day, opened with the key; a run that made none has none', async () => {
+    const read = await factoryRead(sealMade(made(), KEY));
+    expect(read.made?.groups[0]?.steps[0]?.name).toBe('@example/tokens');
+    expect((await factoryRead(undefined)).made).toBeUndefined();
+  });
+
+  it('fail the read when sealed for another run, made on another commit, or naming a move past the list', async () => {
+    for (const [pins, why] of [
+      [sealMade({ ...made(), run: '1' }, KEY), /made moves cannot be read/],
+      [sealMade(made({ commit: 'd'.repeat(40) }), KEY), /made its moves on another commit/],
+      [
+        sealMade(made({ groups: [{ ...(made().groups[0] as Made['groups'][number]), moves: [99] }] }), KEY),
+        /past its list/,
+      ],
+    ] as const) {
+      const error = await factoryRead(pins).catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(GitHubError);
+      expect((error as Error).message).toMatch(why);
+    }
   });
 });

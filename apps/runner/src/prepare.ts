@@ -42,12 +42,16 @@ import { promisify } from 'node:util';
 import { git, gitInput, gitWith } from './git.ts';
 import { bounded, type Log, runnerLog } from './log.ts';
 import {
+  askedList,
+  type MadeAs,
   type Move,
   OWN_PNPM,
   OWN_PNPM_FLAG,
   PinsHeld,
   type PinTools,
+  pnpmAsOf,
   pnpmIn,
+  remembering,
   writeLockfile,
   writePins,
 } from './pins.ts';
@@ -89,10 +93,21 @@ export const pinsMessage = (move: Move) => `chore(deps): move ${move.name} from 
  * The pins of a move, written and printed (`the pins`, with the patch), or printed as held (`the pins wait for
  * Martin`, with the file and why), when they are undefined: the step ends there, and no agent runs on it. An empty
  * patch is a move already made.
+ *
+ * The move is made as of one time, and the patch printed with it and each tag's digest the step was given (`made`):
+ * the review gate makes the move again as of that time and with those answers, so a release or a tag pushed since
+ * changes nothing it makes (`MadeAs`).
  */
 async function pinsOf(dir: string, move: Move, tools: PinTools, log: Log): Promise<string | undefined> {
+  const at = tools.now ?? Date.now();
+  const asked = new Map<string, string>();
   try {
-    await writePins(dir, move, tools);
+    await writePins(dir, move, {
+      ...tools,
+      now: at,
+      pnpm: pnpmAsOf(tools.pnpm, at),
+      digestOf: remembering(asked, tools.get),
+    });
   } catch (error) {
     if (!(error instanceof PinsHeld)) throw error;
     log('the pins wait for Martin', { held: { path: error.path, reason: bounded(error.message) } });
@@ -109,7 +124,8 @@ async function pinsOf(dir: string, move: Move, tools: PinTools, log: Log): Promi
     '--no-color',
     'HEAD',
   );
-  log('the pins', { move, pins });
+  const made: MadeAs = { at: new Date(at).toISOString(), asked: askedList(asked) };
+  log('the pins', { move, pins, made });
   return pins;
 }
 
