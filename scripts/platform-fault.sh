@@ -14,9 +14,16 @@
 #   docker <ok|no> | pod <the first not running: namespace/name status age> | <make's or the watch's last words>
 #
 # The figures first, so the last words are what 200 characters cut short.
-# A code of 000 is a request that got no answer within five seconds. Every probe is bounded, so it takes under a
-# minute however dead the runner's network, Docker or the cluster. KUBECTL is the kubectl command with its context.
+# A code of 000 is a request that got no answer within five seconds. Every command that asks the system, the network,
+# Docker or the cluster is bounded by `timeout -k`: SIGTERM at its limit, then SIGKILL two seconds later, as a command
+# may catch SIGTERM and go on waiting (the docker CLI catches it to cancel its request), and `timeout` without `-k`
+# waits with it. So it takes about a minute at most, however dead the runner's network, Docker or the cluster, short of
+# a process the kernel holds in an uninterruptible wait, which no signal ends. KUBECTL is the kubectl command with its
+# context.
 set -uo pipefail
+
+# <seconds> <command…>: the command, ended at its limit for certain.
+bounded() { local limit=$1; shift; timeout -k 2 "$limit" "$@"; }
 
 why=${1:?why}
 measure=${2:?measure}
@@ -30,19 +37,20 @@ case "$why" in
   *) said=$(last "$measure/make.log") ;;
 esac
 
-now=$(free -m 2>/dev/null | awk '/^Mem:/ { print $3 }')
-swap=$(free -m 2>/dev/null | awk '/^Swap:/ { print $3 }')
+memory=$(bounded 5 free -m 2>/dev/null)
+now=$(awk '/^Mem:/ { print $3 }' <<<"$memory")
+swap=$(awk '/^Swap:/ { print $3 }' <<<"$memory")
 peak=$(sort -n "$measure/memory" 2>/dev/null | tail -1)
-disk=$(df -P / 2>/dev/null | awk 'NR == 2 { print $5 }')
-oom=$(timeout 5 sudo -n dmesg 2>/dev/null | grep -ciE 'out of memory|oom-kill') || true
-probe() { curl -s -o /dev/null -m 5 -w '%{http_code}' "$1" 2>/dev/null || true; }
+disk=$(bounded 5 df -P / 2>/dev/null | awk 'NR == 2 { print $5 }')
+oom=$(bounded 5 sudo -n dmesg 2>/dev/null | grep -ciE 'out of memory|oom-kill') || true
+probe() { bounded 6 curl -s -o /dev/null -m 5 -w '%{http_code}' "$1" 2>/dev/null || true; }
 ghcr=$(probe https://ghcr.io/v2/)
 gh=$(probe https://github.com/)
 dns=no
-timeout 5 getent hosts ghcr.io >/dev/null 2>&1 && dns=ok
+bounded 5 getent hosts ghcr.io >/dev/null 2>&1 && dns=ok
 docker=no
-timeout 10 docker info >/dev/null 2>&1 && docker=ok
-pod=$("${kubectl[@]}" --request-timeout=5s get pods -A --no-headers 2>/dev/null |
+bounded 10 docker info >/dev/null 2>&1 && docker=ok
+pod=$(bounded 8 "${kubectl[@]}" --request-timeout=5s get pods -A --no-headers 2>/dev/null |
   awk 'NF >= 6 && $4 != "Running" && $4 != "Completed" { print $1 "/" $2, $4, $NF; exit }')
 
 line="$why | mem ${now:-?}/${peak:-?}M swap ${swap:-?}M | disk ${disk:-?} | oom ${oom:-?} | net ghcr ${ghcr:-000} gh ${gh:-000} dns $dns | docker $docker | pod ${pod:-none} | ${said:-nothing said}"
