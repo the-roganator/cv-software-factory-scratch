@@ -95,6 +95,18 @@ export const resultPath = (env = process.env) => join(work(env), 'out', 'result.
 /** Where the agent writes a field of its result that is a file of its own. */
 export const resultFilePath = (name: string, env = process.env) => join(work(env), 'out', name);
 
+/**
+ * What a move's pin is at, and what it moves to: a version, or a tag and its digest; or a package's versions joined by
+ * a comma (`5.7.1,7.5.1`), each the version alone. One word, either way.
+ */
+const PINNED = z
+  .string()
+  .regex(
+    /^([\w.:@+-]+|\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?(,\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?)+)$/,
+    'a version, a tag and its digest, or versions joined by a comma',
+  )
+  .max(200);
+
 const STEP = z
   .strictObject({
     agent: z.string().min(1),
@@ -129,14 +141,13 @@ const STEP = z
           .string()
           .regex(/^(@[a-z0-9][\w.-]*\/)?[a-z0-9][\w./:-]*$/, 'a package, an image or node')
           .max(200),
-        from: z
-          .string()
-          .regex(/^[\w.:@+-]+$/, 'a version, or a tag and its digest')
-          .max(200),
-        to: z
-          .string()
-          .regex(/^[\w.:@+-]+$/, 'a version, or a tag and its digest')
-          .max(200),
+        from: PINNED,
+        to: PINNED,
+      })
+      // A package at two versions under one advisory is one move of both (`5.7.1,7.5.1`), which the pin step makes
+      // copy by copy: Node and an image move from one pin to one.
+      .refine((move) => move.ecosystem === 'npm' || !`${move.from}${move.to}`.includes(','), {
+        message: 'only a package moves from versions joined by a comma',
       })
       .optional(),
     pins: z.string().min(1).optional(),
