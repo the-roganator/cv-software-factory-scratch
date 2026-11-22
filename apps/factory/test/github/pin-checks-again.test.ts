@@ -15,7 +15,6 @@ import { BranchRefused } from '../../src/github/branches.ts';
 import { RUN_TRIES } from '../../src/github/deploy-queue.ts';
 import { DeployRefused } from '../../src/github/deploys.ts';
 import { APP_USER, IssueGuard } from '../../src/github/issues.ts';
-import { madeAsOf, withMadeAs } from '../../src/github/made-as.ts';
 import { readPinScope } from '../../src/github/pins.ts';
 import { client, quiet } from './fake.ts';
 import { type Options, worker } from './pin-worker-harness6.ts';
@@ -120,15 +119,11 @@ describe('writing a watch’s commit again', () => {
     expect(repo.refs.get('factory/1400-cart')).toBe(cart);
   });
 
-  it('keeps every other line of the message, a line pin step’s trailers among them', () => {
-    const made = withMadeAs('fix(deps): move a\n\nWhy it moves.', {
-      at: '2026-11-21T05:12:33.000Z',
-      asked: [{ image: 'gcr.io/distroless/nodejs24-debian13', tag: 'nonroot', digest: `sha256:${'a'.repeat(64)}` }],
-    });
+  it('keeps every other line of the message', () => {
+    const made = 'fix(deps): move a\n\nWhy it moves.\n\nCo-Authored-By: someone <someone@example.invalid>';
     const twice = withChecksRun(withChecksRun(made, 2), 3);
     expect(checksRunOf(made)).toBe(1);
     expect(checksRunOf(twice)).toBe(3);
-    expect(madeAsOf(twice)).toEqual(madeAsOf(made));
     expect(twice.replace('\n\nChecks-run: 3', '')).toBe(made);
     expect(withChecksRun('chore(pin): move zap', 2)).toBe('chore(pin): move zap\n\nChecks-run: 2');
   });

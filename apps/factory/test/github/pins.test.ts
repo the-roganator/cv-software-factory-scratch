@@ -35,6 +35,7 @@ import {
   factoryMoves,
   move,
   pinBranchOf,
+  trivyCritical,
   writes,
 } from './pins-harness.ts';
 
@@ -714,6 +715,7 @@ describe('one pull request for the day’s moves at one file', () => {
       major: true,
       clears: { CRITICAL: critical, HIGH: 4, MEDIUM: 0, LOW: 0, UNKNOWN: 0 },
       lane: 'worker',
+      findings: critical ? [trivyCritical({ file: KYVERNO, line: 9 })] : [],
     });
   const BRANCH = branchOf(four()[0] as ReadMove);
 
@@ -818,6 +820,25 @@ describe('one pull request for the day’s moves at one file', () => {
     // The gate names each as the level reads it: the major alone is `major`, and the rest are a `move`.
     expect(await gate(repo, apart, moves)).toMatchObject({ rule: 'major' });
     expect(await gate(repo, BRANCH, moves)).toMatchObject({ rule: 'move', title: expect.stringContaining('4 moves') });
+  });
+
+  it('holds apart a major whose only Critical is its publisher’s: Trivy’s rating alone releases one', async () => {
+    const repo = new FakeRepo(files());
+    const scanned = repo.main;
+    const published = {
+      ...major(1),
+      findings: [{ ...trivyCritical({ file: KYVERNO, line: 9 }), severity: 'HIGH' as const }],
+    };
+    const moves = [...four(), published];
+    await harness(repo, () => day(scanned, moves)).pass();
+    const apart = branchOf(published);
+    expect(apart).toMatch(/-major-[0-9a-f]{8}$/);
+    expect(
+      openPins(repo)
+        .map((p) => p.head)
+        .sort(),
+    ).toEqual([BRANCH, apart].sort());
+    expect(await gate(repo, apart, moves)).toMatchObject({ rule: 'major' });
   });
 
   it('carries a major that clears a Critical with the rest: the gate names it a move, which no level holds apart', async () => {

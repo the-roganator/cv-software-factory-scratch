@@ -753,7 +753,7 @@ export async function judge(each: Run, pr: PullRequest, withoutMartin = false): 
 const RULE =
   "Passes a pull request Martin opened, or whose head he approved; an exact pin of the factory's App's, of images " +
   'build.yml signed on main; a move, exactly the moves the scan of main asked for, made by the gate on main and ' +
-  "compared with the pull request, named `major` when one crosses a major and clears no Critical; and in the app's " +
+  "compared with the pull request, named `major` when one crosses a major and clears no Critical by Trivy's rating; and in the app's " +
   "repository the App's with no risk tags, or at Lights-out those whose tags it allows (spec 4.3, ADR 0014).";
 
 /** The most a check run's summary may hold, GitHub's 65,535 characters, with room to spare. */

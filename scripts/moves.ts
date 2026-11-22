@@ -18,20 +18,19 @@
  * The pin step's derivation (`derive`) is the line's own code (apps/runner/src/pins.ts) on a checkout of main's tip,
  * as scripts/derive.ts runs it for the scan too: with the pnpm the gate's mise.lock holds and the mise every workflow
  * installs, in an environment of its own (`PATH` and a home), no script and no pnpmfile: main's files alone, never the
- * pull request's. In the factory, whose scan made the moves, it is made as the scan made them: as of the scan's time,
- * and with the digests the scan's step was given (its artifact `pins`, github/made.ts), so a release or a tag pushed
- * since changes nothing the gate makes (`derivationOf`). In the app, whose line's pin step made them, it is made as
- * that step made them: as of its time, and with the digests it was given, which the App's commit of the pins says
- * (`madeOf`, github/made-as.ts). In either repository, an image's target is the digest the scan named for its tag,
- * whatever its registry answers now.
+ * pull request's. It is made as the scan made the moves: as of the scan's time, and with the digests the scan's step
+ * was given (its artifact `pins`, github/made.ts), so a release or a tag pushed since changes nothing the gate makes
+ * (`derivationOf`). The factory's pin watch commits what the scan made; the app's line makes its moves again from the
+ * same time and answers. A tag the scan's step never asked is asked of its registry now, and an image's target is the
+ * digest the scan named for its tag, whatever its registry answers now. Nothing the pull request carries says how it
+ * was made.
  *
  * A reader that fails, or runs past its time, is a refusal that says what it could not read, and never a package.
  */
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { MADE_ARTIFACT, MADE_FILE, openMade } from '../apps/factory/src/github/made.ts';
-import { type MadeAs, madeAsOf } from '../apps/factory/src/github/made-as.ts';
+import { askedIn, MADE_ARTIFACT, MADE_FILE, openMade } from '../apps/factory/src/github/made.ts';
 import { joined, MOVES_FILE, MOVES_FILE_SCHEMA, type ScanRun } from '../apps/factory/src/github/scanning.ts';
 import { APP_REPOSITORY } from '../apps/factory/src/repositories.ts';
 import type { MovesFile } from '../apps/factory/src/vulnerabilities/moves.ts';
@@ -50,7 +49,6 @@ import type { Move as PinStepMove } from '../apps/runner/src/pins.ts';
 import { askedKey, type Derivation, deriveOn, gitBytesIn, gitIn } from './derive.ts';
 import { type Changed, exactText, hunkLines, proveMove, rawEntries, type ScanMove } from './move.ts';
 import { type GitHub, type MoveAnswer, main, type PullRequest, type Run } from './review-gate.ts';
-import { FACTORY_APP } from './review-routing.ts';
 
 /** When every move's reads have ended, from the job's start: inside the job's time, with room for its answers. */
 export const MOVES_MS = 12 * 60_000;
@@ -76,78 +74,34 @@ export interface ScanDay {
 }
 
 /**
- * The digest each tag of an image was found at by a run's step, from what it made (github/made.ts), by `askedKey`:
- * the first group's answer where two asked the same tag. None in the app, whose scan makes no move, or where the run
- * kept nothing (its step failed, or ran before it kept its answers): each tag is asked again.
+ * The digest each tag of an image was found at by a run's step, from what it made (github/made.ts's `askedIn`), by
+ * `askedKey`. None where the run kept nothing (its step failed, or ran before it kept its answers): each tag is asked
+ * again.
  */
 export async function askedOf(api: StateApi, repo: string, run: string, key: Buffer): Promise<Map<string, string>> {
-  const asked = new Map<string, string>();
-  const made = repo === APP_REPOSITORY ? undefined : await keptBy(api, repo, run, MADE_ARTIFACT);
-  if (!made) return asked;
+  const made = await keptBy(api, repo, run, MADE_ARTIFACT);
+  if (!made) return new Map();
   const bytes = zipEntry(made.archive, MADE_FILE, MAX_SEALED_BYTES);
   if (!bytes) throw new Error(`run ${run}'s ${MADE_ARTIFACT} holds no ${MADE_FILE}`);
-  for (const group of openMade(bytes, key, repo, run).groups)
-    for (const each of group.asked ?? [])
-      if (!asked.has(askedKey(each.image, each.tag))) asked.set(askedKey(each.image, each.tag), each.digest);
-  return asked;
+  return new Map(askedIn(openMade(bytes, key, repo, run)).map((each) => [askedKey(each.image, each.tag), each.digest]));
 }
 
 /**
- * What the gate's derivation of these moves is made with. The factory's moves are its scan's, made again as the scan
- * made them: as of its time, with the digests its step was given. The app's are its line's, made again as the line's
- * pin step made them (`made`, from the App's commit of its pins: `madeOf`): as of its time, with the digests it was
- * given; where no commit says so, as of now. In either, an image's target is the digest the scan named for its tag,
- * whatever the registry answers now.
+ * What the gate's derivation of these moves is made with, in either repository: as of the scan's time, with the digests
+ * its step was given, and each image's target the digest the scan named for its tag, whatever the registry answers now.
  */
 export function derivationOf(
   repo: string,
   day: ScanDay,
   moves: readonly PinStepMove[],
-  made?: MadeAs,
-  now = Date.now(),
 ): Pick<Derivation, 'workspace' | 'asOf' | 'asked'> {
-  // The factory's main is a workspace whose projects name each other; the app's checkout is held to the registry.
-  const factory = repo !== APP_REPOSITORY;
-  const line = factory ? undefined : made;
-  const asked = new Map(
-    factory ? day.asked : (line?.asked ?? []).map((each) => [askedKey(each.image, each.tag), each.digest] as const),
-  );
+  const asked = new Map(day.asked);
   for (const move of moves) {
     const [tag, digest] = move.ecosystem === 'docker' ? move.to.split('@') : [];
     if (tag && digest) asked.set(askedKey(move.name, tag), digest);
   }
-  // A time ahead of the gate's own is none the pin step made a move at: the gate's, then.
-  const asOf = factory ? day.judged : line && Math.min(Date.parse(line.at), now);
-  return { workspace: factory, asked, ...(asOf !== undefined && { asOf }) };
-}
-
-/** A pull request's commits, as GitHub lists them, read for whose each is and what it says. */
-interface Commit {
-  author?: { id?: number } | null;
-  committer?: { login?: string } | null;
-  commit?: { message?: string; verification?: { verified?: boolean } };
-}
-
-/**
- * How the line's pin step made the moves a pull request in the app carries: what the newest of its commits that is the
- * App's own says (`made-as.ts`), made and signed by GitHub as every commit of the App's is (`createCommitOnBranch`: its
- * author the App, its committer `web-flow`, its signature verified), which nobody else can make. Undefined where none
- * says, and in the factory, whose moves are its scan's.
- */
-export async function madeOf(each: Run, pr: PullRequest, github: GitHub): Promise<MadeAs | undefined> {
-  if (each.repo !== APP_REPOSITORY) return undefined;
-  const commits = await github.api<Commit[]>(
-    'GET',
-    `/repos/${each.repo}/pulls/${pr.number}/commits?per_page=100`,
-    each.read,
-  );
-  for (const commit of [...(Array.isArray(commits) ? commits : [])].reverse()) {
-    if (commit.author?.id !== FACTORY_APP || commit.committer?.login !== 'web-flow') continue;
-    if (commit.commit?.verification?.verified !== true) continue;
-    const made = madeAsOf(commit.commit.message ?? '');
-    if (made) return made;
-  }
-  return undefined;
+  // The factory's main is a workspace whose projects name each other; the app's checkout is held to the registry.
+  return { workspace: repo !== APP_REPOSITORY, asked, asOf: day.judged };
 }
 
 /** The scan's moves of a repository, from the scan of `main`: see the module's comment. */
@@ -183,8 +137,7 @@ export type Merge = { base: string; mergeBase: string; head: string } | { queue:
 
 /**
  * The two sides of what the merge makes, fetched as data from `source`, GitHub's copy of the repository: the commit it
- * merges onto, and the tree it makes there; and the pin step's derivation there, made as of the scan's `day`, or in the
- * app as the line's pin step `made` it.
+ * merges onto, and the tree it makes there; and the pin step's derivation there, made as of the scan's `day`.
  */
 export async function sides(
   repo: string,
@@ -192,7 +145,6 @@ export async function sides(
   work: string,
   day: ScanDay,
   source = `https://github.com/${repo}.git`,
-  made?: MadeAs,
 ) {
   const git = gitIn(join(work, 'repo'));
   const bytes = gitBytesIn(join(work, 'repo'));
@@ -247,7 +199,7 @@ export async function sides(
     await git('worktree', 'add', '--quiet', '--detach', dir, base);
     const own = join(work, 'derive');
     mkdirSync(own);
-    return deriveOn(dir, moves, { work: own, ...derivationOf(repo, day, moves, made), token: process.env.GH_TOKEN });
+    return deriveOn(dir, moves, { work: own, ...derivationOf(repo, day, moves), token: process.env.GH_TOKEN });
   };
   return { changed, base: show(base), derive };
 }
@@ -291,8 +243,7 @@ export async function readMove(each: Run, pr: PullRequest, github: GitHub): Prom
           read.set(each.repo, moves);
         }
         const day = await moves;
-        const made = await madeOf(each, pr, github);
-        const two = await sides(each.repo, await mergeOf(each, pr, github), work, day, undefined, made);
+        const two = await sides(each.repo, await mergeOf(each, pr, github), work, day);
         const scan = day.moves;
         // Every file an edit pins, at main's tip: a pin the change leaves unmoved is read from there.
         const files = [...new Set(scan.flatMap((move) => move.pins.map((pin) => pin.file)))];

@@ -5,16 +5,14 @@ import { dirname, join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 import { withChecksRun } from '../apps/factory/src/github/actions.ts';
 import { type Made, sealMade } from '../apps/factory/src/github/made.ts';
-import { type MadeAs, madeAsOf, withMadeAs } from '../apps/factory/src/github/made-as.ts';
 import { APP_REPOSITORY, FACTORY_REPOSITORY } from '../apps/factory/src/repositories.ts';
 import { newKey, readKey, type StateApi } from '../apps/factory/src/vulnerabilities/state.ts';
 import { zipOf } from '../apps/factory/test/vulnerabilities/zip-of.ts';
 import type { Get, Move as PinStepMove } from '../apps/runner/src/pins.ts';
-import { askedKey, deriveOn } from './derive.ts';
+import { askedKey, type Derivation, deriveOn } from './derive.ts';
 import { type MoveIO, proveMove, type ScanMove } from './move.ts';
-import { askedOf, derivationOf, madeOf, mergeOf, type ScanDay, sides } from './moves.ts';
+import { askedOf, derivationOf, mergeOf, type ScanDay, sides } from './moves.ts';
 import type { GitHub, PullRequest, Run } from './review-gate.ts';
-import { FACTORY_APP } from './review-routing.ts';
 
 // The gate's two sides of a merge, read from a repository of git's own as from GitHub's copy, and the move proved on
 // them: what a pull request's head makes on main's tip, and what the merge queue's commit makes on the one it was made
@@ -273,154 +271,153 @@ describe('the answers the gate makes the scan’s moves with (C-1)', () => {
     expect(asked[0]).toBe(`/repos/${FACTORY_REPOSITORY}/actions/runs/42/artifacts?name=pins&per_page=10`);
   });
 
-  it('has none where the run kept no pins, and never asks in the app, whose line makes its moves', async () => {
+  it('reads the app’s from its run’s pins too, and has none where the run kept no pins', async () => {
     expect((await askedOf(artifacts('42', undefined).api, FACTORY_REPOSITORY, '42', KEY)).size).toBe(0);
-    const app = artifacts('42', undefined);
-    expect((await askedOf(app.api, APP_REPOSITORY, '42', KEY)).size).toBe(0);
-    expect(app.asked).toEqual([]);
+    const made: Made = {
+      version: 1,
+      repository: APP_REPOSITORY,
+      run: '42',
+      commit: 'a'.repeat(40),
+      groups: [group([{ image: 'gcr.io/distroless/nodejs24-debian13', tag: 'nonroot', digest: digest('4') }])],
+    };
+    const { api, asked } = artifacts('42', made);
+    expect([...(await askedOf(api, APP_REPOSITORY, '42', KEY))]).toEqual([
+      [askedKey('gcr.io/distroless/nodejs24-debian13', 'nonroot'), digest('4')],
+    ]);
+    expect(asked[0]).toBe(`/repos/${APP_REPOSITORY}/actions/runs/42/artifacts?name=pins&per_page=10`);
   });
 
-  it('makes the factory’s moves as of the scan with its answers, the app’s as of now where no commit says how, each image at the scan’s target', () => {
+  it('makes either repository’s moves as of the scan with its answers, each image at the scan’s target', () => {
     const day: ScanDay = { moves: [], judged: JUDGED, asked: new Map([[askedKey('node', '24-slim'), digest('1')]]) };
     const moves = [
       { ecosystem: 'docker' as const, name: 'gcr.io/distroless/static', from: 'nonroot', to: `nonroot@${digest('5')}` },
       { ecosystem: 'npm' as const, name: 'example', from: '1.0.0', to: '1.0.1' },
     ];
-    expect(derivationOf(FACTORY_REPOSITORY, day, moves)).toEqual({
-      workspace: true,
-      asOf: JUDGED,
-      asked: new Map([
-        [askedKey('node', '24-slim'), digest('1')],
-        [askedKey('gcr.io/distroless/static', 'nonroot'), digest('5')],
-      ]),
-    });
-    expect(derivationOf(APP_REPOSITORY, day, moves)).toEqual({
-      workspace: false,
-      asked: new Map([[askedKey('gcr.io/distroless/static', 'nonroot'), digest('5')]]),
-    });
+    const asked = new Map([
+      [askedKey('node', '24-slim'), digest('1')],
+      [askedKey('gcr.io/distroless/static', 'nonroot'), digest('5')],
+    ]);
+    expect(derivationOf(FACTORY_REPOSITORY, day, moves)).toEqual({ workspace: true, asOf: JUDGED, asked });
+    // The app's checkout is held to the registry; its moves are made from what its own scan sealed, as the factory's.
+    expect(derivationOf(APP_REPOSITORY, day, moves)).toEqual({ workspace: false, asOf: JUDGED, asked });
   });
 });
 
-describe('the app’s moves, made again as its line’s pin step made them (C-1)', () => {
-  const AT = '2026-11-20T05:00:00.000Z';
+describe('the app’s moves, made from what its scan sealed (S2-M1)', () => {
   const NONROOT = 'gcr.io/distroless/nodejs24-debian13';
-  const made = {
-    at: AT,
-    asked: [
-      { image: 'node', tag: '24.22.2-alpine3.24', digest: digest('3') },
-      { image: NONROOT, tag: 'nonroot', digest: digest('4') },
-    ],
+  const BUILD = 'node:24.22.2-alpine3.24';
+  /** What the app's scan sealed: the digest its pins job was given for each tag the move asks. */
+  const sealed: ScanDay = {
+    moves: [],
+    judged: JUDGED,
+    asked: new Map([
+      [askedKey('node', '24.22.2-alpine3.24'), digest('3')],
+      [askedKey(NONROOT, 'nonroot'), digest('4')],
+    ]),
   };
-  const day: ScanDay = { moves: [], judged: JUDGED, asked: new Map([[askedKey('node', '24-slim'), digest('1')]]) };
-
-  it('as of the pin step’s time, with its answers and each image at the scan’s target, never past the gate’s own time', () => {
-    const moves = [{ ecosystem: 'docker' as const, name: NONROOT, from: 'nonroot', to: `nonroot@${digest('5')}` }];
-    expect(derivationOf(APP_REPOSITORY, day, moves, made)).toEqual({
-      workspace: false,
-      asOf: Date.parse(AT),
-      asked: new Map([
-        [askedKey('node', '24.22.2-alpine3.24'), digest('3')],
-        [askedKey(NONROOT, 'nonroot'), digest('5')],
-      ]),
-    });
-    const now = Date.parse('2026-11-19T00:00:00Z');
-    expect(derivationOf(APP_REPOSITORY, day, [], made, now).asOf).toBe(now);
-    // The factory's are its scan's, whatever a commit says.
-    expect(derivationOf(FACTORY_REPOSITORY, day, [], made)).toMatchObject({ asOf: JUDGED });
-  });
-
-  const pr: PullRequest = {
-    number: 9,
-    state: 'open',
-    user: { id: FACTORY_APP },
-    head: { sha: 'a'.repeat(40), ref: 'factory/9-move-node', repo: { full_name: APP_REPOSITORY } },
-    base: { ref: 'main', repo: { full_name: APP_REPOSITORY } },
-  };
-  const run: Run = { repo: APP_REPOSITORY, read: '', token: '', autonomy: '', print: true };
-  const said = (message: string, by = FACTORY_APP, committer = 'web-flow', verified = true) => ({
-    author: { id: by },
-    committer: { login: committer },
-    commit: { message, verification: { verified } },
-  });
-  const listing = (commits: unknown[], asked: string[] = []) =>
-    ({
-      api: async (_method: string, path: string) => {
-        asked.push(path);
-        return commits;
-      },
-    }) as unknown as GitHub;
-
-  it('reads how from the newest of the pull request’s commits that is the App’s own, made and signed by GitHub', async () => {
-    const line = withMadeAs('fix(deps): move node to 24.22.2\n\nThe pin step moved Node.', made);
-    const other = withMadeAs('fix(deps): move node', { at: '2026-11-01T00:00:00.000Z', asked: [] });
-    const asked: string[] = [];
-    expect(await madeOf(run, pr, listing([said(other), said(line)], asked))).toEqual(made);
-    expect(asked).toEqual([`/repos/${APP_REPOSITORY}/pulls/9/commits?per_page=100`]);
-    // Newer commits that are someone else's, or not GitHub's own, or not signed, say nothing; one with no trailers
-    // leaves the newest that has them.
-    const forged = withMadeAs('fix: x', { at: AT, asked: [{ image: NONROOT, tag: 'nonroot', digest: digest('9') }] });
-    const later = [said(forged, 1), said(forged, FACTORY_APP, 'someone'), said(forged, FACTORY_APP, 'web-flow', false)];
-    expect(await madeOf(run, pr, listing([said(line), ...later, said('fix: a round after review')]))).toEqual(made);
-    expect(await madeOf(run, pr, listing(later))).toBeUndefined();
-    // In the factory, whose moves are its scan's, nothing is asked.
-    const none: string[] = [];
-    expect(await madeOf({ ...run, repo: FACTORY_REPOSITORY }, pr, listing([said(line)], none))).toBeUndefined();
-    expect(none).toEqual([]);
-  });
-
-  it('writes the runtime image at the digest the pin step was given, though its tag was pushed again since', async () => {
-    const MISE_TOML = '[settings]\nminimum_release_age = "3d"\n\n[tools]\nnode = "24.22.1"\n';
-    const MISE_LOCK = (version: string, sum: string) =>
-      `[[tools.node]]\nversion = "${version}"\nbackend = "core:node"\nspecifiers = ["${version}"]\n\n[tools.node."platforms.linux-x64"]\nchecksum = "sha256:${sum}"\nurl = "https://nodejs.org/dist/v${version}/node-v${version}-linux-x64.tar.gz"\n`;
-    const DOCKERFILE = `FROM node:24.22.1-alpine3.24@${digest('1')} AS build\nFROM ${NONROOT}:nonroot@${digest('2')}\n`;
-    /** nodejs.org, Docker Hub and gcr.io, with distroless's `nonroot` at `nonroot` now. */
-    const registries =
-      (nonroot: string): Get =>
-      async (url) => {
-        if (url === 'https://nodejs.org/dist/index.json')
-          return Response.json([{ version: 'v24.22.2', date: '2026-11-01' }]);
-        if (url === 'https://nodejs.org/dist/v24.22.2/SHASUMS256.txt')
-          return new Response(`${'a'.repeat(64)}  node-v24.22.2-linux-x64.tar.gz\n`);
-        if (url.startsWith('https://auth.docker.io/token')) return Response.json({ token: 'anonymous' });
-        if (url === 'https://registry-1.docker.io/v2/library/node/manifests/24.22.2-alpine3.24')
-          return new Response(null, { headers: { 'docker-content-digest': digest('3') } });
-        if (url === `https://gcr.io/v2/distroless/nodejs24-debian13/manifests/nonroot`)
-          return new Response(null, { headers: { 'docker-content-digest': nonroot } });
-        return new Response(null, { status: 404 });
-      };
-    const move = { ecosystem: 'node' as const, name: 'node', from: '24.22.1', to: '24.22.2' };
-    const checkout = () => {
-      const dir = mkdtempSync(join(root, 'app-'));
-      writeFileSync(join(dir, 'mise.toml'), MISE_TOML);
-      writeFileSync(join(dir, 'mise.lock'), MISE_LOCK('24.22.1', 'f'.repeat(64)));
-      writeFileSync(join(dir, 'Dockerfile'), DOCKERFILE);
-      const git = (...args: string[]) =>
-        execFileSync(
-          'git',
-          ['-c', 'user.name=t', '-c', 'user.email=t@t.invalid', '-c', 'commit.gpgsign=false', ...args],
-          {
-            cwd: dir,
-          },
-        );
-      git('init', '--quiet');
-      git('add', '.');
-      git('commit', '--quiet', '--message', 'main');
-      return dir;
+  const MISE_TOML = '[settings]\nminimum_release_age = "3d"\n\n[tools]\nnode = "24.22.1"\n';
+  const MISE_LOCK = `[[tools.node]]\nversion = "24.22.1"\nbackend = "core:node"\nspecifiers = ["24.22.1"]\n\n[tools.node."platforms.linux-x64"]\nchecksum = "sha256:${'f'.repeat(64)}"\nurl = "https://nodejs.org/dist/v24.22.1/node-v24.22.1-linux-x64.tar.gz"\n`;
+  const DOCKERFILE = `FROM node:24.22.1-alpine3.24@${digest('1')} AS build\nFROM ${NONROOT}:nonroot@${digest('2')}\n`;
+  const MAIN: Record<string, string> = { 'mise.toml': MISE_TOML, 'mise.lock': MISE_LOCK, Dockerfile: DOCKERFILE };
+  /** nodejs.org, Docker Hub and gcr.io, with the build stage's tag and distroless's `nonroot` at these digests now. */
+  const registries =
+    (build: string, nonroot: string): Get =>
+    async (url) => {
+      if (url === 'https://nodejs.org/dist/index.json')
+        return Response.json([{ version: 'v24.22.2', date: '2026-11-01' }]);
+      if (url === 'https://nodejs.org/dist/v24.22.2/SHASUMS256.txt')
+        return new Response(`${'a'.repeat(64)}  node-v24.22.2-linux-x64.tar.gz\n`);
+      if (url.startsWith('https://auth.docker.io/token')) return Response.json({ token: 'anonymous' });
+      if (url === 'https://registry-1.docker.io/v2/library/node/manifests/24.22.2-alpine3.24')
+        return new Response(null, { headers: { 'docker-content-digest': build } });
+      if (url === 'https://gcr.io/v2/distroless/nodejs24-debian13/manifests/nonroot')
+        return new Response(null, { headers: { 'docker-content-digest': nonroot } });
+      return new Response(null, { status: 404 });
     };
-    const derive = (given: MadeAs | undefined) =>
-      deriveOn(checkout(), [move], {
-        work: mkdtempSync(join(root, 'derive-')),
-        pnpm: '/bin/pnpm',
-        // The gate, after distroless pushed `nonroot` again.
-        get: registries(digest('6')),
-        ...derivationOf(APP_REPOSITORY, day, [move], given),
-      });
-    // The line's pin step, given `nonroot` at 4: what the App's commit says.
-    const line = madeAsOf(withMadeAs('fix(deps): move node to 24.22.2', made));
-    expect((await derive(line)).get('Dockerfile')).toBe(
-      `FROM node:24.22.2-alpine3.24@${digest('3')} AS build\nFROM ${NONROOT}:nonroot@${digest('4')}\n`,
+  const checkout = () => {
+    const dir = mkdtempSync(join(root, 'app-'));
+    for (const [path, text] of Object.entries(MAIN)) writeFileSync(join(dir, path), text);
+    const git = (...args: string[]) =>
+      execFileSync(
+        'git',
+        ['-c', 'user.name=t', '-c', 'user.email=t@t.invalid', '-c', 'commit.gpgsign=false', ...args],
+        {
+          cwd: dir,
+        },
+      );
+    git('init', '--quiet');
+    git('add', '.');
+    git('commit', '--quiet', '--message', 'main');
+    return dir;
+  };
+  /** The pin step on main, made as `derivation` says, with the registries as `get` answers. */
+  const step = (moves: readonly PinStepMove[], get: Get, derivation: Pick<Derivation, 'asOf' | 'asked'>) =>
+    deriveOn(checkout(), moves, {
+      work: mkdtempSync(join(root, 'derive-')),
+      pnpm: '/bin/pnpm',
+      workspace: false,
+      get,
+      ...derivation,
+    });
+  /** The app's scan's move of Node, as the GitHub worker reads it. */
+  const node: ScanMove = {
+    repository: APP_REPOSITORY,
+    name: 'node',
+    pins: [{ file: 'mise.toml', line: 5 }],
+    from: '24.22.1',
+    to: 'version 24.22.2',
+    major: false,
+    clears: counts,
+    leaves: counts,
+    newToday: 0,
+    lane: 'line',
+    lockfile: false,
+    index: 1,
+    findings: [],
+  };
+  /** The gate's proof of a pull request whose files are `head`, after both registries pushed their tags again. */
+  const gate = (head: Map<string, string>) =>
+    proveMove(
+      [...head].map(([path, text]) => ({
+        path,
+        status: 'M',
+        modes: ['100644', '100644'] as [string, string],
+        base: MAIN[path],
+        head: text,
+      })),
+      [node],
+      {
+        base: (path) => MAIN[path],
+        derive: (moves) =>
+          step(moves, registries(digest('7'), digest('6')), derivationOf(APP_REPOSITORY, sealed, moves)),
+      },
+      true,
     );
-    // Made again as of now, the gate writes another digest than the pull request's, and holds a correct move.
-    expect((await derive(undefined)).get('Dockerfile')).toContain(`nonroot@${digest('6')}`);
+  // The line's pin step, given what the scan sealed (`Step['made']`), while the registries still answered so.
+  const made = () =>
+    step([{ ecosystem: 'node', name: 'node', from: '24.22.1', to: '24.22.2' }], registries(digest('3'), digest('4')), {
+      asOf: JUDGED,
+      asked: new Map(sealed.asked),
+    });
+
+  it('passes the line’s move as the scan sealed it, though both tags were pushed again since', async () => {
+    const line = await made();
+    expect(line.get('Dockerfile')).toBe(
+      `FROM ${BUILD}@${digest('3')} AS build\nFROM ${NONROOT}:nonroot@${digest('4')}\n`,
+    );
+    expect(await gate(line)).toMatchObject({ rule: 'move' });
+  });
+
+  it('holds a pull request that pins another digest of a tag the move brings, whatever its commits say of it', async () => {
+    // The App's key writes the build stage at an older build of the same tag, and its commit says it asked that:
+    // nothing of a pull request's commits reaches the gate's derivation, which takes the scan's day alone.
+    const forged = new Map(await made());
+    forged.set(
+      'Dockerfile',
+      (forged.get('Dockerfile') as string).replace(`${BUILD}@${digest('3')}`, `${BUILD}@${digest('9')}`),
+    );
+    expect(await gate(forged)).toEqual({
+      reason: `Dockerfile:1 is \`FROM ${BUILD}@${digest('9')} AS build\` where the scan's moves make \`FROM ${BUILD}@${digest('3')} AS build\``,
+    });
   });
 });

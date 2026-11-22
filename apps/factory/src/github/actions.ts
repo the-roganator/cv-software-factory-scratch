@@ -389,8 +389,7 @@ export function checksRunOf(message: string): number {
 
 /**
  * A commit's message for a run of its checks: its `Checks-run:` line replaced where it has one, or a paragraph of its
- * own after the first line where it has none, so every other line, a trailer of the message's last paragraph among
- * them (`made-as.ts`), is as it was.
+ * own after the first line where it has none, so every other line is as it was.
  */
 export function withChecksRun(message: string, run: number): string {
   const line = `Checks-run: ${run}`;

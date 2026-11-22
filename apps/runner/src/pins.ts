@@ -21,8 +21,9 @@
  *     release than `mise.toml` pins, Node moves to it as above, and the image to the move's digest.
  *   - a tool mise pins (`tool`): its version in `mise.lock`, and then `mise lock <tool>`, which writes each
  *     platform's download and checksum for that version, within the range `mise.toml` gives it. Not before the
- *     release is as old as `mise.toml`'s `minimum_release_age`. Only where the step is given mise (`PinTools.mise`):
- *     the factory's moves, made by its scan and its review gate, never the runner.
+ *     release, and the newest upload of its downloads, are as old as `mise.toml`'s `minimum_release_age`. Only where
+ *     the step is given mise (`PinTools.mise`): the factory's moves, made by its scan and its review gate, never the
+ *     runner.
  * - **After a coder's step** that changed a `package.json` (`writeLockfile`), it applies the pins and the coder's
  *   patch to a fresh checkout and writes the lockfile with `pnpm install --lockfile-only`, printing only the
  *   lockfile's change.
@@ -53,6 +54,7 @@ import {
   nodeInImage,
   PinsRefused,
   releaseAge,
+  releasedAt,
   runsNode,
 } from '../../factory/src/vulnerabilities/registry.ts';
 import { git, gitInput } from './git.ts';
@@ -486,9 +488,9 @@ export const askedList = (asked: Map<string, string>): Asked[] =>
     });
 
 /**
- * How the line's pin step made a move: as of when (`at`, an ISO time), and with the digest it was given for each tag it
- * asked. The line carries it in the commit of the move's pins (apps/factory/src/github/made.ts), and the review gate
- * makes the move again so (scripts/moves.ts), as it makes the factory's as the scan made them.
+ * How the scan made a move, for the line's pin step to make it so: as of when (`at`, the scan's `judged`, an ISO time),
+ * and with the digest the scan's step was given for each tag it asked (its artifact `pins`,
+ * apps/factory/src/github/made.ts). The review gate makes the move again from the same (scripts/moves.ts).
  */
 export interface MadeAs {
   at: string;
@@ -560,10 +562,35 @@ async function moveFroms(
 /** The exact Node release `mise.toml` pins, or nothing where it pins none, or a range. */
 const pinnedNode = (miseToml: string) => /^node\s*=\s*"(\d+\.\d+\.\d+)"\s*$/m.exec(miseToml)?.[1];
 
+/** The release `mise.lock`'s entry for Node is at, or nothing where it has none. */
+const lockedNode = (lock: string) => /^\[\[tools\.node\]\]\nversion = "([^"]+)"$/m.exec(lock)?.[1];
+
+/**
+ * What of Node's move to `to` a checkout does not have, in words, or nothing where it has it all: `mise.lock`'s entry
+ * at another release, or a `FROM` of a Node image, but `except`'s, that runs another, by the release its tag names or,
+ * where its tag names none (distroless's `nonroot`), as the image at its digest does (`nodeInImage`).
+ */
+async function nodeBehind(dir: string, to: string, get: Get, except?: string): Promise<string | undefined> {
+  const locked = lockedNode(await readFile(join(dir, 'mise.lock'), 'utf8'));
+  if (locked !== to) return `mise.lock pins node at ${locked ?? 'no release'}, not ${to}.`;
+  for (const path of await dockerfilesOf(dir)) {
+    for (const line of (await readFile(join(dir, path), 'utf8')).split('\n')) {
+      const [, , image = '', tag = '', pinned = ''] = FROM.exec(line) ?? [];
+      if (!runsNode(image) || image === except) continue;
+      const runs = /\d+\.\d+\.\d+/.exec(tag)?.[0] ?? (await nodeInImage(image, pinned, get));
+      if (runs !== to) return `${path}'s ${image}:${tag} runs Node ${runs}, not ${to}.`;
+    }
+  }
+  return undefined;
+}
+
 /**
  * Moves Node: `mise.toml`, `mise.lock`, and each `FROM` of a Node image, the build's to the version's own tag and the
  * runtime's, whose tag names no version, to the digest its tag has now; but `except`'s, which a base image's move pins
- * itself (`moveImage`). A checkout whose `mise.toml` pins the move's target already has the move, and writes nothing.
+ * itself (`moveImage`). A checkout whose `mise.toml` pins the target already has the move, and writes nothing, when
+ * every other pin is at the target too (`nodeBehind`). One that has part of it, a Dockerfile edited by hand or a revert
+ * of part of a move, gets the rest, as the move from `from` writes it; and where the rest still leaves a pin behind (a
+ * tag that names a third release), the move is refused, never taken for made.
  */
 export async function moveNode(
   dir: string,
@@ -576,9 +603,10 @@ export async function moveNode(
   if (!VERSION.test(move.from) || !VERSION.test(move.to))
     throw new PinsRefused('Node moves from a version to a version.');
   const miseToml = await readFile(join(dir, 'mise.toml'), 'utf8');
-  if (pinnedNode(miseToml) === move.to) return;
+  const pinned = pinnedNode(miseToml) === move.to;
+  if (pinned && !(await nodeBehind(dir, move.to, get, except))) return;
   const pin = new RegExp(`^node\\s*=\\s*"${escaped(move.from)}"\\s*$`, 'm');
-  if (!pin.test(miseToml)) throw new PinsRefused(`mise.toml does not pin node at ${move.from}.`);
+  if (!pinned && !pin.test(miseToml)) throw new PinsRefused(`mise.toml does not pin node at ${move.from}.`);
   const releases = (await json(get, 'https://nodejs.org/dist/index.json')) as { version: string; date: string }[];
   const release = releases.find((r) => r.version === `v${move.to}`);
   if (!release) throw new PinsRefused(`Node ${move.to} is not a release of nodejs.org's.`);
@@ -586,13 +614,22 @@ export async function moveNode(
   if (now - Date.parse(release.date) < age) {
     throw new PinsRefused(`Node ${move.to} came out on ${release.date}, within mise.toml's minimum_release_age.`);
   }
-  const sums = shasums(await text(get, `https://nodejs.org/dist/v${move.to}/SHASUMS256.txt`));
-  await writeFile(
-    join(dir, 'mise.toml'),
-    miseToml.replace(pin, (line) => line.replace(move.from, move.to)),
-  );
   const lock = await readFile(join(dir, 'mise.lock'), 'utf8');
-  await writeFile(join(dir, 'mise.lock'), nodeLockMoved(lock, move.from, move.to, sums));
+  const lockMoved =
+    lockedNode(lock) === move.to
+      ? undefined
+      : nodeLockMoved(
+          lock,
+          move.from,
+          move.to,
+          shasums(await text(get, `https://nodejs.org/dist/v${move.to}/SHASUMS256.txt`)),
+        );
+  if (!pinned)
+    await writeFile(
+      join(dir, 'mise.toml'),
+      miseToml.replace(pin, (line) => line.replace(move.from, move.to)),
+    );
+  if (lockMoved !== undefined) await writeFile(join(dir, 'mise.lock'), lockMoved);
   await moveFroms(
     dir,
     (image, tag) => {
@@ -601,6 +638,8 @@ export async function moveNode(
     },
     digest,
   );
+  const left = pinned ? await nodeBehind(dir, move.to, get, except) : undefined;
+  if (left) throw new PinsRefused(`Node's move to ${move.to} leaves a pin behind: ${left}`);
 }
 
 /**
@@ -691,9 +730,9 @@ export type Mise = (dir: string, args: string[]) => Promise<void>;
  * Moves a tool mise pins: its entry's version in `mise.lock`, then `mise lock <tool>`, which writes that version's
  * download and checksum for each platform the lockfile keeps. Within the range `mise.toml` gives the tool, which is
  * left as it is: a version outside it is refused, as `mise upgrade` would not take it. Not before the release, on the
- * repository mise.lock's aqua backend names, is as old as `mise.toml`'s `minimum_release_age`, which mise holds only
- * its own resolution to, never a version written into the lockfile. A lockfile that already pins the target has the
- * move, and nothing is written.
+ * repository mise.lock's aqua backend names, and the newest upload of its downloads (`releasedAt`), are as old as
+ * `mise.toml`'s `minimum_release_age`, which mise holds only its own resolution to, never a version written into the
+ * lockfile. A lockfile that already pins the target has the move, and nothing is written.
  */
 export async function moveTool(
   dir: string,
@@ -725,22 +764,20 @@ export async function moveTool(
     if (!repository)
       throw new PinsRefused(`mise.lock names no repository for ${move.name}, so its release has no day.`);
     // As the scan reads a tool's releases (deadlines.ts's `toolReleases`): a published release, not a draft or a
-    // prerelease, by its tag with or without its `v`.
+    // prerelease, by its tag with or without its `v`, as old as its downloads (`releasedAt`).
     const releases = await json(get, `https://api.github.com/repos/${repository}/releases?per_page=100`);
     const release = (Array.isArray(releases) ? (releases as Record<string, unknown>[]) : []).find(
       (each) =>
         typeof each.tag_name === 'string' &&
         each.tag_name.replace(/^v/, '') === move.to &&
-        typeof each.published_at === 'string' &&
         each.draft !== true &&
         each.prerelease !== true,
     );
-    const published = Date.parse(String(release?.published_at));
-    if (!release || Number.isNaN(published))
-      throw new PinsRefused(`${move.name} ${move.to} is not a published release of ${repository}'s.`);
-    if (now - published < age)
+    const published = release && releasedAt(release);
+    if (!published) throw new PinsRefused(`${move.name} ${move.to} is not a published release of ${repository}'s.`);
+    if (now - Date.parse(published) < age)
       throw new PinsRefused(
-        `${move.name} ${move.to} came out on ${String(release.published_at)}, within mise.toml's minimum_release_age.`,
+        `${move.name} ${move.to} came out on ${published}, within mise.toml's minimum_release_age.`,
       );
   }
   await writeFile(path, lock.replace(entry[0], entry[0].replace(`"${move.from}"`, `"${move.to}"`)));

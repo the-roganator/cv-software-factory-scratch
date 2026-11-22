@@ -242,14 +242,15 @@ describe('every workflow', () => {
     }
   });
 
-  it('makes the factory’s moves with the scan’s key in one step, after the scan, in the factory alone, with main’s code', () => {
+  it('makes the moves with the scan’s key in one step, after the scan, in either repository, with main’s code', () => {
     const workflow = read(SCAN);
     const job = workflow.jobs[PINS_JOB] as Job & { needs?: unknown };
     expect(job.needs).toBe(SCAN_JOB);
-    // No pull request's run reaches it, and it runs only in this repository, once the scan kept its moves and state.
+    // No pull request's run reaches it, and it runs once the scan kept its moves and state: in the app too, whose line
+    // and gate make its moves from what it seals.
     expect(job.if).toContain("github.event_name != 'pull_request'");
     expect(job.if).toContain("needs.scan.outputs.kept == 'true'");
-    expect(job.if).toContain('github.repository == vars.FACTORY_REPOSITORY');
+    expect(job.if).not.toContain('github.repository');
     expect(job.permissions).toEqual({ contents: 'read' });
     const steps = job.steps ?? [];
     expect(steps[0]?.name).toBe('Refuse a privileged context');
