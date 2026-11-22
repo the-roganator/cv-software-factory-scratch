@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// The local cluster's one holder: a lock file, ~/.config/software-factory/cluster.lock, naming who holds the cluster
+// The local cluster's one holder: a lock file, ~/.config/software-factory-scratch/cluster.lock, naming who holds the cluster
 // (the key a session goes by), the process that holds it, since when, and on which machine. The try-the-line skill's
 // `try begin --holder <key>` takes it and its `try end` gives it back; `try status` prints it; `make up`, `make down`,
 // `make upgrade-cluster` and `make real-store` refuse while another holds it (`check`, below), unless FORCE=1. It is
@@ -39,7 +39,7 @@ export type LockState =
   | { kind: 'held'; lock: Lock; live: boolean }
   | { kind: 'unreadable'; why: string };
 
-export const defaultLockPath = (): string => join(homedir(), '.config', 'software-factory', 'cluster.lock');
+export const defaultLockPath = (): string => join(homedir(), '.config', 'software-factory-scratch', 'cluster.lock');
 
 /** What the lock file says. `alive` says whether the process still runs; one on another machine is taken as live. */
 export function readLock(path: string, alive: (p: Process) => boolean): LockState {

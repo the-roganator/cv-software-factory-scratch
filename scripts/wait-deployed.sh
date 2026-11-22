@@ -12,7 +12,7 @@
 # 600), and INTERVAL how often to look (default 5).
 set -euo pipefail
 
-read -r -a kubectl <<<"${KUBECTL:-kubectl --context k3d-software-factory}"
+read -r -a kubectl <<<"${KUBECTL:-kubectl --context k3d-software-factory-scratch}"
 deadline=$((SECONDS + ${TIMEOUT:-600}))
 
 while true; do
