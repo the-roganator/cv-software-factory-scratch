@@ -81,7 +81,10 @@ jobs:
     # `kind` failing runs everything.
     if: ${{ !cancelled() && (needs.which.result != 'success' || (needs.which.outputs.platform != 'none' && needs.which.outputs.platform != 'matched')) }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    # GitHub's service ends the job at this limit even when its runner has stopped answering; `Make the cluster`'s own
+    # limit, below, ends a cluster that hangs sooner, as a failure, while the runner still answers. A healthy job takes
+    # 5 to 10 minutes.
+    timeout-minutes: 25
     permissions:
       contents: read
       # TEMPORARY, the scratch copy's alone (staged/factory/16-platform-heartbeat.patch): the heartbeat's commit statuses.
@@ -222,14 +225,19 @@ jobs:
       # not: every Secret they make is optional, so the cluster comes up whole without them, and opens nothing. A key of
       # any kind would have it try: the GitHub worker, given one, acts as the App and polls GitHub each pass, and
       # Alertmanager, given Pushover's, sends each alert with a level that fires while the cluster comes up.
-      # scripts/platform-watch.sh watches it, and stops it at the 20-minute ceiling, or sooner on what waiting will not
-      # mend: an Application Argo CD cannot render, or one Degraded for five minutes.
+      # scripts/platform-watch.sh watches it, and stops it at the 12-minute ceiling, or sooner on what waiting will not
+      # mend: an Application Argo CD cannot render, or one Degraded for five minutes. A healthy cluster comes up in 4 to
+      # 8. The step's own limit, 15 minutes, ends one whose watch is stuck too: a hosted runner can hang with the Argo CD
+      # install's hook pod never pulling its image, its watch stuck short of the ceiling. The runner times the step and
+      # ends it as a failure, so the merge queue's and the GitHub worker's recoveries start then.
       - name: Make the cluster
+        id: make
+        timeout-minutes: 15
         env:
           REVISION: ${{ github.sha }}
         run: |
           unset TYPESAFE_API_KEY ANTHROPIC_API_KEY GITHUB_APP_PRIVATE_KEY PUSHOVER_APP_TOKEN PUSHOVER_USER_KEY
-          setsid make up REVISION="$REVISION" PLATFORM_CHECK=1 K3D_REGISTRIES=deploy/k3d/ci-registries.yaml SYNC_TIMEOUT=20m TIMEOUT=1200 \
+          setsid make up REVISION="$REVISION" PLATFORM_CHECK=1 K3D_REGISTRIES=deploy/k3d/ci-registries.yaml SYNC_TIMEOUT=12m TIMEOUT=720 \
             > >(tee "$RUNNER_TEMP/measure/make.log") 2>&1 &
           make=$!
           # make has a session of its own, so a cancelled step stops it here.
@@ -256,14 +264,17 @@ jobs:
       # CD install's five minutes run out with its hook's pod never started), and a dead runner keeps no log, annotation,
       # step summary or artifact not yet uploaded; GitHub keeps each step's name, state and times, which the runner sends
       # as the step starts. A runner that lives says it in the log, the summary and the `cluster` artifact as well.
-      # A job stopped while the cluster hangs (its time limit, or a cancel) gives `Make the cluster` seconds, too few for
-      # the figures, so the step after it takes them, unless the merge queue let the entry go.
+      # A stop while the cluster hangs (the step's own time limit, the job's, or a cancel) gives `Make the cluster`
+      # seconds, too few for the figures, so the step after it takes them, unless the merge queue let the entry go.
       - name: Why it was stopped
-        if: ${{ cancelled() && env.PLATFORM_FAULT == '' }}
+        if: ${{ (cancelled() || steps.make.outcome == 'failure') && env.PLATFORM_FAULT == '' }}
         timeout-minutes: 2
+        env:
+          # A failure that said no fault is the step's time limit: every other way it fails says one.
+          WHY: ${{ steps.make.outcome == 'failure' && 'timed out' || 'cancelled' }}
         run: |
           [ ! -e "$RUNNER_TEMP/queue-gone" ] || exit 0
-          line=$(scripts/platform-fault.sh cancelled "$RUNNER_TEMP/measure")
+          line=$(scripts/platform-fault.sh "$WHY" "$RUNNER_TEMP/measure")
           echo "$line"
           echo "PLATFORM_FAULT=$line" >> "$GITHUB_ENV"
           printf '## Why the cluster did not come up\n\n%s\n' "$line" >> "$GITHUB_STEP_SUMMARY"
