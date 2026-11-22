@@ -42,7 +42,7 @@ import { promisify } from 'node:util';
 import { git, gitInput, gitWith } from './git.ts';
 import { bounded, type Log, runnerLog } from './log.ts';
 import {
-  askedList,
+  askedKey,
   type MadeAs,
   type Move,
   OWN_PNPM,
@@ -77,7 +77,7 @@ export async function prepare(
     // step's may not have ended yet. Then committed on the agent's checkout, as its base, never part of its patch.
     const own = join(prepareDir(env), 'pins');
     await checkout(env, () => {}, own);
-    const pins = await pinsOf(own, step.move, { ...pinTools(env, pnpmEnv), ...tools }, log);
+    const pins = await pinsOf(own, step.move, { ...pinTools(env, pnpmEnv), ...tools }, log, step.made);
     if (pins === undefined) return;
     if (pins) await commitPatch(dir, pins, { message: pinsMessage(step.move), author: 'pins' });
   }
@@ -94,13 +94,13 @@ export const pinsMessage = (move: Move) => `chore(deps): move ${move.name} from 
  * Martin`, with the file and why), when they are undefined: the step ends there, and no agent runs on it. An empty
  * patch is a move already made.
  *
- * The move is made as of one time, and the patch printed with it and each tag's digest the step was given (`made`):
- * the review gate makes the move again as of that time and with those answers, so a release or a tag pushed since
- * changes nothing it makes (`MadeAs`).
+ * The move is made as the scan made it (`made`, `MadeAs`): as of the scan's time, and with the digest the scan's step
+ * was given for each tag, as the review gate makes it again, so a release or a tag pushed since changes nothing either
+ * makes. A tag the scan never asked is asked of its registry; with no `made`, every tag is, as of now.
  */
-async function pinsOf(dir: string, move: Move, tools: PinTools, log: Log): Promise<string | undefined> {
-  const at = tools.now ?? Date.now();
-  const asked = new Map<string, string>();
+async function pinsOf(dir: string, move: Move, tools: PinTools, log: Log, made?: MadeAs): Promise<string | undefined> {
+  const at = made ? Date.parse(made.at) : (tools.now ?? Date.now());
+  const asked = new Map(made?.asked.map((each) => [askedKey(each.image, each.tag), each.digest]));
   try {
     await writePins(dir, move, {
       ...tools,
@@ -124,8 +124,7 @@ async function pinsOf(dir: string, move: Move, tools: PinTools, log: Log): Promi
     '--no-color',
     'HEAD',
   );
-  const made: MadeAs = { at: new Date(at).toISOString(), asked: askedList(asked) };
-  log('the pins', { move, pins, made });
+  log('the pins', { move, pins });
   return pins;
 }
 

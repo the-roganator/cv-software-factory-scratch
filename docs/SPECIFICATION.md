@@ -120,7 +120,7 @@ A first-class factory capability, though not the centre of the visitor demo.
 ### 4.3 Autonomy
 
 - **Supervised:** a human approves every merge.
-- **Guarded:** only risk-tagged changes need a human; a move of the vulnerability scan's needs one only when it crosses a major and clears no Critical.
+- **Guarded:** only risk-tagged changes need a human; a move of the vulnerability scan's needs one only when it crosses a major and clears no Critical by the scanner's own rating.
 - **Lights-out:** only the automated guardrails apply.
 
 In every mode, no fix widens its ticket, and a change tagged out-of-scope needs a human (guardrail 11).

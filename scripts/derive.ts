@@ -1,8 +1,9 @@
 /**
  * The pin step's derivation of moves (apps/runner/src/pins.ts's `writePins`), on a checkout of a commit, in GitHub's
  * runners: the one way a lockfile's package, a tool mise pins, and in the app an image that runs Node, are made, for
- * the two that make them there. The scan (scripts/pins.ts) makes the factory's on the commit it scanned, and the pin
- * watch commits what it made; the review gate (scripts/moves.ts) makes them again on main's tip and compares.
+ * the two that make them there. The scan (scripts/pins.ts) makes them on the commit it scanned: the factory's pin watch
+ * commits what it made, and the app's line makes its moves again with its time and answers. The review gate
+ * (scripts/moves.ts) makes them again on main's tip and compares.
  *
  * Both run it with this repository's own tools: the pnpm its mise.lock holds, found by mise from this checkout and
  * never from the one derived on, and the mise every workflow installs at one release (scripts/toolchain.test.ts), so

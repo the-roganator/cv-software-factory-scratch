@@ -42,8 +42,8 @@ const npm = (index: number, name: string, from: string, to: string, lane: ReadMo
   findings: [],
 });
 
-describe('the scan’s making of the moves the pin watch commits', () => {
-  it('makes the factory’s worker moves the step makes, by group, in the order of moves.json, and the app’s none', () => {
+describe('the scan’s making of the moves the pin step makes', () => {
+  it('makes the factory’s worker moves and the app’s line moves the step makes, by group, in the order of moves.json', () => {
     const image: ReadMove = {
       ...npm(3, '', '', ''),
       lockfile: false,
@@ -84,6 +84,12 @@ describe('the scan’s making of the moves the pin watch commits', () => {
     ];
     const groups = [...groupsOf(moves, FACTORY_REPOSITORY).values()];
     expect(groups.map((group) => group.map((move) => move.index))).toEqual([[1, 2, 5], [4], [6]]);
+    // The app's are its line's, and only those its pin step makes: a lockfile's, or an image's that brings a pin.
+    const app = moves.map((move) => ({ ...move, repository: APP_REPOSITORY, lane: 'line' as const }));
+    expect([...groupsOf(app, APP_REPOSITORY).values()].map((group) => group.map((move) => move.index))).toEqual([
+      [1, 2, 5],
+      [6],
+    ]);
     expect(groupsOf(moves, APP_REPOSITORY).size).toBe(0);
     // An issue's lane is not the watch's.
     expect(groupsOf([npm(1, 'example-a', '1.0.0', '1.0.1', 'issue')], FACTORY_REPOSITORY).size).toBe(0);
@@ -120,6 +126,17 @@ describe('the scan’s making of the moves the pin watch commits', () => {
         { image: 'node', tag: '24-slim', digest: `sha256:${'9'.repeat(64)}` },
       ],
     });
+  });
+
+  it('makes the app’s on its checkout held to the registry, as its line and the gate do (S2-M1)', async () => {
+    const dir = checkout({ 'pnpm-lock.yaml': LOCK('1.0.0', '2.0.0') });
+    const move = { ...npm(1, 'example-a', '1.0.0', '1.0.1', 'line'), repository: APP_REPOSITORY };
+    let workspace: boolean | undefined;
+    await makeGroup(dir, [move], mkdtempSync(join(tmpdir(), 'scan-pins-work-')), async (_, __, derivation) => {
+      workspace = derivation.workspace;
+      return new Map();
+    });
+    expect(workspace).toBe(false);
   });
 
   it('seals what it made for its repository and run alone', () => {

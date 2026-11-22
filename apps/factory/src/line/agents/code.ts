@@ -56,8 +56,126 @@ export const INLINE = /(?<=^|[^`\\]|\\`)(`+)(?!`)(?:(?!\n[ \t>]*\n)[\s\S])*?(?<!
 
 const blank = (text: string) => text.replace(/[^\n]/g, ' ');
 
-/** HTML's own code in an HTML block, tags included, which GitHub notifies nobody from. */
-const HTML_CODE = /<(code|pre)(?:[\s/][^>]*)?>[\s\S]*?<\/\1\s*>/gi;
+const SPACE = /[\t\n\f\r ]/;
+const NAME_ENDS = /[\t\n\f\r />]/;
+
+/** Where a tag's `>` is, past its name at `from`, as a browser reads its attributes: -1 where the text ends first. */
+function tagEnd(text: string, from: number): number {
+  let i = from;
+  const skip = (stop: RegExp) => {
+    while (i < text.length && !stop.test(text[i] ?? '')) i++;
+  };
+  while (i < text.length) {
+    const c = text[i] ?? '';
+    if (c === '>') return i;
+    if (SPACE.test(c) || c === '/') {
+      i++;
+      continue;
+    }
+    // An attribute's name, whose first character may be `=`, then its value, if an `=` follows.
+    i++;
+    skip(/[\t\n\f\r />=]/);
+    skip(/[^\t\n\f\r ]/);
+    if (text[i] !== '=') continue;
+    i++;
+    skip(/[^\t\n\f\r ]/);
+    const quote = text[i];
+    if (quote === '"' || quote === "'") {
+      i = text.indexOf(quote, i + 1);
+      if (i < 0) return -1;
+      i++;
+    } else skip(/[\t\n\f\r >]/);
+  }
+  return -1;
+}
+
+/** What a browser reads at a `<`: markup to its end, a tag with its name, or a `<` that is only text (`undefined`). */
+function markupAt(text: string, at: number): { end: number; tag?: string; closing?: boolean } | 'unended' | undefined {
+  const next = text[at + 1] ?? '';
+  const upTo = (close: string, from: number) => {
+    const found = text.indexOf(close, from);
+    return found < 0 ? 'unended' : { end: found + close.length };
+  };
+  if (text.startsWith('<!--', at)) {
+    if (text.startsWith('<!-->', at)) return { end: at + 5 };
+    if (text.startsWith('<!--->', at)) return { end: at + 6 };
+    const close = /--!?>/g;
+    close.lastIndex = at + 4;
+    const found = close.exec(text);
+    return found ? { end: found.index + found[0].length } : 'unended';
+  }
+  if (next === '!' || next === '?') return upTo('>', at + 2);
+  const closing = next === '/';
+  const start = closing ? at + 2 : at + 1;
+  if (!/[A-Za-z]/.test(text[start] ?? '')) {
+    if (!closing) return undefined;
+    if (start >= text.length) return undefined;
+    return text[start] === '>' ? { end: start + 1 } : upTo('>', start);
+  }
+  let i = start;
+  while (i < text.length && !NAME_ENDS.test(text[i] ?? '')) i++;
+  const end = tagEnd(text, i);
+  return end < 0 ? 'unended' : { end: end + 1, tag: text.slice(start, i).toLowerCase(), closing };
+}
+
+/** Elements whose text a browser reads as text to their end tag, never as tags. */
+const RAW_TEXT = new Set(['iframe', 'noembed', 'noframes', 'noscript', 'script', 'style', 'textarea', 'title', 'xmp']);
+
+/**
+ * HTML's own code in an HTML block's text blanked, which GitHub notifies nobody from: a `<code>` or `<pre>` tag and
+ * its end tag, as a browser reads tags (not in a comment, an attribute or another element's raw text), with only text
+ * between them. Markup that leaves the rest of the document inside it (a comment, a tag or raw text with no end) blanks
+ * nothing from there on, in this block or any after it (`state.unended`): GitHub reads the blocks as one document.
+ */
+function blankHtmlCode(raw: string, state: { unended: boolean }): string {
+  if (state.unended) return raw;
+  // A quote's markers are not HTML: a `>` of theirs ends no tag.
+  const text = raw
+    .split('\n')
+    .map((line) => line.replace(QUOTED, (markers) => ' '.repeat(markers.length)))
+    .join('\n');
+  let out = '';
+  let copied = 0;
+  let open: { tag: string; from: number } | undefined;
+  for (let at = text.indexOf('<'); at >= 0; ) {
+    const markup = markupAt(text, at);
+    if (markup === 'unended') {
+      state.unended = true;
+      break;
+    }
+    if (!markup) {
+      at = text.indexOf('<', at + 1);
+      continue;
+    }
+    let end = markup.end;
+    if (open && markup.closing && markup.tag === open.tag) {
+      out += raw.slice(copied, open.from) + blank(raw.slice(open.from, end));
+      copied = end;
+      open = undefined;
+    } else {
+      open = undefined;
+      if (markup.tag && !markup.closing) {
+        if (markup.tag === 'code' || markup.tag === 'pre') open = { tag: markup.tag, from: at };
+        if (markup.tag === 'plaintext') {
+          state.unended = true;
+          break;
+        }
+        if (RAW_TEXT.has(markup.tag)) {
+          const close = new RegExp(String.raw`</${markup.tag}[\t\n\f\r />]`, 'gi');
+          close.lastIndex = end;
+          const found = close.exec(text);
+          if (!found) {
+            state.unended = true;
+            break;
+          }
+          end = found.index;
+        }
+      }
+    }
+    at = text.indexOf('<', end);
+  }
+  return out + raw.slice(copied);
+}
 
 /** The HTML blocks that end at a line holding their end (CommonMark's kinds 1 to 5), by what starts them. */
 const ENDS_AT: [RegExp, RegExp][] = [
@@ -136,9 +254,10 @@ export function readCode(markdown: string): { outside: string; html: boolean[] }
   let fence: Fence | undefined;
   let block: HtmlBlock | undefined;
   let paragraph = false;
+  const document = { unended: false };
   const flush = () => {
     if (prose.length) out.push(prose.join('\n').replace(INLINE, blank));
-    if (raw.length) out.push(raw.join('\n').replace(HTML_CODE, blank));
+    if (raw.length) out.push(blankHtmlCode(raw.join('\n'), document));
     prose = [];
     raw = [];
   };

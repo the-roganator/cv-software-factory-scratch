@@ -545,6 +545,19 @@ const counts = (critical: number, high: number, medium = 0, low = 0) => ({
 });
 const NONE = counts(0, 0);
 
+/** A finding Trivy rated Critical, at a pin, as the state gives it: what lets a major merge as a move. */
+export const trivyCritical = (pin: { file: string; line: number }): ReadMove['findings'][number] => ({
+  advisory: 'CVE-2026-0001',
+  severity: 'CRITICAL',
+  type: 'debian',
+  package: 'libexample',
+  installed: '1.0.0',
+  ...pin,
+  fixed: '1.0.1',
+  fix: 'version 1.0.1',
+  firstSeen: '2026-11-10T06:00:00Z',
+});
+
 /** A move as the moves read gives it. */
 export function move(over: Partial<ReadMove> & Pick<ReadMove, 'name' | 'pins' | 'from' | 'to' | 'lane'>): ReadMove {
   return {
@@ -685,6 +698,7 @@ export function factoryMoves(): ReadMove[] {
       to: 'chart example-logs 21.1.1 (a major)',
       major: true,
       clears: counts(1, 21, 30, 4),
+      findings: [trivyCritical({ file: 'deploy/base/telemetry/logs.yaml', line: 4 })],
       lane: 'worker',
     }),
     move({
@@ -733,6 +747,7 @@ export function factoryMoves(): ReadMove[] {
         {
           advisory: 'GHSA-xxxx-xxxx-xxxx',
           severity: 'MEDIUM',
+          type: 'pnpm',
           package: '@example/tokens',
           installed: '3.0.1',
           file: 'pnpm-lock.yaml',

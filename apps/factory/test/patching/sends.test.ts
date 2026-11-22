@@ -19,6 +19,7 @@ const found = (
 ): MoveFinding => ({
   advisory: `CVE-2026-${1000 + n}`,
   severity,
+  type: 'pnpm',
   package: 'left-pad',
   installed: '1.2.3',
   file: 'pnpm-lock.yaml',

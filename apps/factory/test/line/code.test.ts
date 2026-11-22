@@ -65,6 +65,28 @@ describe('Markdown outside code', () => {
     expect(outsideCode(lines('<pre>`a`</pre>', '`b`'))).toBe(lines(spaces('<pre>`a`</pre>'), '   '));
   });
 
+  it('reads HTML’s code only from tags a browser reads as tags, with only text between them', () => {
+    for (const live of [
+      '<div><!-- <code> --> @a <!-- </code> --></div>',
+      '<div><span title="<code>">@a</span><span title="</code>"></span></div>',
+      '<div><!-- <code --> @a </code></div>',
+      '<div><span title=<code>@a</code></div>',
+      '<div><span <code>@a</code></div>',
+      '<div><! <code>@a</code></div>',
+      '<div><textarea><code></textarea>@a<textarea></code></textarea></div>',
+      '<div><code><b>@a</b></code></div>',
+      lines('> <div><span', '> <code>@a</code></div>'),
+      lines('<div title="', '', '<div>" <code>@a</code></div>'),
+    ])
+      expect(outsideCode(live), live).toBe(live);
+    expect(outsideCode('<div><span title="x">a</span> <code>@a</code></div>')).toBe(
+      `<div><span title="x">a</span> ${spaces('<code>@a</code>')}</div>`,
+    );
+    expect(outsideCode('<div><!-- x --><pre class="a">@a</pre></div>')).toBe(
+      `<div><!-- x -->${spaces('<pre class="a">@a</pre>')}</div>`,
+    );
+  });
+
   it('starts no HTML block in a paragraph at a tag no block has, nor in code', () => {
     expect(outsideCode(lines('text', '<span>', '`a`'))).toBe(lines('text', '<span>', '   '));
     expect(outsideCode(lines('<span>', '`a`'))).toBe(lines('<span>', '`a`'));
