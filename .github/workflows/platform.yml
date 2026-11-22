@@ -84,6 +84,8 @@ jobs:
     timeout-minutes: 45
     permissions:
       contents: read
+      # TEMPORARY, the scratch copy's alone (staged/factory/16-platform-heartbeat.patch): the heartbeat's commit statuses.
+      statuses: write
     steps:
       - name: Refuse a privileged context
         run: |
@@ -124,6 +126,62 @@ jobs:
       # does not record, or a .pnpmfile.cjs, would run here, before the cluster, with $GITHUB_PATH in reach. The job needs
       # no install script (lefthook's prepare included), and allows no dependency's build.
       - run: pnpm install --frozen-lockfile --ignore-scripts --ignore-pnpmfile
+      # TEMPORARY, in the scratch copy alone (staged/factory/16-platform-heartbeat.patch, which deleting takes out): what
+      # the runner sees while the cluster comes up, sent off it every 30 seconds as a commit status on the run's head,
+      # context `platform heartbeat <run id>-<attempt>`, so a runner that hangs leaves its last line with GitHub. A line, the
+      # probes first as the 140 characters a status holds may cut it: `#<beat> <m:ss> post <ok|refused, the last beat's> |
+      # ghcr <code> gh <code> dns <ok|no> | pull <the image a pod waits on> <containerd's downloads in flight>
+      # <moving|still|none> | argocd <each pod not running, its status and age; how many run>`.
+      # Helm's --debug goes to `Make the cluster`'s log (HELM_DEBUG), the node's pull log to measure/pulls.log, and the
+      # last step prints both. It never fails or slows a step: it runs beside them, niced, every probe is bounded, a post
+      # GitHub refuses is passed over, and it sends only what it measured, never the environment.
+      - name: Heartbeat
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          CONTEXT: platform heartbeat ${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          echo "HELM_DEBUG=true" >> "$GITHUB_ENV"
+          cat > "$RUNNER_TEMP/heartbeat.sh" <<'BEAT'
+          set -u
+          M=$RUNNER_TEMP/measure
+          began=$SECONDS n=0 before='' last=-
+          kube() { timeout 6 kubectl --context k3d-software-factory --request-timeout=4s "$@" 2>/dev/null; }
+          probe() { curl -s -o /dev/null -m 3 -w '%{http_code}' "$1" 2>/dev/null || true; }
+          while [ ! -e "$RUNNER_TEMP/heartbeat-stop" ] && [ $((SECONDS - began)) -lt 3600 ]; do
+            beat=$SECONDS n=$((n + 1))
+            node=$(timeout 5 docker ps --filter label=k3d.role=server --format '{{.Names}}' 2>/dev/null | head -1)
+            # Argo CD's pods: each not running, short-named, with its status and age; then how many run.
+            argo=$(kube -n argocd get pods --no-headers | awk '{ n = $1; sub(/^argocd-/, "", n); sub(/-[a-z0-9]+$/, "", n); if (n ~ /-[a-z0-9]*[0-9][a-z0-9]*$/) sub(/-[a-z0-9]+$/, "", n)
+              if ($3 == "Running" || $3 == "Completed") up++; else printf "%s %s %s, ", n, $3, $NF } END { printf "%d up", up }')
+            # The image the first pod not running waits on, and containerd's downloads in flight on the node.
+            pending='{range .items[?(@.status.phase=="Pending")]}{.spec.containers[0].image}{"\n"}{end}'
+            image=$({ kube -n argocd get pods -o jsonpath="$pending"; kube get pods -A -o jsonpath="$pending"; } | head -1)
+            image=${image%%@*}
+            image=${image:-none}
+            active=''
+            [ -z "$node" ] || active=$(timeout 5 docker exec "$node" ctr -n k8s.io content active 2>/dev/null | awk 'NR > 1 { printf "%s ", $2 }')
+            active=${active% }
+            if [ -z "$active" ]; then moving=none; elif [ "$active" = "$before" ]; then moving=still; else moving=moving; fi
+            before=$active
+            ghcr=$(probe https://ghcr.io/v2/) gh=$(probe https://api.github.com/)
+            dns=no; timeout 2 getent hosts ghcr.io >/dev/null 2>&1 && dns=ok
+            t=$((beat - began))
+            line="#$n $((t / 60)):$(printf %02d $((t % 60))) post $last | ghcr ${ghcr:-000} gh ${gh:-000} dns $dns | pull ${image##*/} ${active:-0} $moving | argocd ${argo:-none}"
+            line=${line//$'\n'/ }
+            line=${line:0:140}
+            if timeout 15 gh api -X POST "repos/$GITHUB_REPOSITORY/statuses/$HEAD_SHA" -f state=success -f context="$CONTEXT" \
+              -f description="$line" >/dev/null 2>&1; then last=ok; else last=refused; fi
+            printf '%s %s (post %s)\n' "$(date -u +%T)" "$line" "$last"
+            # The node's pull log, for a runner that lives: what containerd said of each pull.
+            [ -z "$node" ] || timeout 5 docker exec "$node" sh -c \
+              'grep -iE "pull|fetch|resolv" /var/lib/rancher/k3s/agent/containerd/containerd.log | tail -300' >"$M/pulls.log" 2>/dev/null
+            sleep $((beat + 30 > SECONDS ? beat + 30 - SECONDS : 1))
+          done
+          BEAT
+          nohup setsid nice -n 10 bash "$RUNNER_TEMP/heartbeat.sh" >"$RUNNER_TEMP/measure/heartbeat.log" 2>&1 </dev/null &
+          echo "Every 30 seconds, as a commit status on $HEAD_SHA, context \"$CONTEXT\":"
+          echo "  gh api repos/$GITHUB_REPOSITORY/commits/$HEAD_SHA/statuses --paginate --jq '.[] | select(.context == \"$CONTEXT\") | \"\\(.created_at) \\(.description)\"'"
       # `make up`, at the change's commit, pulling each third-party image from CI's copy in GHCR where there is one
       # (deploy/k3d/ci-registries.yaml), with none of the keys it would take from the Keychain, which the runner has
       # not: every Secret they make is optional, so the cluster comes up whole without them, and opens nothing. A key of
@@ -266,3 +324,14 @@ jobs:
           name: cluster
           path: ${{ runner.temp }}/measure
           if-no-files-found: warn
+      # TEMPORARY, with the heartbeat above (staged/factory/16-platform-heartbeat.patch): it stops, and what it saw and
+      # the node's pull log are printed, for a hang whose runner lives.
+      - name: What the heartbeat saw
+        if: ${{ always() }}
+        timeout-minutes: 2
+        run: |
+          touch "$RUNNER_TEMP/heartbeat-stop"
+          echo "--- The heartbeat, each line as it was sent"
+          cat "$RUNNER_TEMP/measure/heartbeat.log" 2>/dev/null || true
+          echo "--- The node's pull log (containerd)"
+          cat "$RUNNER_TEMP/measure/pulls.log" 2>/dev/null || true
