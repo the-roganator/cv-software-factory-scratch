@@ -443,7 +443,7 @@ describe('a proof recorded', () => {
       },
     });
     const run = {
-      url: 'https://github.com/the-roganator/cv-software-factory/actions/runs/1',
+      url: 'https://github.com/the-roganator/cv-software-factory-scratch/actions/runs/1',
       at: '2026-10-31T10:00:00.000Z',
     };
     const [ci] = await writer.append(

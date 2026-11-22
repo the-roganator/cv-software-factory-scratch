@@ -67,7 +67,10 @@ export function rollout(state: RolloutState): Rollout {
       template: {
         spec: {
           containers: [
-            { name: 'website', image: `ghcr.io/the-roganator/cv-worlds-worst-website@${digestOf(state.current)}` },
+            {
+              name: 'website',
+              image: `ghcr.io/the-roganator/cv-worlds-worst-website-scratch@${digestOf(state.current)}`,
+            },
           ],
         },
       },
