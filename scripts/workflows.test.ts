@@ -942,13 +942,26 @@ describe('platform.yml', () => {
     // A job stopped while the cluster hangs leaves the step too little time for the figures: the step after takes them.
     const stopped = steps[making + 1] as { name?: string; if?: string; run?: string } | undefined;
     expect(stopped?.name).toBe('Why it was stopped');
-    expect(stopped?.if).toBe(expression("cancelled() && env.PLATFORM_FAULT == ''"));
+    // Its own time limit fails `Make the cluster` with no fault said, as a cancel does.
+    expect(stopped?.if).toBe(
+      expression("(cancelled() || steps.make.outcome == 'failure') && env.PLATFORM_FAULT == ''"),
+    );
+    expect((stopped as { env?: Record<string, string> } | undefined)?.env?.WHY).toBe(
+      expression("steps.make.outcome == 'failure' && 'timed out' || 'cancelled'"),
+    );
     expect(stopped?.run).toContain('[ ! -e "$RUNNER_TEMP/queue-gone" ] || exit 0');
-    expect(stopped?.run).toContain('scripts/platform-fault.sh cancelled "$RUNNER_TEMP/measure"');
+    expect(stopped?.run).toContain('scripts/platform-fault.sh "$WHY" "$RUNNER_TEMP/measure"');
     expect(stopped?.run).toContain('PLATFORM_FAULT=$line');
     const why = steps[making + 2] as { name?: string; if?: string; run?: string } | undefined;
     expect(why?.name).toBe(`Why: ${expression('env.PLATFORM_FAULT')}`);
     expect(why?.if).toBe(expression("(failure() || cancelled()) && env.PLATFORM_FAULT != ''"));
+    // A cluster that has not come up fails at the watch's 12-minute ceiling, or at the step's 15 if the watch is stuck
+    // too, and the job ends at GitHub's 25 if the runner no longer answers.
+    const limited = steps[making] as { id?: string; 'timeout-minutes'?: number } | undefined;
+    expect(limited?.id).toBe('make');
+    expect(limited?.['timeout-minutes']).toBe(15);
+    expect(steps[making]?.run).toContain('SYNC_TIMEOUT=12m TIMEOUT=720');
+    expect((jobs.platform as { 'timeout-minutes'?: number } | undefined)?.['timeout-minutes']).toBe(25);
     expect(steps[making]?.run).toContain('fault "make $status"');
     expect(steps[making]?.run).toContain('scripts/platform-fault.sh "$1" "$RUNNER_TEMP/measure"');
     expect(runs).not.toMatch(/get secrets?\b/);
