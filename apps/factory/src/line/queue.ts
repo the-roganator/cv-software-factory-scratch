@@ -38,6 +38,7 @@ import { cutTo } from '@software-factory/events';
 import { askedByMartin, byMartin, type JSONValue, lastEnd, openedAsImprovement } from '@software-factory/store';
 import type { Sql, TransactionSql } from 'postgres';
 import type { Take } from '../../../../policy/line.ts';
+import type { MadeAs } from '../github/made-as.ts';
 import type { Handback, Step } from '../runners/steps.ts';
 import type { Draft } from './gates.ts';
 import type { LineAgent, QueueStage } from './machine.ts';
@@ -57,7 +58,7 @@ export interface Pending {
    * What the pin step wrote around the agent's patch: the move's pins before it, and the lockfile after it. The
    * line's, read from the step's prepare pods, never the agent's handback.
    */
-  pinned?: { pins?: string; lockfile?: string; alone?: true };
+  pinned?: { pins?: string; lockfile?: string; alone?: true; made?: MadeAs };
   /** The dependency's move the pin step wrote before the step, which the coder's input names, as it did as it started. */
   move?: Step['move'];
   /** The step's `model.called`, appended with the effects' events. */

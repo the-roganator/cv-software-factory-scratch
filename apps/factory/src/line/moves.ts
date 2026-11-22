@@ -183,7 +183,9 @@ export function writtenVersion(move: PinnedMove, pins: string): string {
   const versions = (importer.length ? importer : added).sort(compareVersions);
   const [lowest] = versions;
   if (!lowest) throw new UnreadMove(`The pin step’s patch names no version of ${move.name} the line can read`);
-  if (compareVersions(lowest, move.to) < 0) {
+  // A package at two versions moves to a floor for each (`6.11.5,7.6.6`): the lowest copy is held to the lowest.
+  const [floor = move.to] = move.to.split(',').sort(compareVersions);
+  if (compareVersions(lowest, floor) < 0) {
     throw new UnreadMove(`The pin step’s patch resolves ${move.name} to ${lowest}, below the move’s ${move.to}`);
   }
   return lowest;

@@ -11,7 +11,7 @@ import { RESULT_BYTES as RUNNER_RESULT_BYTES } from '../../runner/src/step.ts';
 import { agentJob, lockfileJob, prepareJob } from '../src/runners/jobs.ts';
 import { StepLogs } from '../src/runners/logs.ts';
 import { lineServers } from '../src/runners/serve.ts';
-import { EMPTY_PINS, RESULT_BYTES, type Runners } from '../src/runners/steps.ts';
+import { RESULT_BYTES, type Runners } from '../src/runners/steps.ts';
 import { quiet } from './github/fake.ts';
 import { DONE, database, handBack, line, PATCH, STEP, withRunnersStore } from './runners-harness.ts';
 
@@ -157,6 +157,36 @@ describe('the pin step around a coder’s step', () => {
     expect(JSON.parse(steps[0]?.RUNNER_STEP ?? '{}')).toMatchObject({ move: MOVE });
   });
 
+  it('gives how the pin step made the move beside its pins, and nothing of a made it cannot read (C-1)', async () => {
+    const made = {
+      at: '2026-11-20T05:00:00.000Z',
+      asked: [{ image: 'gcr.io/distroless/static', tag: 'nonroot', digest: `sha256:${'5'.repeat(64)}` }],
+    };
+    for (const [said, given] of [
+      [made, made],
+      [{ ...made, at: 'yesterday' }, undefined],
+    ] as const) {
+      const { runners, close } = await line(() => {}, undefined, quiet, {
+        podLogs: { prepare: printed('the pins', { move: MOVE, pins: PINS, made: said }) },
+      });
+      const outcome = await runners.run({
+        ...STEP,
+        move: MOVE,
+        workItem: given ? '1072' : '1073',
+        round: 1,
+        deadlineSeconds: 60,
+        pinsOnly: true,
+      });
+      await close();
+      expect(outcome).toEqual({
+        kind: 'pinned',
+        job: `coder-${given ? '1072' : '1073'}-1-1`,
+        pins: PINS,
+        ...(given && { made }),
+      });
+    }
+  });
+
   it('holds the step when the pins wait for Martin, and never starts the agent', async () => {
     const held = { path: 'pnpm-workspace.yaml', reason: 'sonic-boom stays at 4.2.1: pino@10.4.0 admit no 5.0.2' };
     const { runners, calls, close } = await line(() => {}, undefined, quiet, {
@@ -182,7 +212,7 @@ describe('the pin step around a coder’s step', () => {
     expect(calls.some((c) => c.includes('agent') && c.startsWith('POST'))).toBe(false);
   });
 
-  it('fails a move whose pin step wrote nothing, and never starts the agent, pins-only or not', async () => {
+  it('gives back the empty pins of a move the checkout has already, and never starts the agent, pins-only or not', async () => {
     for (const pinsOnly of [false, true]) {
       const { runners, calls, close } = await line(() => {}, undefined, quiet, {
         podLogs: { prepare: printed('the pins', { move: MOVE, pins: '' }) },
@@ -196,7 +226,7 @@ describe('the pin step around a coder’s step', () => {
         pinsOnly,
       });
       await close();
-      expect(outcome).toEqual({ kind: 'failed', job: `coder-${pinsOnly ? '1091' : '1090'}-1-1`, reason: EMPTY_PINS });
+      expect(outcome).toEqual({ kind: 'pinned', job: `coder-${pinsOnly ? '1091' : '1090'}-1-1`, pins: '' });
       expect(calls.some((c) => c.includes('agent') && c.startsWith('POST'))).toBe(false);
     }
   });
