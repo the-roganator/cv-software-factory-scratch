@@ -65,7 +65,7 @@ if [ $# -eq 4 ]; then
 fi
 
 # Each read bounded, as platform-pods.sh's are: after a `make up` that failed, the API server may not answer at all.
-read -r -a kubectl <<<"${KUBECTL:-kubectl --context k3d-software-factory}"
+read -r -a kubectl <<<"${KUBECTL:-kubectl --context k3d-software-factory-scratch}"
 kubectl+=(--request-timeout="${READ_TIMEOUT:-10s}")
 dir=$(mktemp -d)
 trap 'rm -rf "$dir"' EXIT

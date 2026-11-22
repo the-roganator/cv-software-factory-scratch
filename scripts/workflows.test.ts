@@ -184,7 +184,7 @@ describe('every workflow', () => {
   });
 
   it('holds each secret in a job that uses its environment, which only main may use, and only that one’s key', () => {
-    const environments = ENVIRONMENTS['the-roganator/cv-software-factory'] ?? [];
+    const environments = ENVIRONMENTS['the-roganator/cv-software-factory-scratch'] ?? [];
     for (const file of [...Object.keys(WITH_A_SECRET), SCAN]) {
       const workflow = read(file);
       for (const [id, job] of Object.entries(workflow.jobs)) {
@@ -546,7 +546,7 @@ describe('vulnerabilities.yml', () => {
     event: string,
     ref: string,
     defaultBranch = 'main',
-    head = 'the-roganator/cv-software-factory',
+    head = 'the-roganator/cv-software-factory-scratch',
   ) {
     const step = jobs[job]?.steps?.[0];
     expect(step?.name, job).toBe('Refuse a privileged context');
@@ -558,7 +558,7 @@ describe('vulnerabilities.yml', () => {
           GITHUB_REF: ref,
           DEFAULT_BRANCH: defaultBranch,
           HEAD_REPOSITORY: head,
-          REPOSITORY: 'the-roganator/cv-software-factory',
+          REPOSITORY: 'the-roganator/cv-software-factory-scratch',
         },
         stdio: 'pipe',
       });
@@ -610,7 +610,9 @@ describe('vulnerabilities.yml', () => {
   });
 
   it('refuses a fork’s pull request in the proving run, whose token would read the alerts', () => {
-    expect(refuses('prove', 'pull_request', 'refs/pull/1/merge', 'main', 'someone/cv-software-factory')).toBe(true);
+    expect(refuses('prove', 'pull_request', 'refs/pull/1/merge', 'main', 'someone/cv-software-factory-scratch')).toBe(
+      true,
+    );
     expect(refuses('prove', 'pull_request', 'refs/pull/1/merge', 'main', '')).toBe(true);
     expect(refuses('prove', 'pull_request', 'refs/pull/1/merge')).toBe(false);
     expect((jobs.prove?.steps?.[0] as { env?: unknown } | undefined)?.env).toEqual({
@@ -981,9 +983,9 @@ describe('platform.yml', () => {
       new Set([
         'typesafe-api-key',
         'anthropic-api-key',
-        'factory-github-app-key',
-        'pushover-app-token',
-        'pushover-user-key',
+        'scratch-factory-github-app-key',
+        'scratch-pushover-app-token',
+        'scratch-pushover-user-key',
       ]),
     );
     const make = (jobs.platform?.steps ?? []).find((step) => /\bmake up\b/.test(step.run ?? ''))?.run ?? '';

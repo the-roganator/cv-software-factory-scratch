@@ -22,8 +22,8 @@ patches:
       # workers, the console and the runner have no business here.
       - op: replace
         path: /spec/variables/1/expression
-        value: "['ghcr.io/the-roganator/cv-software-factory/factory-browser']"
+        value: "['ghcr.io/the-roganator/cv-software-factory-scratch/factory-browser']"
       # The app's image, signed by the app's build.yml.
       - op: replace
         path: /spec/variables/2/expression
-        value: "['ghcr.io/the-roganator/cv-worlds-worst-website']"
+        value: "['ghcr.io/the-roganator/cv-worlds-worst-website-scratch']"
