@@ -3,7 +3,7 @@
  * never from the request: the console's origin, which `Origin` must match exactly and WebAuthn's ceremonies must name,
  * the relying party a passkey belongs to, and the proxies whose forwarded headers are believed.
  *
- * - ADMIN_ORIGIN: the console's origin as the browser sees it, such as `https://console.localhost:8443`. Required, and
+ * - ADMIN_ORIGIN: the console's origin as the browser sees it, such as `https://console.localhost:9443`. Required, and
  *   `https` but for `localhost` itself, as WebAuthn requires.
  * - ADMIN_RP_ID: the relying party's id, a passkey's host; by default the origin's host name.
  * - ADMIN_TRUSTED_PROXIES: the addresses, or CIDR ranges, of the proxy in front (Traefik's, locally), comma-separated.
@@ -56,7 +56,7 @@ export interface Tools {
 
 export function configFromEnv(env: NodeJS.ProcessEnv): AdminConfig {
   const given = env.ADMIN_ORIGIN;
-  if (!given) throw new Error("Set ADMIN_ORIGIN to the console's origin, such as https://console.localhost:8443.");
+  if (!given) throw new Error("Set ADMIN_ORIGIN to the console's origin, such as https://console.localhost:9443.");
   let url: URL;
   try {
     url = new URL(given);
