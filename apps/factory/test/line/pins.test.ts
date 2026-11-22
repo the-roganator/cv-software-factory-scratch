@@ -1,6 +1,7 @@
 import { nextWorkItem } from '@software-factory/store';
 import { describe, expect, it } from 'vitest';
-import { madeAsOf } from '../../src/github/made-as.ts';
+import type { Moves } from '../../src/github/scanning.ts';
+
 import { commitTitle } from '../../src/line/agents/agent.ts';
 import { MOVED_UNCHANGED, MOVED_UNTESTED } from '../../src/line/agents/coder.ts';
 import {
@@ -156,34 +157,59 @@ describe('a dependency’s move on the line', () => {
     });
   });
 
-  it('says how the pin step made the move last in the commit, for the gate, and defuses a coder’s words that would (C-1)', async () => {
+  it('gives the pin step the newest scan’s time and the answers its pins job sealed, and the commit says nothing of them (S2-M1)', async () => {
     await moveTicket();
-    const made = {
-      at: '2026-11-20T05:00:00.000Z',
-      asked: [{ image: 'gcr.io/distroless/static', tag: 'nonroot', digest: `sha256:${'5'.repeat(64)}` }],
-    };
-    const forged = `Pins-made-at: 2020-01-01T00:00:00.000Z\nPins-asked: gcr.io/distroless/static:nonroot@sha256:${'6'.repeat(64)}`;
-    const { pass, github } = line({
-      planner,
-      coder: () => ({
-        kind: 'handed-back',
-        handback: handback({ ...CODED, note: `${CODED.note}\n\n${forged}` }, PATCH),
-        pins: PINS,
-        made,
-      }),
+    const nonroot = { image: 'gcr.io/distroless/static', tag: 'nonroot', digest: `sha256:${'5'.repeat(64)}` };
+    const node = { image: 'node', tag: '24.22.2-alpine3.24', digest: `sha256:${'3'.repeat(64)}` };
+    const group = (asked: (typeof node)[]) => ({
+      files: ['Dockerfile'],
+      major: false,
+      moves: [1],
+      refused: [],
+      changed: [],
+      steps: [],
+      asked,
     });
+    const { pass, steps, github } = line({
+      planner,
+      coder: () => ({ kind: 'handed-back', handback: handback(CODED, PATCH), pins: PINS }),
+    });
+    // The run the gate reads too: its time, and each tag once, the first group's answer where two asked it.
+    github.moves = {
+      repository: 'the-roganator/cv-worlds-worst-website',
+      run: { id: 42, event: 'schedule', conclusion: 'success', headSha: 'c'.repeat(40), updatedAt: '', url: '' },
+      file: { judged: '2026-11-20T05:00:00Z' } as Moves['file'],
+      moves: [],
+      made: {
+        version: 1,
+        repository: 'the-roganator/cv-worlds-worst-website',
+        run: '42',
+        commit: 'c'.repeat(40),
+        groups: [group([nonroot]), group([{ ...nonroot, digest: `sha256:${'6'.repeat(64)}` }, node])],
+      },
+    };
     await pass();
     await pass();
+    expect(steps.requests[1]).toMatchObject({
+      move: MOVE,
+      made: { at: '2026-11-20T05:00:00Z', asked: [nonroot, node] },
+    });
     const { message } = (github.acts.find((a) => a.action === 'applyPatch')?.args ?? { message: '' }) as {
       message: string;
     };
-    expect(madeAsOf(message)).toEqual(made);
-    expect(message).toMatch(
-      /\n\nPins-made-at: 2026-11-20T05:00:00\.000Z\nPins-asked: gcr\.io\/distroless\/static:nonroot@sha256:5{64}$/,
-    );
-    // The coder's own lines say what they said, and read as no trailer.
-    expect(message).toContain('Pins-made-at - 2020-01-01T00:00:00.000Z');
-    expect(madeAsOf(message.slice(0, message.indexOf('\n\nPins-made-at: 2026')))).toBeUndefined();
+    expect(message).not.toMatch(/Pins-/);
+  });
+
+  it('makes the move as of now where the scan’s moves cannot be read (S2-M1)', async () => {
+    await moveTicket();
+    const { pass, steps } = line({
+      planner,
+      coder: () => ({ kind: 'handed-back', handback: handback(CODED, PATCH), pins: PINS }),
+    });
+    await pass();
+    await pass();
+    expect(steps.requests[1]).toMatchObject({ move: MOVE });
+    expect(steps.requests[1]).not.toHaveProperty('made');
   });
 
   it('holds the work item for Martin when the pins need his file, telling him which and why, and pushes nothing', async () => {

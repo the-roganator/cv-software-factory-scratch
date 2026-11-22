@@ -28,6 +28,7 @@ import {
 } from '../../src/vulnerabilities/deadlines.ts';
 import type { Target } from '../../src/vulnerabilities/fixes.ts';
 import { moves, movesFile } from '../../src/vulnerabilities/moves.ts';
+import { releasedAt } from '../../src/vulnerabilities/registry.ts';
 import { alertKey, type Finding, merge, messageOf, sarif } from '../../src/vulnerabilities/sarif.ts';
 import {
   type Handoff,
@@ -1526,6 +1527,16 @@ describe('what fixes it', () => {
       },
     });
     expect(fixes[0]?.target).toEqual({ kind: 'tool', tool: 'pnpm', version: '12.17.0' });
+  });
+
+  it('dates a tool’s release from the newest upload of its downloads, as the pin step does (S2-L3)', () => {
+    const release = { published_at: '2026-10-01T00:00:00Z', assets: [{ updated_at: '2026-10-01T00:05:00Z' }] };
+    expect(releasedAt(release)).toBe('2026-10-01T00:05:00Z');
+    expect(releasedAt({ ...release, assets: [...release.assets, { updated_at: '2026-11-09T00:00:00Z' }] })).toBe(
+      '2026-11-09T00:00:00Z',
+    );
+    expect(releasedAt({ published_at: '2026-10-01T00:00:00Z' })).toBe('2026-10-01T00:00:00Z');
+    expect(releasedAt({ published_at: null, assets: release.assets })).toBeUndefined();
   });
 
   it('waits for mise.toml’s minimum_release_age on a tool’s release, and takes the newest that old', async () => {

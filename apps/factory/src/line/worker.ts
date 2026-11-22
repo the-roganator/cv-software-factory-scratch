@@ -138,6 +138,7 @@ import { sendCounts } from '../counts.ts';
 import { DRY_RUN_NUMBERS_FROM } from '../github/actions.ts';
 import { spentComment } from '../github/deploy-queue.ts';
 import { type Carry, DEPLOYS, type DeployProposal, MAX_CARRIES } from '../github/deploys.ts';
+import { askedIn } from '../github/made.ts';
 import { failedChecks } from '../github/merging.ts';
 import { outcomeOf } from '../github/reads.ts';
 import type {
@@ -1877,6 +1878,24 @@ export class Line {
     return { ecosystem, name, from, to };
   }
 
+  /**
+   * How the newest scan of main made a repository's moves, for the pin step to make one the same: the time it judged
+   * them, and the digest its `pins` job was given for each tag it asked (github/made.ts's `askedIn`). It is the run the
+   * review gate makes the move again from (scripts/moves.ts), read through the GitHub worker as the gate reads it from
+   * GitHub. None where that run wrote no moves, or the read failed: the pin step then makes the move as of now and asks
+   * each registry, and the gate holds it if a release or a tag moved between the two, never passes it.
+   */
+  async #madeAs(repo: string): Promise<Step['made']> {
+    try {
+      const moves = await this.#o.github.read('moves', repo, {});
+      if (!moves.file) return undefined;
+      return { at: moves.file.judged, asked: moves.made ? askedIn(moves.made) : [] };
+    } catch (error) {
+      this.#o.log.warn({ repo, err: error }, 'could not read the scan’s moves: the pin step makes the move as of now');
+      return undefined;
+    }
+  }
+
   /** The ticket's first signal: its sense, check, route and evidence, never a report's words. */
   async #firstSignal(workItem: string): Promise<FirstSignal | undefined> {
     type Row = {
@@ -1950,6 +1969,8 @@ export class Line {
       // A dependency's move is the pin step's to write, before the coder's first round: once the pull request is open,
       // its head has the pins.
       const move = agent === 'coder' && !pr ? await this.#moveOf(workItem) : undefined;
+      // Made as the scan made it, as the review gate makes it again.
+      const made = move ? await this.#madeAs(repo) : undefined;
       // A move whose spec asks for nothing but the move is the pin step's alone: no agent runs, and the line makes the
       // commit from its patch. The coder runs on a move only for a criterion a test shows, or when the work comes back.
       const alone = move !== undefined && state.spec !== undefined && movesAlone(state.spec);
@@ -1971,6 +1992,7 @@ export class Line {
             prompt: started.prompt,
             resume: started.resume,
             move,
+            made,
           },
         ),
         workItem,
@@ -2007,7 +2029,7 @@ export class Line {
           commit,
           base,
           handback: { ending: 'finished', patch: '', note: '', turns: 0, session: null, result: { moved: true } },
-          pinned: { pins: outcome.pins, alone: true, ...(outcome.made ? { made: outcome.made } : {}) },
+          pinned: { pins: outcome.pins, alone: true },
           ...(move ? { move } : {}),
           called: [],
           begun: [],
@@ -2065,7 +2087,6 @@ export class Line {
           ? {
               pinned: {
                 ...(outcome.pins ? { pins: outcome.pins } : {}),
-                ...(outcome.made ? { made: outcome.made } : {}),
                 ...(outcome.lockfile ? { lockfile: outcome.lockfile } : {}),
               },
             }

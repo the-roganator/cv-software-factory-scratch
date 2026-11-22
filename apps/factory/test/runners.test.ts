@@ -157,34 +157,27 @@ describe('the pin step around a coder’s step', () => {
     expect(JSON.parse(steps[0]?.RUNNER_STEP ?? '{}')).toMatchObject({ move: MOVE });
   });
 
-  it('gives how the pin step made the move beside its pins, and nothing of a made it cannot read (C-1)', async () => {
+  it('tells the pin step how the scan made the move, in the step its pods are given (S2-M1)', async () => {
     const made = {
-      at: '2026-11-20T05:00:00.000Z',
+      at: '2026-11-20T05:00:00Z',
       asked: [{ image: 'gcr.io/distroless/static', tag: 'nonroot', digest: `sha256:${'5'.repeat(64)}` }],
     };
-    for (const [said, given] of [
-      [made, made],
-      [{ ...made, at: 'yesterday' }, undefined],
-    ] as const) {
-      const { runners, close } = await line(() => {}, undefined, quiet, {
-        podLogs: { prepare: printed('the pins', { move: MOVE, pins: PINS, made: said }) },
-      });
-      const outcome = await runners.run({
-        ...STEP,
-        move: MOVE,
-        workItem: given ? '1072' : '1073',
-        round: 1,
-        deadlineSeconds: 60,
-        pinsOnly: true,
-      });
-      await close();
-      expect(outcome).toEqual({
-        kind: 'pinned',
-        job: `coder-${given ? '1072' : '1073'}-1-1`,
-        pins: PINS,
-        ...(given && { made }),
-      });
-    }
+    let url = '';
+    const steps: Record<string, string>[] = [];
+    const { runners, handbackUrl, close } = await line(
+      async (env) => {
+        steps.push(env);
+        await agentHandsBack(() => url, DONE)(env);
+      },
+      undefined,
+      quiet,
+      { podLogs: { prepare: printed('the pins', { move: MOVE, pins: PINS }) } },
+    );
+    url = handbackUrl;
+    const outcome = await runners.run({ ...STEP, move: MOVE, made, workItem: '1072', round: 1, deadlineSeconds: 60 });
+    await close();
+    expect(outcome).toEqual({ kind: 'handed-back', job: 'coder-1072-1-1', handback: DONE, pins: PINS });
+    expect(JSON.parse(steps[0]?.RUNNER_STEP ?? '{}')).toMatchObject({ move: MOVE, made });
   });
 
   it('holds the step when the pins wait for Martin, and never starts the agent', async () => {

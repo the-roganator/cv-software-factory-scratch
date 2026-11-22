@@ -121,8 +121,22 @@ function entriesOf(lock: string): { head: string; entries: { header: string; tex
   return { head: head.slice(1), entries: rest.map((text) => ({ header: text.split('\n')[0] as string, text })) };
 }
 
-/** Where a text's addresses point: each `https://host` in it. */
-const origins = (text: string) => new Set([...text.matchAll(/\bhttps?:\/\/[^/\s"']+/g)].map(([origin]) => origin));
+/**
+ * Where a tool's entry downloads from: each address in it as a client reads it (`..` resolved, the host in lower
+ * case), up to what names the release, its version, or for an address that names none (an asset's number) its last
+ * part. So a move may change the release an address names, never the repository or the place it is fetched from.
+ */
+const sources = (entry: string) => {
+  const version = /^version\s*=\s*"([^"]+)"/m.exec(entry)?.[1];
+  return new Set(
+    [...entry.matchAll(/\bhttps?:\/\/[^\s"']+/g)].map(([address]) => {
+      if (!URL.canParse(address)) return address;
+      const { href } = new URL(address);
+      const at = version ? href.indexOf(version) : -1;
+      return at >= 0 ? href.slice(0, at) : href.slice(0, href.lastIndexOf('/') + 1);
+    }),
+  );
+};
 
 /**
  * Why a change to `mise.lock` is not a move of what it pins, or nothing: every entry is a tool's, the same tools in
@@ -146,8 +160,8 @@ function miseLockRefusal(before: string, after: string): string | undefined {
     if (header) return `gives ${tool}’s entry ${JSON.stringify(header.trim())}, which is not its own`;
     const backend = (text: string) => text.split('\n').filter((line) => /^\s*backend\s*=/.test(line));
     if (JSON.stringify(backend(old.text)) !== JSON.stringify(backend(entry.text))) return `changes ${tool}’s backend`;
-    const from = origins(old.text);
-    const elsewhere = [...origins(entry.text)].find((origin) => !from.has(origin));
+    const from = sources(old.text);
+    const elsewhere = [...sources(entry.text)].find((source) => !from.has(source));
     if (elsewhere) return `downloads ${tool} from ${elsewhere}, where it did not`;
   }
   return undefined;

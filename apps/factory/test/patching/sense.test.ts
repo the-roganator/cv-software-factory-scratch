@@ -500,6 +500,7 @@ describe("the sense's sends to triage", () => {
       {
         advisory: 'CVE-2026-1001',
         severity: 'HIGH',
+        type: 'pnpm',
         package: 'left-pad',
         installed: '1.2.3',
         file: 'pnpm-lock.yaml',
