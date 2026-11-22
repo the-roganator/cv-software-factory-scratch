@@ -24,26 +24,26 @@
 #
 # A move (scripts/move.ts) is checked by the `move` job below: it takes the scan's moves from vulnerabilities.yml's last
 # finished run on main, its `moves.json` and the state it sealed (scripts/moves.ts), makes each move the pull request
-# touches on main's tip as its maker does (the pin watch's edit, or the line's pin step for a lockfile's package and the
-# app's Node), and compares the result with what the merge makes, byte for byte. Anything that differs is no move, and
-# the gate says what. Whether a move crosses a major, and what it clears, are the scan's, never the pull request's. The
-# level is not the gate's: policy/line.ts's ENQUEUES says who queues a `move`, and nobody queues a `major`. Working a
-# move out reads the pull request's head, as data, which the job holding the App's key never does: the `move` job does
-# it, with no key of the App's and read-only permissions, from main's whole checkout and its locked dependencies, and
-# hands the gate one answer for each pull request it would judge, `<number>@<head>`. It holds one secret, the scan's
-# state key, from the `scan-state` environment, which only main may use; a caller passes it by name, as it passes the
-# review App's. A missing or unreadable answer is no move. Whether the checks pass is not the gate's either: the merge
-# queue requires every required check.
+# touches on main's tip as its maker does (the pin watch's edit, or the pin step for a lockfile's package, a tool mise
+# pins and an image that brings another pin with it), and compares the result with what the merge makes, byte for byte.
+# Anything that differs is no move, and the gate says what. Whether a move crosses a major, and what it clears, are the
+# scan's, never the pull request's. The level is not the gate's: policy/line.ts's ENQUEUES says at which level a `move`
+# and a `major` are queued. Working a move out reads the pull request's head, as data, which the job holding the App's
+# key never does: the `move` job does it, with no key of the App's and read-only permissions, from main's whole checkout
+# and its locked dependencies, and hands the gate one answer for each pull request it would judge, `<number>@<head>`. It
+# holds one secret, the scan's state key, from the `scan-state` environment, which only main may use; a caller passes it
+# by name, as it passes the review App's. A missing or unreadable answer is no move. Whether the checks pass is not the
+# gate's either: the merge queue requires every required check.
 #
 # Only main's copy runs with the App's key. `workflow_run` runs the workflow as main has it, with GITHUB_REF main, and
 # the key is in the `review` environment, which only main may use: a run on any other ref, a pull request's merge ref
-# included, is refused it. It reads the pull request's metadata through the API and never checks out, builds or runs
-# its code: the diff, the files an exact pin changes and CODEOWNERS come through the API, the images' signatures from
-# GHCR through cosign. The move job, which holds no secret, fetches the pull request's two commits as data, and runs
-# none of them. A pull request opened, pushed to, edited or unlabelled, a review, and the merge queue each run
-# pull-request.yml, which runs on `pull_request`, `pull_request_review` or `merge_group` as the change has it and
-# holds nothing that can write; its run starts this one, here, from main. Nothing here runs on `pull_request_target`, which GitHub's
-# default event policy blocks in public repositories.
+# included, is refused it. It reads the pull request's metadata through the API and never checks out, builds or runs its
+# code: the diff, the files an exact pin changes and CODEOWNERS come through the API, the images' signatures from GHCR
+# through cosign. The move job, which holds no key of the App's, fetches the pull request's two commits as data, and
+# runs none of them. A pull request opened, pushed to, edited or unlabelled, a review, and the merge queue each run
+# pull-request.yml, which runs on `pull_request`, `pull_request_review` or `merge_group` as the change has it and holds
+# nothing that can write; its run starts this one, here, from main. Nothing here runs on `pull_request_target`, which
+# GitHub's default event policy blocks in public repositories.
 #
 # The review App is the-roganator's, App ID 5470762, installed on every repository there. Until its key is in the
 # `review` environment, as the secret REVIEW_APP_PRIVATE_KEY, the gate says its verdict and posts nothing.

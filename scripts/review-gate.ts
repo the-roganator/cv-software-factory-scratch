@@ -2,9 +2,9 @@
  * The review gate (ADR 0014): whether a pull request has Martin's say, posted as the `review` check by the review App.
  * It passes when Martin opened the pull request from a branch here, or when his latest verdict on it approves the commit
  * at its head; otherwise by the rest of approval routing's rules (`review-routing.ts`). A move's answer, which reads the
- * pull request's commits and the scan's moves, is worked out by review.yml's `move` job, with no secret
- * (`scripts/moves.ts`), and taken here from `MOVES`: the gate itself, which holds the key, imports nothing that reads a
- * head. Nothing else in the rule depends on the base, so a pull request into any branch is judged, a stacked one's into
+ * pull request's commits and the scan's moves, is worked out by review.yml's `move` job, with the scan's state key
+ * alone (`scripts/moves.ts`), and taken here from `MOVES`: the gate itself, which holds the review App's key, imports
+ * nothing that reads a head. Nothing else in the rule depends on the base, so a pull request into any branch is judged, a stacked one's into
  * the branch below it too.
  *
  *     node scripts/review-gate.ts                                 # in review.yml, which GitHub runs from main's copy only
