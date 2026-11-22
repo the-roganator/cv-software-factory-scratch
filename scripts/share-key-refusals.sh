@@ -29,7 +29,7 @@
 # deploy/, so a change to it fails `make check` until this is run again.
 set -euo pipefail
 
-context="${KUBE_CONTEXT:-k3d-software-factory}"
+context="${KUBE_CONTEXT:-k3d-software-factory-scratch}"
 kubectl=(kubectl --context "$context")
 # REFUSALS_OUT writes the record elsewhere, as `make guardrails` takes it, and leaves deploy/test/ as it is.
 out="${REFUSALS_OUT:-$(dirname "$0")/../deploy/test/share-key-refusals.json}"
