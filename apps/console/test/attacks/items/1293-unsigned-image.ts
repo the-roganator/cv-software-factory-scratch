@@ -5,7 +5,7 @@
  */
 import { digestFor, Item, uuidFor } from '../../../../../packages/samples/src/build.ts';
 
-const IMAGE = `ghcr.io/the-roganator/cv-software-factory/factory-runner@${digestFor('red-team/1293')}`;
+const IMAGE = `ghcr.io/the-roganator/cv-software-factory-scratch/factory-runner@${digestFor('red-team/1293')}`;
 const POD = { namespace: 'red-team', name: 'red-team-1293', uid: uuidFor('pod:red-team-1293') };
 
 const REFUSAL = `admission webhook "ivpol.validate.kyverno.svc-fail-finegrained-factory-images" denied the request: Policy factory-images failed: images must be signed by build.yml on main of the repository that builds them: ${IMAGE}`;

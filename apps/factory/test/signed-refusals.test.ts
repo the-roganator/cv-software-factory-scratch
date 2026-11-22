@@ -16,12 +16,12 @@ const { privateKey, publicKey } = generateKeyPairSync('ed25519');
 const other = generateKeyPairSync('ed25519');
 
 const FACTS: RefusalFacts = {
-  repo: 'the-roganator/cv-worlds-worst-website',
+  repo: 'the-roganator/cv-worlds-worst-website-scratch',
   number: null,
   at: '2026-10-31T12:00:00.000Z',
   payload: {
     mechanism: 'github-guard',
-    action: 'applyPatch branch factory/1400-cart in the-roganator/cv-worlds-worst-website',
+    action: 'applyPatch branch factory/1400-cart in the-roganator/cv-worlds-worst-website-scratch',
     output: 'The patch changes .github/workflows/ci.yml, which no patch may.',
     guardrails: [1],
   },
@@ -66,7 +66,7 @@ describe('a signed refusal', () => {
       ['the output', (r) => (r.payload.output = 'Nothing was refused.')],
       ['the guardrails', (r) => (r.payload.guardrails = [10])],
       ['the mechanism', (r) => (r.payload.mechanism = 'token-permission')],
-      ['the repository', (r) => (r.repo = 'the-roganator/cv-software-factory')],
+      ['the repository', (r) => (r.repo = 'the-roganator/cv-software-factory-scratch')],
       ['the number', (r) => (r.number = 7)],
       ['the time', (r) => (r.at = '2026-10-31T12:00:01.000Z')],
       ['the record', (r) => (r.record = 'f'.repeat(64))],
