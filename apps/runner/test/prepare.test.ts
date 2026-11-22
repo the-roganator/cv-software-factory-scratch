@@ -270,6 +270,12 @@ describe('the prepare step, on a dependency’s work item', () => {
     const pins = said.find((line) => line.msg === 'the pins');
     expect(pins).toMatchObject({ move });
     expect(pins.pins).toContain(`+FROM gcr.io/distroless/static:nonroot@${NEW}`);
+    // How it made them, for the review gate to make them again so: when, and each tag's digest it was given (C-1).
+    expect(pins.made).toEqual({
+      at: expect.stringMatching(/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/),
+      asked: [{ image: 'gcr.io/distroless/static', tag: 'nonroot', digest: NEW }],
+    });
+    expect(Math.abs(Date.parse(pins.made.at) - Date.now())).toBeLessThan(60_000);
     expect(said.at(-1)).toMatchObject({ msg: 'installed the dependencies' });
     const repo = join(work, 'repo');
     // Committed, so the agent's patch, measured from where it starts, never holds them.
