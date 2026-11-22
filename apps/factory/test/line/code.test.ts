@@ -50,4 +50,26 @@ describe('Markdown outside code', () => {
     expect(outsideCode('a \\` b `c`')).toBe('a \\` b    ');
     expect(outsideCode(lines('> `a', '>', '> b`'))).toBe(lines('> `a', '>', '> b`'));
   });
+
+  it('reads an HTML block as GitHub does: its backticks as text, HTML’s own code as code, to the block’s end', () => {
+    expect(outsideCode('<summary>Moves `@grpc/x`</summary>')).toBe('<summary>Moves `@grpc/x`</summary>');
+    expect(outsideCode(lines('<details>', '<summary>`a`</summary>', '', '`b`'))).toBe(
+      lines('<details>', '<summary>`a`</summary>', '', '   '),
+    );
+    expect(outsideCode('<p>Moves <code>@grpc/x</code> on</p>')).toBe(
+      `<p>Moves ${spaces('<code>@grpc/x</code>')} on</p>`,
+    );
+    expect(outsideCode(lines('> <div>', '> `a`', 'after `b`'))).toBe(lines('> <div>', '> `a`', 'after    '));
+    expect(outsideCode(lines('- <summary>`a`</summary>'))).toBe('- <summary>`a`</summary>');
+    expect(outsideCode(lines('<!-- `a`', '`b` -->', '`c`'))).toBe(lines('<!-- `a`', '`b` -->', '   '));
+    expect(outsideCode(lines('<pre>`a`</pre>', '`b`'))).toBe(lines(spaces('<pre>`a`</pre>'), '   '));
+  });
+
+  it('starts no HTML block in a paragraph at a tag no block has, nor in code', () => {
+    expect(outsideCode(lines('text', '<span>', '`a`'))).toBe(lines('text', '<span>', '   '));
+    expect(outsideCode(lines('<span>', '`a`'))).toBe(lines('<span>', '`a`'));
+    expect(outsideCode(lines('text', '<div>', '`a`'))).toBe(lines('text', '<div>', '`a`'));
+    expect(outsideCode('a `<div>` b `c`')).toBe('a         b    ');
+    expect(outsideCode(lines('```', '<div>', '```', '`a`'))).toBe(lines('   ', '     ', '   ', '   '));
+  });
 });
