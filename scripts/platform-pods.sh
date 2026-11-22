@@ -78,7 +78,7 @@ if [ $# -eq 2 ]; then
   exit 1
 fi
 
-read -r -a kubectl <<<"${KUBECTL:-kubectl --context k3d-software-factory}"
+read -r -a kubectl <<<"${KUBECTL:-kubectl --context k3d-software-factory-scratch}"
 kubectl+=(--request-timeout="${READ_TIMEOUT:-10s}")
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT

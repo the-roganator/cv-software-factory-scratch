@@ -69,7 +69,7 @@ test('a visitor sees each flag read-only, its card waiting on Martin, and whethe
   // Preview it stays a link for a visitor.
   await expect(flag(page, 'delivery-dates').getByRole('link', { name: /Preview it on the app/ })).toHaveAttribute(
     'href',
-    'http://website.localhost:8080/?preview=delivery-dates',
+    'http://website.localhost:9080/?preview=delivery-dates',
   );
   await expect(flags(page).locator('.sync')).toHaveText('The app holds every flag as set: r8, checked 40s ago.');
 

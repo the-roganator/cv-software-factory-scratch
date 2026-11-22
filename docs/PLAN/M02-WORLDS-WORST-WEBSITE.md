@@ -2,7 +2,7 @@
 
 ## Outcome
 
-The factory has something to look after. `cv-worlds-worst-website` is public: a small, funny shop whose history starts from one clean commit that already contains at least 20 defects, with nothing in it that says where they are. Argo CD deploys it to the local cluster beside the console, its traces, metrics and logs appear in Grafana, and a "Report a problem" widget sits on every page.
+The factory has something to look after. `cv-worlds-worst-website-scratch` is public: a small, funny shop whose history starts from one clean commit that already contains at least 20 defects, with nothing in it that says where they are. Argo CD deploys it to the local cluster beside the console, its traces, metrics and logs appear in Grafana, and a "Report a problem" widget sits on every page.
 
 The answer key is in `cv-software-factory-private`, and every entry in it is proved by a test: the defect is there, and it shows the symptom the key says it does.
 
@@ -115,9 +115,9 @@ Update the spec, `COMPONENTS/`, `TERMS.md` (answer key, fingerprint, seeded base
 
 - [x] Martin has read every page of the shop and approved it: it is funny, and it is bad in the ways intended and no others.
 - [x] The answer key holds at least 20 defects across at least six categories, each with a unique fingerprint, and the private repository's CI proves every one (task 6).
-- [x] `cv-worlds-worst-website` is public, its history starts from one commit, its CI is green, and it has the same ruleset and security settings as this repository, with the shared workflows called at a pinned SHA.
+- [x] `cv-worlds-worst-website-scratch` is public, its history starts from one commit, its CI is green, and it has the same ruleset and security settings as this repository, with the shared workflows called at a pinned SHA.
 - [x] Nothing in either public repository names or hints at a defect.
-- [x] On a fresh clone, `make up` still finishes in under 10 minutes and the app answers at `http://website.localhost:8080`, deployed by Argo CD from a CI-built image; `/version` shows the commit.
+- [x] On a fresh clone, `make up` still finishes in under 10 minutes and the app answers at `http://website.localhost:9080`, deployed by Argo CD from a CI-built image; `/version` shows the commit.
 - [x] The app's traces, per-route metrics and logs are in Grafana, and during a deploy the old and new versions can be told apart.
 - [x] A report sent from the widget appears in Loki as one structured record.
 - [x] The app's first Scorecard result is recorded.
@@ -158,7 +158,7 @@ What the milestone taught, and where each lesson now lives.
 - `git apply` inside a repository silently skips paths outside the current directory. The private repository's tools run git where it cannot see the repository around it.
 - pnpm will not run in a tree whose `node_modules` is a symbolic link, so each proof installs from the store: a second or two each.
 
-**Left open:** see the [issues](https://github.com/the-roganator/cv-software-factory/issues).
+**Left open:** see the [issues](https://github.com/the-roganator/cv-software-factory-scratch/issues).
 
 ## Out of scope
 
