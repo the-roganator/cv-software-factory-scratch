@@ -930,11 +930,12 @@ describe('platform.yml', () => {
     expect((timeline as { if?: string } | undefined)?.if).toBe(expression('always()'));
     expect(names.indexOf('Where the time went')).toBeGreaterThan(names.indexOf('Every pod running and ready'));
     // What the cluster showed, kept on every outcome but success, cancellation included, but a run the merge queue let
-    // go, which the leftover report marks so, and within a limit of its own.
+    // go, which the leftover report marks so, or one `Make the cluster`'s own limit stopped, and within a limit of its
+    // own.
     const kept = steps.find((step) => step.with?.name === 'cluster');
     expect(kept?.uses).toMatch(/^actions\/upload-artifact@/);
     expect((kept as { if?: string } | undefined)?.if).toBe(
-      expression("(failure() || cancelled()) && env.QUEUE_GONE != 'true'"),
+      expression("(failure() || cancelled()) && env.QUEUE_GONE != 'true' && env.PLATFORM_TIMED_OUT != 'true'"),
     );
     expect((kept as { 'timeout-minutes'?: number } | undefined)?.['timeout-minutes']).toBe(5);
     // Why the cluster did not come up, said by the step after it in its name, which GitHub keeps when a runner dies.
@@ -950,18 +951,22 @@ describe('platform.yml', () => {
       expression("steps.make.outcome == 'failure' && 'timed out' || 'cancelled'"),
     );
     expect(stopped?.run).toContain('[ ! -e "$RUNNER_TEMP/queue-gone" ] || exit 0');
+    // Said before the figures, so a step that runs out its own limit still skips the upload.
+    const run = stopped?.run ?? '';
+    expect(run).toContain(`[ "$WHY" != 'timed out' ] || echo "PLATFORM_TIMED_OUT=true" >> "$GITHUB_ENV"`);
+    expect(run.indexOf('PLATFORM_TIMED_OUT=true')).toBeLessThan(run.indexOf('scripts/platform-fault.sh'));
     expect(stopped?.run).toContain('scripts/platform-fault.sh "$WHY" "$RUNNER_TEMP/measure"');
     expect(stopped?.run).toContain('PLATFORM_FAULT=$line');
     const why = steps[making + 2] as { name?: string; if?: string; run?: string } | undefined;
     expect(why?.name).toBe(`Why: ${expression('env.PLATFORM_FAULT')}`);
     expect(why?.if).toBe(expression("(failure() || cancelled()) && env.PLATFORM_FAULT != ''"));
     // A cluster that has not come up fails at the watch's 12-minute ceiling, or at the step's 15 if the watch is stuck
-    // too, and the job ends at GitHub's 25 if the runner no longer answers.
+    // too, and the job ends at GitHub's 20 if the runner no longer answers.
     const limited = steps[making] as { id?: string; 'timeout-minutes'?: number } | undefined;
     expect(limited?.id).toBe('make');
     expect(limited?.['timeout-minutes']).toBe(15);
     expect(steps[making]?.run).toContain('SYNC_TIMEOUT=12m TIMEOUT=720');
-    expect((jobs.platform as { 'timeout-minutes'?: number } | undefined)?.['timeout-minutes']).toBe(25);
+    expect((jobs.platform as { 'timeout-minutes'?: number } | undefined)?.['timeout-minutes']).toBe(20);
     expect(steps[making]?.run).toContain('fault "make $status"');
     expect(steps[making]?.run).toContain('scripts/platform-fault.sh "$1" "$RUNNER_TEMP/measure"');
     expect(runs).not.toMatch(/get secrets?\b/);
