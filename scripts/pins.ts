@@ -1,16 +1,17 @@
 /**
- * The scan's making of the factory's moves that no pin's line writes (github/made.ts): vulnerabilities.yml's `pins`
- * job runs this after the scan, with the scan's state key alone, from this repository's whole checkout at the
- * workflow's commit, on a checkout of the commit the scan read.
+ * The scan's making of the moves no pin's line writes (github/made.ts): vulnerabilities.yml's `pins` job runs this
+ * after the scan, with the scan's state key alone, from this repository's whole checkout at the workflow's commit, on a
+ * checkout of the commit the scan read, in either repository.
  *
  *     node scripts/pins.ts <moves.json> <state.sealed> <checkout> <out>
  *
  * It opens the run's state for what `moves.json` withholds, as the GitHub worker does (github/scanning.ts's
- * `joined`), and makes each move of the worker's lanes that the pin step makes, grouped by the files it writes, each
- * group on a worktree of its own at that commit, in the order of `moves.json` (scripts/derive.ts), as of the scan's
- * time (`judged`): the same step the review gate runs again on main's tip, as of the same time and with the digests
- * this step was given, which it keeps. What it made is sealed with the key, for this repository and run, and written
- * to `<out>`, the artifact `pins`: it names the packages a lockfile's moves withhold.
+ * `joined`), and makes each move the pin step makes, grouped by the files it writes, each group on a worktree of its
+ * own at that commit, in the order of `moves.json` (scripts/derive.ts), as of the scan's time (`judged`): in the
+ * factory those of the worker's lanes, which the pin watch commits; in the app those of the line's, whose pin step makes
+ * them again with the digests this step was given. The review gate makes them again on main's tip, as of the same
+ * time and with the same digests. What it made is sealed with the key, for this repository and run, and written to
+ * `<out>`, the artifact `pins`: it names the packages a lockfile's moves withhold.
  *
  * It prints what it made by group and count alone, and a move the step refused by its place in `moves.json`: never a
  * package or the step's words, which the sealed file keeps for the worker's log.
@@ -25,12 +26,13 @@ import {
   type Made,
   type MadeGroup,
   type MadeStep,
+  madeByLine,
   madeByStep,
   sealMade,
   stepOf,
 } from '../apps/factory/src/github/made.ts';
 import { joined, MOVES_FILE_SCHEMA, type ReadMove } from '../apps/factory/src/github/scanning.ts';
-import { FACTORY_REPOSITORY } from '../apps/factory/src/repositories.ts';
+import { APP_REPOSITORY } from '../apps/factory/src/repositories.ts';
 import type { MovesFile } from '../apps/factory/src/vulnerabilities/moves.ts';
 import { open, readKey, STATE_KEY } from '../apps/factory/src/vulnerabilities/state.ts';
 import { askedList, lockedVersions, type Move as PinStepMove } from '../apps/runner/src/pins.ts';
@@ -43,6 +45,10 @@ delete process.env[STATE_KEY];
 /** The lanes whose moves the pin watch commits (github/pins.ts). */
 const PULL_LANES = new Set(['worker', 'cluster']);
 
+/** Whether the pin step makes a move: in the factory one the pin watch commits, in the app one the line makes. */
+const stepMakes = (move: ReadMove, app: boolean) =>
+  app ? move.lane === 'line' && madeByLine(move) : PULL_LANES.has(move.lane) && madeByStep(move);
+
 /** The most of the step's words kept for one refusal. */
 const MOST_WORDS = 4000;
 
@@ -51,9 +57,8 @@ const words = (error: unknown) => (error instanceof Error ? error.message : Stri
 /** The moves to make, by group, in the order of `moves.json`. */
 export function groupsOf(moves: readonly ReadMove[], repository: string): Map<string, ReadMove[]> {
   const out = new Map<string, ReadMove[]>();
-  if (repository !== FACTORY_REPOSITORY) return out;
   for (const move of moves) {
-    if (!PULL_LANES.has(move.lane) || !madeByStep(move)) continue;
+    if (!stepMakes(move, repository === APP_REPOSITORY)) continue;
     const key = groupKey(groupOf(move));
     out.set(key, [...(out.get(key) ?? []), move]);
   }
@@ -82,7 +87,8 @@ function stepsOf(
 
 /**
  * Makes one group's moves on a worktree of the checkout at its commit, as of the scan's time (`asOf`), keeping each
- * digest a tag was found at.
+ * digest a tag was found at. The factory's checkout is a workspace whose projects name each other; the app's is held to
+ * the registry, as its line's and the gate's are.
  */
 export async function makeGroup(
   checkout: string,
@@ -120,7 +126,7 @@ export async function makeGroup(
       steps.map(({ step }) => step),
       {
         work: own,
-        workspace: true,
+        workspace: (moves[0] as ReadMove).repository !== APP_REPOSITORY,
         token: process.env.GH_TOKEN,
         asOf,
         asked,
@@ -174,7 +180,7 @@ async function main(argv: string[]) {
       rmSync(work, { recursive: true, force: true });
     }
   }
-  if (!groups.length) console.log('No move of the day is one the pin step makes for the pin watch.');
+  if (!groups.length) console.log('No move of the day is one the pin step makes.');
   const made: Made = { version: MADE_VERSION, repository, run, commit, groups };
   writeFileSync(out, sealMade(made, key));
 }

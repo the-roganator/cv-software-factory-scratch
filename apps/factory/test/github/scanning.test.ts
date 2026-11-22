@@ -53,9 +53,14 @@ interface Day {
   stateExpires?: string;
   /** GitHub refuses the App the runs: it lacks `actions: read`. */
   refuse?: boolean;
+  /** What the run's pin step made, sealed with the test's key: none where it made none. */
+  pins?: Buffer;
 }
 
-/** One run's two artifacts: each one's listing, the link GitHub answers its download with, and its archive. */
+/**
+ * One run's artifacts: each one's listing, the link GitHub answers its download with, and its archive; `pins` only
+ * where the day has one.
+ */
 function artifactRoutes(run: number, ids: { moves: number; state: number }, day: Day): Route[] {
   const listed = (id: number, name: string, expires?: string) => ({
     total_count: 1,
@@ -90,6 +95,12 @@ function artifactRoutes(run: number, ids: { moves: number; state: number }, day:
       'state',
       () => day.archive ?? archived(seal(day.state ?? { ...state(), run: String(run) }, KEY)),
     ),
+    {
+      method: 'GET',
+      path: artifactsPath(run, 'pins'),
+      answer: () => ({ body: day.pins ? listed(81, 'pins') : { total_count: 0, artifacts: [] } }),
+    },
+    ...download(81, 'pins', () => zipOf({ 'pins.sealed': day.pins ?? Buffer.alloc(0) })),
   ];
 }
 
@@ -158,7 +169,7 @@ describe('the scan’s moves', () => {
     );
     const [image] = (await read({ state: more })).moves;
     expect(Object.keys(image?.findings[0] ?? {}).sort()).toEqual(
-      ['advisory', 'file', 'firstSeen', 'fix', 'fixed', 'installed', 'line', 'package', 'severity'].sort(),
+      ['advisory', 'file', 'firstSeen', 'fix', 'fixed', 'installed', 'line', 'package', 'severity', 'type'].sort(),
     );
     expect(JSON.stringify(image)).not.toMatch(/invented advisory|2026-10-31/);
   });
@@ -922,32 +933,12 @@ describe('the moves the scan made with the pin step, in the factory', () => {
       runs: swap(fixture('runs.json')),
       moves: swap({ ...fixture('moves.json'), run: String(RUN) }),
       state: swap({ ...state(), run: String(RUN) }),
+      ...(pins && { pins }),
     };
-    const listed = {
-      total_count: pins ? 1 : 0,
-      artifacts: pins ? [{ ...fixture('artifacts.json').artifacts[0], id: 81, name: 'pins' }] : [],
-    };
-    const all: Route[] = [
-      ...routes(day).map((route) => ({
-        ...route,
-        path: typeof route.path === 'string' ? route.path.replaceAll(REPO, FACTORY_REPOSITORY) : route.path,
-      })),
-      {
-        method: 'GET',
-        path: artifactsPath(RUN, 'pins').replace(REPO, FACTORY_REPOSITORY),
-        answer: () => ({ body: listed }),
-      },
-      {
-        method: 'GET',
-        path: `/repos/${FACTORY_REPOSITORY}/actions/artifacts/81/zip`,
-        answer: () => ({ status: 302, headers: { location: 'https://storage.test/artifact/81/pins.zip?sig=x' } }),
-      },
-      {
-        method: 'GET',
-        path: '/artifact/81/pins.zip?sig=x',
-        answer: () => ({ body: zipOf({ 'pins.sealed': pins ?? Buffer.alloc(0) }) }),
-      },
-    ];
+    const all: Route[] = routes(day).map((route) => ({
+      ...route,
+      path: typeof route.path === 'string' ? route.path.replaceAll(REPO, FACTORY_REPOSITORY) : route.path,
+    }));
     return new LiveReads(client(all, sent).github, undefined, { stateKeys: keys }).moves(FACTORY_REPOSITORY);
   }
 
@@ -955,6 +946,16 @@ describe('the moves the scan made with the pin step, in the factory', () => {
     const read = await factoryRead(sealMade(made(), KEY));
     expect(read.made?.groups[0]?.steps[0]?.name).toBe('@example/tokens');
     expect((await factoryRead(undefined)).made).toBeUndefined();
+  });
+
+  it('come with the app’s day too, for its line’s pin step to make its moves with (S2-M1)', async () => {
+    const asked = [
+      { image: 'gcr.io/distroless/nodejs24-debian13', tag: 'nonroot', digest: `sha256:${'4'.repeat(64)}` },
+    ];
+    const group = { ...(made().groups[0] as Made['groups'][number]), moves: [1], steps: [], asked };
+    const pins = sealMade(made({ repository: REPO, groups: [group] }), KEY);
+    const day = { moves: { ...(fixture('moves.json') as object), run: String(RUN) }, pins };
+    expect((await read(day)).made?.groups[0]?.asked).toEqual(asked);
   });
 
   it('fail the read when sealed for another run, made on another commit, or naming a move past the list', async () => {

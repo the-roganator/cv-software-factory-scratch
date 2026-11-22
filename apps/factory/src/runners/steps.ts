@@ -39,7 +39,6 @@ import type { Handback, Step } from '../../../runner/src/step.ts';
 
 export type { Handback, Step };
 
-import type { MadeAs } from '../github/made-as.ts';
 import { changesManifest, LOCKFILES, PNPM_SETTINGS, pathsIn } from '../github/paths.ts';
 import {
   agentJob,
@@ -102,8 +101,6 @@ export type StepOutcome =
       handback: Handback;
       /** The pin step's patch, made before the agent ran, which the agent's patch goes on: a dependency's move. */
       pins?: string;
-      /** How the pin step made it, for the review gate to make it again so (`MadeAs`). */
-      made?: MadeAs;
       /** The lockfile the pin step wrote after the agent's patch changed a manifest, which goes on that patch. */
       lockfile?: string;
     }
@@ -111,7 +108,7 @@ export type StepOutcome =
    * The pin step wrote the move's pins, and no agent ran, as the step asked (`pinsOnly`). Empty, whatever the step
    * asked, when the checkout has the move already.
    */
-  | { kind: 'pinned'; job: string; pins: string; made?: MadeAs }
+  | { kind: 'pinned'; job: string; pins: string }
   /** The move's pins need a file only Martin may change: no agent ran. */
   | { kind: 'held'; job: string; path: string; reason: string }
   /** The prepare or agent pod failed, or ran out of time, without handing anything back. */
@@ -260,7 +257,6 @@ export class Runners {
     if (this.#stopped.has(job)) return { kind: 'stopped', job };
     if (prepared !== 'succeeded') return { kind: 'failed', job, reason: `The prepare pod ${prepared}.` };
     let pins: string | undefined;
-    let made: MadeAs | undefined;
     if (step.move) {
       const said = await this.#printed(`${job}-prepare`, ['the pins', 'the pins wait for Martin']);
       if (this.#stopped.has(job)) return { kind: 'stopped', job };
@@ -275,10 +271,8 @@ export class Runners {
       // A move the checkout already has writes nothing: it is made, and no agent builds on a move that is not there.
       if (!said.pins) return { kind: 'pinned', job, pins: '' };
       pins = said.pins;
-      // A pin step that does not say how it made the move leaves the gate to make it again as of its own time.
-      made = MADE.safeParse(said.made).data;
       log.info({ job, workItem, files: pathsIn(pins).length }, 'the pin step wrote the pins');
-      if (pinsOnly) return { kind: 'pinned', job, pins, ...(made ? { made } : {}) };
+      if (pinsOnly) return { kind: 'pinned', job, pins };
     }
 
     const handedBack = new Promise<Handback>((resolve) => this.#waiting.set(job, resolve));
@@ -318,7 +312,6 @@ export class Runners {
         job,
         handback,
         ...(pins ? { pins } : {}),
-        ...(pins && made ? { made } : {}),
         ...(written ? { lockfile: written } : {}),
       };
     }
@@ -579,19 +572,6 @@ function traceOf(active: Context): { traceparent?: string } {
 
 /** What the prepare pod prints when the pins wait for Martin: the file he alone may change, and why. */
 const HELD = z.strictObject({ path: z.string().min(1).max(200), reason: z.string().min(1).max(4000) });
-/** How the pin step made a move, as it prints it: held to what the commit's trailers can say (`made-as.ts`). */
-const MADE = z.strictObject({
-  at: z.iso.datetime(),
-  asked: z
-    .array(
-      z.strictObject({
-        image: z.string().regex(/^[^\s\p{Cc}@]{1,512}$/u),
-        tag: z.string().regex(/^[\w][\w.-]{0,127}$/),
-        digest: z.string().regex(/^sha256:[0-9a-f]{64}$/),
-      }),
-    )
-    .max(40),
-});
 
 /** Whether a patch changes a lockfile or pnpm's settings, which the pin step does not resolve a manifest with. */
 const touchesSettings = (patch: string): boolean =>

@@ -210,7 +210,7 @@ const filesOf = (move: Pick<ReadMove, 'pins'>) => [...new Set(move.pins.map((pin
  * move the pin step makes is grouped by what it writes whole (`writtenBy`): the lockfile, with an image that brings
  * its library there; mise's files; an image's Dockerfiles, with the Node it brings.
  */
-export const branchOf = (move: Pick<ReadMove, 'pins' | 'major' | 'clears' | 'lockfile' | 'name' | 'to'>): string =>
+export const branchOf = (move: Pick<ReadMove, 'pins' | 'major' | 'findings' | 'lockfile' | 'name' | 'to'>): string =>
   pinBranchFor(madeByStep(move) ? writtenBy(move) : filesOf(move), namedMajor(move));
 
 /** A move's name as code in a description: no backtick, no line break. */
@@ -309,7 +309,7 @@ const editsOf = (carried: readonly Carried[]): PinEdit[] =>
 /** How a pull request merges, in its description: by the gate's rule for it, and what is Martin's after. */
 function mergesBy(carried: readonly Carried[]): string {
   const merges = carried.some(({ move }) => namedMajor(move))
-    ? 'It crosses a major and clears no Critical, so the review gate passes it as `major` when it is exactly the scan’s moves. The worker adds a `major` to the merge queue at Lights-out; at any other level it waits for you: read what the new major changes, then add it to the queue or close it.'
+    ? 'It crosses a major and clears no Critical by Trivy’s own rating, so the review gate passes it as `major` when it is exactly the scan’s moves. The worker adds a `major` to the merge queue at Lights-out; at any other level it waits for you: read what the new major changes, then add it to the queue or close it.'
     : 'The review gate passes it as `move` when it is exactly the scan’s moves, which the gate makes itself on main and compares with this pull request, and the worker then adds it to the merge queue once its checks are green and the autonomy level queues a move. If anything differs, its `review` check says what: your approval of its head passes it, and adding it to the queue is yours.';
   // k3s merges as any move; only the cluster's own command applies it.
   const cluster = carried.some(({ move }) => move.lane === 'cluster')

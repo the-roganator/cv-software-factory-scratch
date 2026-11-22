@@ -180,6 +180,14 @@ describe('what a published text may not do from the App’s account', () => {
     expect(mentionsIn(scopedNamesInCode(folded))).toEqual([]);
     expect(mentionsIn('<summary>Thanks `@mrogan` and <code>@coded</code></summary>')).toEqual(['@mrogan']);
   });
+
+  it('finds a mention in an HTML block that a `<code>` in a comment or an attribute seems to hide', () => {
+    expect(mentionsIn('<div><!-- <code> --> @someone <!-- </code> --></div>')).toEqual(['@someone']);
+    expect(mentionsIn('<div><span title="<code>">@someone</span><span title="</code>"></span></div>')).toEqual([
+      '@someone',
+    ]);
+    expect(mentionsIn('<div>@someone</div>')).toEqual(['@someone']);
+  });
 });
 
 describe('an agent’s step', () => {

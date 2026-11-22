@@ -75,6 +75,18 @@ const MAIN: Record<string, string> = {
 };
 
 const counts = (critical = 0) => ({ CRITICAL: critical, HIGH: 1, MEDIUM: 0, LOW: 0, UNKNOWN: 0 });
+/** A finding a move clears as the state gives it: Trivy's rating (`severity`) and its type of the result. */
+const critical = (trivy: 'CRITICAL' | 'HIGH' = 'CRITICAL', type = 'helm'): ScanMove['findings'][number] => ({
+  advisory: 'CVE-2026-0001',
+  severity: trivy,
+  type,
+  package: 'loki',
+  installed: '18.13.7',
+  file: LOKI,
+  line: 6,
+  fix: 'chart loki 21.2.3 (a major)',
+  firstSeen: '2026-11-10T06:00:00Z',
+});
 let index = 0;
 /** One of the scan's moves, as the worker's read gives it. */
 const move = (over: Partial<ScanMove>): ScanMove => ({
@@ -213,10 +225,23 @@ describe('a move: the scan’s moves, made by the gate on main, the same as the 
     const moved = change({ [LOKI]: swap(LOKI, '18.13.7', '21.2.3') });
     expect(await prove(moved)).toMatchObject({
       rule: 'major',
-      title: expect.stringContaining('a major that clears no Critical: loki'),
+      title: expect.stringContaining('a major that clears no Critical by Trivy’s rating: loki'),
     });
-    const clearing = SCAN.map((m) => (m.name === 'loki' ? { ...m, clears: counts(1) } : m));
+    const clearing = SCAN.map((m) => (m.name === 'loki' ? { ...m, clears: counts(1), findings: [critical()] } : m));
     expect(await prove(moved, clearing)).toMatchObject({ rule: 'move' });
+  });
+
+  it('names a major `major` when its only Critical is its publisher’s, or Node’s own', async () => {
+    const moved = change({ [LOKI]: swap(LOKI, '18.13.7', '21.2.3') });
+    // The move counts a Critical, by the publisher's rating; Trivy rated the finding High.
+    const published = SCAN.map((m) =>
+      m.name === 'loki' ? { ...m, clears: counts(1), findings: [critical('HIGH')] } : m,
+    );
+    expect(await prove(moved, published)).toMatchObject({ rule: 'major' });
+    const nodes = SCAN.map((m) =>
+      m.name === 'loki' ? { ...m, clears: counts(1), findings: [critical('CRITICAL', 'node')] } : m,
+    );
+    expect(await prove(moved, nodes)).toMatchObject({ rule: 'major' });
   });
 
   it('passes several of the day’s moves in one pull request, Kyverno’s own among them (test 5)', async () => {

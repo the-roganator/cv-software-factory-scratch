@@ -430,6 +430,12 @@ describe('the pin guard, for what a file the pin step wrote holds', () => {
     `[tools.node."platforms.linux-x64"]\nchecksum = "${sha(sum)}"\n` +
     `url = "https://nodejs.org/dist/v${version}/node-v${version}-linux-x64.tar.gz"\n\n`;
   const PNPM = '[[tools.pnpm]]\nversion = "12.1.0"\nbackend = "aqua:pnpm/pnpm"\n';
+  const tool = (version: string, asset: number, repository = 'argoproj/argo-cd') =>
+    `[[tools.argocd]]\nversion = "${version}"\nbackend = "aqua:argoproj/argo-cd"\n\n` +
+    `[tools.argocd."platforms.linux-x64"]\nchecksum = "${sha(String(asset % 10))}"\n` +
+    `url = "https://github.com/${repository}/releases/download/v${version}/argocd-linux-amd64"\n` +
+    `url_api = "https://api.github.com/repos/argoproj/argo-cd/releases/assets/${asset}"\n\n`;
+  const TOOL_LOCK = `lockfile_version = 3\n\n${tool('3.6.1', 701)}`;
   const MISE_LOCK = `# @generated\n\nlockfile_version = 3\n\n${node('24.22.2', 'a')}${PNPM}`;
   const MANIFEST = '{\n  "name": "app",\n  "dependencies": {\n    "example-a": "^1.0.0"\n  }\n}\n';
 
@@ -452,6 +458,9 @@ describe('the pin guard, for what a file the pin step wrote holds', () => {
         MISE_LOCK,
         MISE_LOCK.replace('12.1.0', '12.2.0').replace(node('24.22.2', 'a'), node('24.23.0', 'b')),
       ),
+    ).toBeUndefined();
+    expect(
+      madeRefusal('mise.lock', TOOL_LOCK, TOOL_LOCK.replace(tool('3.6.1', 701), tool('3.6.2', 702))),
     ).toBeUndefined();
     const lock = 'packages:\n\n  example-a@1.0.0:\n    resolution: {integrity: sha512-a}\n';
     expect(
@@ -531,6 +540,30 @@ describe('the pin guard, for what a file the pin step wrote holds', () => {
       MISE_LOCK,
       MISE_LOCK.replace('https://nodejs.org', 'https://evil.example'),
       /from https:\/\/evil\.example/,
+    ],
+    [
+      'a download moved to another repository on the same host',
+      'mise.lock',
+      TOOL_LOCK,
+      TOOL_LOCK.replace(tool('3.6.1', 701), tool('3.6.2', 702, 'someone-else/argo-cd')),
+      /from https:\/\/github\.com\/someone-else\/argo-cd\//,
+    ],
+    [
+      'a download that climbs out of its repository',
+      'mise.lock',
+      TOOL_LOCK,
+      TOOL_LOCK.replace(
+        tool('3.6.1', 701),
+        tool('3.6.2', 702, 'argoproj/argo-cd/releases/download/v3.6.2/../../../../../evil/x'),
+      ),
+      /from https:\/\/github\.com\/evil\/x\//,
+    ],
+    [
+      'an asset of another repository',
+      'mise.lock',
+      TOOL_LOCK,
+      TOOL_LOCK.replace(tool('3.6.1', 701), tool('3.6.2', 702).replace('repos/argoproj/argo-cd', 'repos/evil/argo-cd')),
+      /from https:\/\/api\.github\.com\/repos\/evil\/argo-cd/,
     ],
     [
       'a section that is not the tool’s',
