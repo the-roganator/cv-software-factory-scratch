@@ -3,9 +3,9 @@
  * local profile's deploy pin, and each of the pin watch's pull requests the gate passed as a move. The deploy watch (`deploys.ts`) opens and
  * moves the factory's own deploy pull request, which the review gate passes as an exact pin (`exact-pin`: every changed
  * line a digest under `deploy/`, each image signed by `build.yml` on main, from a commit ahead of the pin it replaces);
- * the pin watch (`pins.ts`) opens one pull request for the vulnerability scan's moves at each file, which the gate passes as
- * a move (`move`, or `major` for one across a major that clears no Critical) when it is exactly the scan's moves, which
- * the gate makes itself. These watches add each to the queue, so a pin the gate passed reaches `main` with nobody's hand
+ * the pin watch (`pins.ts`) opens one pull request for the vulnerability scan's moves at each set of files, which the
+ * gate passes as a move (`move`, or `major` for one across a major that clears no Critical) when it is exactly the
+ * scan's moves, which the gate makes itself. These watches add each to the queue, so a pin the gate passed reaches `main` with nobody's hand
  * on it: the deploy pin at every autonomy level, as it runs only what Martin already merged, and a move only when the
  * level in force allows its rule and auto-merge is on (`enqueues`, `policy/line.ts`, read as `level.ts` reads them), as the line's are. The app's deploy pull request is the line's, within
  * Martin's autonomy level and auto-merge (`line/deploy.ts`); a pull request the gate held, even one Martin then

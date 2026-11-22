@@ -28,9 +28,10 @@
 #   alert dismissed as won't fix, and any dismissed with no exception in force reopened (alerts.ts). Then the run
 #   fails on a new High or Critical with a fix, one due within a day, or one past its deadline, its last lines naming
 #   the moves that hold them. One scan at a time uploads, so no two uploads' alerts interleave.
-# - pins: needs scan, in this repository alone. The moves no pin's line writes (a lockfile's package, what mise pins),
-#   made by the pin step on the commit the scan read and sealed with the scan's key, the artifact `pins`, for the
-#   GitHub worker's pin watch to commit (scripts/pins.ts); the review gate makes them again on main.
+# - pins: needs scan, in this repository alone. The moves no pin's line writes (a lockfile's package, what mise pins, an
+#   image that brings another pin with it), made by the pin step on the commit the scan read and sealed with the scan's
+#   key, the artifact `pins`, for the GitHub worker's pin watch to commit (scripts/pins.ts); the review gate makes them
+#   again on main.
 # - scan proof: on a pull request that changes the scan or the graph, the same scan of the base's checkout, with no
 #   permission to upload: it fails as the real one would, on an unreadable item, a stale database, or the proof image
 #   not showing CVE-2026-111497, and its log carries the counts, the deadlines' and the moves' too, read against the
@@ -373,13 +374,14 @@ jobs:
           APP_REPOSITORY: ${{ vars.APP_REPOSITORY }}
         run: node factory/apps/factory/src/vulnerabilities/deadlines.ts --verdict "$RUNNER_TEMP/scan"
 
-  # The factory's moves no pin's line writes (a lockfile's package, what mise pins), made by the pin step on the commit
-  # the scan read, for the GitHub worker's pin watch to commit (scripts/pins.ts, apps/factory/src/github/made.ts). It
-  # runs whatever the scan's verdict, once the scan kept its moves and its state, in this repository alone: the app's
-  # moves are its line's. It holds the scan's key, to open the state for the packages `moves.json` withholds and to seal
-  # what it made, which names them, as the artifact `pins`. The key goes to one step, which reads it and takes it out
-  # of the environment before pnpm or mise runs; the scanned checkout is data, and pnpm runs on it with no script, no
-  # pnpmfile and no `.npmrc` of its own (apps/runner/src/pins.ts). The review gate makes the same moves again on main.
+  # The factory's moves no pin's line writes (a lockfile's package, what mise pins, an image that brings another pin
+  # with it), made by the pin step on the commit the scan read, for the GitHub worker's pin watch to commit
+  # (scripts/pins.ts, apps/factory/src/github/made.ts). It runs whatever the scan's verdict, once the scan kept its
+  # moves and its state, in this repository alone: the app's moves are its line's. It holds the scan's key, to open the
+  # state for the packages `moves.json` withholds and to seal what it made, which names them, as the artifact `pins`.
+  # The key goes to one step, which reads it and takes it out of the environment before pnpm or mise runs; the scanned
+  # checkout is data, and pnpm runs on it with no script, no pnpmfile and no `.npmrc` of its own
+  # (apps/runner/src/pins.ts). The review gate makes the same moves again on main.
   pins:
     name: pins
     needs: scan
