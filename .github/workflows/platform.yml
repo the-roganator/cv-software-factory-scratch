@@ -84,6 +84,8 @@ jobs:
     timeout-minutes: 45
     permissions:
       contents: read
+      # TEMPORARY, the scratch copy's alone (staged/factory/16-platform-heartbeat.patch): the heartbeat's commit statuses.
+      statuses: write
     steps:
       - name: Refuse a privileged context
         run: |
@@ -124,6 +126,97 @@ jobs:
       # does not record, or a .pnpmfile.cjs, would run here, before the cluster, with $GITHUB_PATH in reach. The job needs
       # no install script (lefthook's prepare included), and allows no dependency's build.
       - run: pnpm install --frozen-lockfile --ignore-scripts --ignore-pnpmfile
+      # TEMPORARY, in the scratch copy alone (staged/factory/16-platform-heartbeat.patch, which deleting takes out): what
+      # the runner sees while the cluster comes up, sent off it every 30 seconds as two commit statuses on the run's head,
+      # so a runner that hangs leaves its last lines with GitHub: contexts `platform heartbeat <run id>-<attempt> net` and
+      # `… pull`, each at most the 140 characters a status holds. Each starts `#<beat> <m:ss>`. Then:
+      #   net   post <the last beat's posts: ok|refused> | host ghcr <code> quay <code> pkg <code> res <code> dns <ok|no> |
+      #         node ghcr <r> quay <r> pkg <r> dns <ok|no> | di <s> dm <s>
+      #   pull  argocd <each pod not running, its status and age> <n> up | dl <containerd's downloads in flight>
+      #         <moving|still|none> | cd <the newest containerd log line naming the image or its mirror path, cut to fit>
+      # host: an HTTPS GET from the runner of ghcr.io/v2/, quay.io/v2/, pkg-containers.githubusercontent.com (where GHCR's
+      # layers come from) and the results service (ACTIONS_RESULTS_URL's host when the step has it), 000 for no answer in
+      # 3 seconds. node: the same registries from inside the k3d server node, by its busybox wget, which has no TLS, so a
+      # plain request to port 443: ok (it connected, and a server answered or hung up), to (nothing in 4 seconds), no
+      # (no connection), dns (no address).
+      # di and dm: the seconds `docker info` and `sudo dmesg` take, cut at 5 (`!` when cut): the two calls
+      # scripts/platform-fault.sh makes that this loop does not otherwise.
+      # Helm's --debug goes to `Make the cluster`'s log (HELM_DEBUG), the node's pull log to measure/pulls.log, and the
+      # last step prints both. It never fails or slows a step: it runs beside them, niced, every probe is bounded, a post
+      # GitHub refuses is passed over, and it sends only what it measured, never the environment or a URL's path.
+      - name: Heartbeat
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          CONTEXT: platform heartbeat ${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          echo "HELM_DEBUG=true" >> "$GITHUB_ENV"
+          cat > "$RUNNER_TEMP/heartbeat.sh" <<'BEAT'
+          set -u
+          M=$RUNNER_TEMP/measure P=$RUNNER_TEMP/heartbeat-probes
+          mkdir -p "$P"
+          began=$SECONDS n=0 before='' last=-
+          # The results service's host alone, never its path or a query.
+          results=${ACTIONS_RESULTS_URL:-https://results-receiver.actions.githubusercontent.com/}
+          results=${results#*://} results=${results%%/*}
+          kube() { timeout -k 1 6 kubectl --context k3d-software-factory --request-timeout=4s "$@" 2>/dev/null; }
+          probe() { curl -s -o /dev/null -m 3 -w '%{http_code}' "$1" 2>/dev/null || true; }
+          # Seconds a call takes, cut at 5, with `!` when cut.
+          took() { local s=$SECONDS r; timeout -k 1 5 "$@" >/dev/null 2>&1; r=$?; [ $r -eq 124 ] || [ $r -eq 137 ] && echo "$((SECONDS - s))!" || echo "$((SECONDS - s))"; }
+          # Run inside the node: each registry by plain HTTP to its port 443, then the node's own name lookup.
+          inside='for h in ghcr.io quay.io pkg-containers.githubusercontent.com; do
+            o=$(timeout 4 wget -q -O /dev/null -T 3 "http://$h:443/" 2>&1); r=$?
+            case "$o" in *"getting response"* | *"returned error"*) s=ok ;; *"bad address"*) s=dns ;; *"t connect"* | *refused* | *unreachable*) s=no ;; *) s=ok ;; esac
+            case $r in 124 | 137 | 143) s=to ;; esac
+            printf "%s " "$s"
+          done
+          nslookup quay.io >/dev/null 2>&1 && echo ok || echo no'
+          post() { timeout 15 gh api -X POST "repos/$GITHUB_REPOSITORY/statuses/$HEAD_SHA" -f state=success \
+            -f context="$CONTEXT $1" -f description="${2:0:140}" >/dev/null 2>&1; }
+          while [ ! -e "$RUNNER_TEMP/heartbeat-stop" ] && [ $((SECONDS - began)) -lt 3600 ]; do
+            beat=$SECONDS n=$((n + 1)) t=$((SECONDS - began))
+            at="#$n $((t / 60)):$(printf %02d $((t % 60)))"
+            # The host's probes at once, each in a file of its own.
+            for h in ghcr=https://ghcr.io/v2/ quay=https://quay.io/v2/ pkg=https://pkg-containers.githubusercontent.com/ \
+              res="https://$results/"; do probe "${h#*=}" >"$P/${h%%=*}" & done
+            node=$(timeout 5 docker ps --filter label=k3d.role=server --format '{{.Names}}' 2>/dev/null | head -1)
+            inner='- - - -' active='' cd=-
+            # The path of the image the first pending pod waits on (`argoproj/argocd`), as containerd's log names it.
+            pending='{range .items[?(@.status.phase=="Pending")]}{.spec.containers[0].image}{"\n"}{end}'
+            want=$({ kube -n argocd get pods -o jsonpath="$pending"; kube get pods -A -o jsonpath="$pending"; } | head -1)
+            want=${want%%[@:]*} want=${want#*/} want=${want#*mirror/*/}
+            want=${want:-argoproj/argocd}
+            if [ -n "$node" ]; then
+              inner=$(timeout -k 1 15 docker exec "$node" sh -c "$inside" 2>/dev/null) || inner=${inner:-'- - - -'}
+              active=$(timeout -k 1 5 docker exec "$node" ctr -n k8s.io content active 2>/dev/null | awk 'NR > 1 { printf "%s ", $2 }')
+              # containerd's newest word on the image (or its mirror path), and the node's pull log for a runner that lives.
+              timeout -k 1 5 docker exec "$node" sh -c \
+                'grep -iE "pull|fetch|resolv|mirror|host|argoproj" /var/lib/rancher/k3s/agent/containerd/containerd.log | tail -300' \
+                >"$M/pulls.log" 2>/dev/null
+              cd=$(grep -F "$want" "$M/pulls.log" 2>/dev/null | tail -1 |
+                sed -E 's/^time="[0-9-]+T([0-9:]+)[^"]*" level=[a-z]+ /\1 /; s/msg=//; s/[\\"]//g; s/ +/ /g')
+            fi
+            active=${active% }
+            if [ -z "$active" ]; then moving=none; elif [ "$active" = "$before" ]; then moving=still; else moving=moving; fi
+            before=$active
+            argo=$(kube -n argocd get pods --no-headers | awk '{ n = $1; sub(/^argocd-/, "", n); sub(/-[a-z0-9]+$/, "", n)
+              if (n ~ /-[a-z0-9]*[0-9][a-z0-9]*$/) sub(/-[a-z0-9]+$/, "", n)
+              if ($3 == "Running" || $3 == "Completed") up++; else printf "%s %s %s, ", n, $3, $NF } END { printf "%d up", up }')
+            di=$(took docker info) dm=$(took sudo -n dmesg)
+            dns=no; timeout 2 getent hosts quay.io >/dev/null 2>&1 && dns=ok
+            wait
+            read -r ng nq np nd <<<"$inner"
+            net="$at post $last | host ghcr $(<"$P/ghcr") quay $(<"$P/quay") pkg $(<"$P/pkg") res $(<"$P/res") dns $dns | node ghcr ${ng:--} quay ${nq:--} pkg ${np:--} dns ${nd:--} | di $di dm $dm"
+            pull="$at argocd ${argo:-none} | dl ${active:-0} $moving | cd ${cd:--}"
+            net=${net//$'\n'/ } pull=${pull//$'\n'/ }
+            if post net "$net" && post pull "$pull"; then last=ok; else last=refused; fi
+            printf '%s %s\n%s %s\n' "$(date -u +%T)" "${net:0:140}" "$(date -u +%T)" "${pull:0:140}"
+            sleep $((beat + 30 > SECONDS ? beat + 30 - SECONDS : 1))
+          done
+          BEAT
+          nohup setsid nice -n 10 bash "$RUNNER_TEMP/heartbeat.sh" >"$RUNNER_TEMP/measure/heartbeat.log" 2>&1 </dev/null &
+          echo "Every 30 seconds, as commit statuses on $HEAD_SHA, contexts \"$CONTEXT net\" and \"$CONTEXT pull\":"
+          echo "  gh api repos/$GITHUB_REPOSITORY/commits/$HEAD_SHA/statuses --paginate --jq '.[] | select(.context | startswith(\"$CONTEXT \")) | \"\\(.created_at) \\(.description)\"'"
       # `make up`, at the change's commit, pulling each third-party image from CI's copy in GHCR where there is one
       # (deploy/k3d/ci-registries.yaml), with none of the keys it would take from the Keychain, which the runner has
       # not: every Secret they make is optional, so the cluster comes up whole without them, and opens nothing. A key of
@@ -266,3 +359,14 @@ jobs:
           name: cluster
           path: ${{ runner.temp }}/measure
           if-no-files-found: warn
+      # TEMPORARY, with the heartbeat above (staged/factory/16-platform-heartbeat.patch): it stops, and what it saw and
+      # the node's pull log are printed, for a hang whose runner lives.
+      - name: What the heartbeat saw
+        if: ${{ always() }}
+        timeout-minutes: 2
+        run: |
+          touch "$RUNNER_TEMP/heartbeat-stop"
+          echo "--- The heartbeat, each line as it was sent"
+          cat "$RUNNER_TEMP/measure/heartbeat.log" 2>/dev/null || true
+          echo "--- The node's pull log (containerd)"
+          cat "$RUNNER_TEMP/measure/pulls.log" 2>/dev/null || true
