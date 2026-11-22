@@ -1,7 +1,7 @@
 /**
- * The pin watch (task 33): one pull request of the App's for the day's moves at one file, which replaces the version or
- * digest at each of their pins and changes nothing else; for each move the App cannot write, one issue. Beside the
- * deploy watch (`deploys.ts`), and like it the App's.
+ * The pin watch (task 33): one pull request of the App's for the day's moves at one set of files, which replaces the
+ * version or digest at each of their pins and changes nothing else; for each move the App cannot write, one issue.
+ * Beside the deploy watch (`deploys.ts`), and like it the App's.
  *
  * Each pass, at most hourly, it reads the scan's day (`reads.moves`: the last finished run of `vulnerabilities.yml` on
  * `main`, its `moves.json` checked against the state the scan kept), and then:

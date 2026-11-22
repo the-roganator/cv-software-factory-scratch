@@ -24,7 +24,7 @@
  *                                     user's cache)
  *     ATTACK_PORT                     the red-team harness's attack door, on a port of its own (github/attacks.ts);
  *                                     unset, it is not served
- *     PATCHING_PORT                   the dependency sense's door, on a port of its own: its two reads, and no
+ *     PATCHING_PORT                   the dependency sense's door, on a port of its own: its one read, and no
  *                                     action (server.ts's PATCHING_READS); unset, it is not served
  *     PGHOST, PGDATABASE, PGUSER,     the store, as factory_github, which reads Martin's controls and nothing else:
  *     PGPASSWORD                      the autonomy level and auto-merge decide which moves the pin queue adds
