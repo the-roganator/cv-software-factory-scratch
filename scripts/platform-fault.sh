@@ -6,8 +6,9 @@
 #
 #   platform-fault.sh <why> <measure>
 #
-# <why> is what stopped the cluster: `make <status>` or `watch`. <measure> is the job's measure directory: `memory`
-# (Measure's memory in use, MiB, every five seconds), `make.log` (make's output) and `watch.log` (the watch's). The line:
+# <why> is what stopped the cluster: `make <status>`, `watch`, or, said by the step after it, `timed out` (the step's own
+# limit) or `cancelled`. <measure> is the job's measure directory: `memory` (Measure's memory in use, MiB, every five
+# seconds), `make.log` (make's output) and `watch.log` (the watch's). The line:
 #
 #   <why> | mem <now>/<peak>M swap <used>M | disk <use> | oom <kills> | net ghcr <code> gh <code> dns <ok|no> |
 #   docker <ok|no> | pod <the first not running: namespace/name status age> | <make's or the watch's last words>
