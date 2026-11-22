@@ -62,3 +62,5 @@ Every change is a pull request, squash-merged into `main` once the required chec
 - [Security](SECURITY.md): reporting a vulnerability privately
 
 [MIT licence](LICENSE)
+
+<!-- scratch: 2026-11-22T02:45:51Z, a commit through the merge queue for the deploy pull request's base -->
