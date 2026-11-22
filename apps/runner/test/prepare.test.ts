@@ -286,6 +286,46 @@ describe('the prepare step, on a dependency’s work item', () => {
     expect(git('status', '--porcelain', '--', 'Dockerfile')).toBe('');
   });
 
+  it('takes a package at two versions as the dependency sense sends it, and moves each copy', async () => {
+    // semver twice, neither copy any importer's, so the install after the pins fetches nothing.
+    const lock = (older: string, newer: string) =>
+      `lockfileVersion: '9.0'\n\nsettings:\n  autoInstallPeers: true\n  excludeLinksFromLockfile: false\n\nimporters:\n\n  .: {}\n\npackages:\n\n  semver@${older}:\n    resolution: {integrity: sha512-a}\n\n  semver@${newer}:\n    resolution: {integrity: sha512-b}\n\nsnapshots:\n\n  semver@${older}: {}\n\n  semver@${newer}: {}\n`;
+    const { url, commit } = originWith({ 'pnpm-lock.yaml': lock('5.7.1', '7.5.1') });
+    const move = { ecosystem: 'npm', name: 'semver', from: '5.7.1,7.5.1', to: '5.7.2,7.5.2' };
+    const { work, env } = envFor(url, commit, move);
+    const updates: string[][] = [];
+    const pnpm = async (dir: string, args: string[]) => {
+      updates.push(args);
+      writeFileSync(join(dir, 'pnpm-lock.yaml'), lock('5.7.2', '7.5.2'));
+    };
+    const lines: string[] = [];
+    await prepare(env, (line) => lines.push(line), { pnpm });
+    const said = lines.map((line) => JSON.parse(line));
+    const pins = said.find((line) => line.msg === 'the pins');
+    expect(pins).toMatchObject({ move });
+    expect(pins.pins).toContain('+  semver@5.7.2:');
+    expect(pins.pins).toContain('+  semver@7.5.2:');
+    // pnpm moved both on the first copy's update; the second's is already there.
+    expect(updates).toEqual([[expect.stringMatching(/^--config/), 'update', 'semver', '--depth', 'Infinity']]);
+    expect(said.at(-1)).toMatchObject({ msg: 'installed the dependencies' });
+    const repo = join(work, 'repo');
+    expect(execFileSync('git', ['log', '-1', '--format=%s'], { cwd: repo, encoding: 'utf-8' }).trim()).toBe(
+      'chore(deps): move semver from 5.7.1,7.5.1 to 5.7.2,7.5.2',
+    );
+  });
+
+  it('takes versions joined by a comma for a package alone, and nothing looser', async () => {
+    const { url, commit } = origin();
+    const refused = (move: object) => expect(prepare(envFor(url, commit, move).env, () => {})).rejects;
+    const npm = { ecosystem: 'npm', name: 'semver' };
+    await refused({ ...npm, from: '5.7.1, 7.5.1', to: '5.7.2,7.5.2' }).toThrow('move.from');
+    await refused({ ...npm, from: '5.7.1,7.5.1', to: '5.7.2,latest' }).toThrow('move.to');
+    await refused({ ...npm, from: '5.7.1,7.5.1;', to: '5.7.2,7.5.2' }).toThrow('move.from');
+    await refused({ ecosystem: 'node', name: 'node', from: '24.1.0,22.1.0', to: '24.1.1,22.1.1' }).toThrow(
+      'only a package moves from versions joined by a comma',
+    );
+  });
+
   it('prints that the pins wait for Martin, and installs nothing, when the move needs his file', async () => {
     const lock =
       "lockfileVersion: '9.0'\n\npackages:\n\n  pino@10.4.0:\n    resolution: {integrity: sha512-p}\n\n  sonic-boom@4.2.1:\n    resolution: {integrity: sha512-s}\n\nsnapshots:\n\n  pino@10.4.0:\n    dependencies:\n      sonic-boom: 4.2.1\n";
