@@ -1,6 +1,6 @@
 {
   "SchemaVersion": 2,
-  "ArtifactName": "ghcr.io/the-roganator/cv-software-factory/factory-runner@sha256:1111111111111111111111111111111111111111111111111111111111111111",
+  "ArtifactName": "ghcr.io/the-roganator/cv-software-factory-scratch/factory-runner@sha256:1111111111111111111111111111111111111111111111111111111111111111",
   "ArtifactType": "container_image",
   "Metadata": {
     "ImageID": "sha256:1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a",
@@ -9,7 +9,7 @@
       "Name": "13.1"
     },
     "RepoDigests": [
-      "ghcr.io/the-roganator/cv-software-factory/factory-runner@sha256:1111111111111111111111111111111111111111111111111111111111111111"
+      "ghcr.io/the-roganator/cv-software-factory-scratch/factory-runner@sha256:1111111111111111111111111111111111111111111111111111111111111111"
     ],
     "ImageConfig": {
       "architecture": "amd64",

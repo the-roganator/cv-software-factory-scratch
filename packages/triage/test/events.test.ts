@@ -88,7 +88,7 @@ describe('a dependency’s symptoms, by the policy', () => {
 
   it('fingerprints a move by name and ecosystem: its later targets are its ticket’s, another move is not', () => {
     const move = {
-      repository: 'the-roganator/cv-worlds-worst-website',
+      repository: 'the-roganator/cv-worlds-worst-website-scratch',
       name: '@invented/glob-walker',
       ecosystem: 'npm' as const,
       from: '3.0.1',

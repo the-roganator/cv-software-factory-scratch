@@ -421,12 +421,12 @@ describe('the samples’ move of the app’s lockfile, #1335', () => {
       type: 'scan',
       dependency: { name: '@example/parser', from: '4.2.0', to: '4.2.3' },
     });
-    expect(after?.issue).toEqual({ repository: 'the-roganator/cv-worlds-worst-website', number: 1336 });
+    expect(after?.issue).toEqual({ repository: 'the-roganator/cv-worlds-worst-website-scratch', number: 1336 });
   });
 
   it('leaves #1325 its issue, with no move', () => {
     expect(projectSheet(view, '1325')?.issue).toEqual({
-      repository: 'the-roganator/cv-worlds-worst-website',
+      repository: 'the-roganator/cv-worlds-worst-website-scratch',
       number: 1333,
     });
   });

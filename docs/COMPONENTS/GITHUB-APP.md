@@ -2,12 +2,12 @@
 
 The factory's identity in GitHub. Part of the [factory plane](README.md#factory-plane).
 
-- **v1:** `mrogan-software-factory`, owned by the organisation `the-roganator` and installed there on the two public repositories alone, never on `cv-software-factory-private`. Its work shows as `mrogan-software-factory[bot]`. The GitHub worker asks GitHub for the installation of each repository it acts on, so no installation id is configured.
+- **v1:** `the-roganator-scratch-factory`, owned by the organisation `the-roganator` and installed there on the two public repositories alone, never on `cv-software-factory-private`. Its work shows as `the-roganator-scratch-factory[bot]`. The GitHub worker asks GitHub for the installation of each repository it acts on, so no installation id is configured.
 - **No webhook:** the factory polls.
 
 Only the [GitHub worker](GITHUB-WORKER.md) holds its key.
 
-Its issues and pull requests are opened by its bot user, `mrogan-software-factory[bot]`, user id 337765427 (not the App's id, 5187559). The worker knows the App's own issues and pull requests by that id ([its issues and pull requests only](GITHUB-WORKER.md#its-issues-and-pull-requests-only)).
+Its issues and pull requests are opened by its bot user, `the-roganator-scratch-factory[bot]`, user id 357103795 (not the App's id, 5774780). The worker knows the App's own issues and pull requests by that id ([its issues and pull requests only](GITHUB-WORKER.md#its-issues-and-pull-requests-only)).
 
 ## Permissions
 

@@ -32,7 +32,7 @@ async function servePlainFiles(page: Page, origin: string) {
       // address is the one the live server writes from APP_URL (playwright.config.ts), as a replay site would name it.
       const page = readFileSync(join(DIST, 'index.html'), 'utf-8')
         .replace('content="live"', 'content="log:/log/"')
-        .replace('<meta name="sf-app" content="">', '<meta name="sf-app" content="http://website.localhost:8080">')
+        .replace('<meta name="sf-app" content="">', '<meta name="sf-app" content="http://website.localhost:9080">')
         .replace(/<link rel="preload" href="\/api\/events[^>]*>/, '');
       return route.fulfill({ body: page, contentType: 'text/html', headers });
     }
