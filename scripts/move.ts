@@ -1,6 +1,7 @@
 /**
  * A move (spec 4.3): whether a pull request is exactly the scan's moves and nothing else. The review gate passes one as
- * `move`, or as `major` when one of its moves crosses a major and clears no Critical (scripts/review-routing.ts).
+ * `move`, or as `major` when one of its moves crosses a major and clears no Critical by Trivy's own rating, whatever the
+ * publisher's (`namedMajor`, scripts/review-routing.ts).
  *
  * The gate takes the moves the daily scan of `main` asked for (`ScanMove`: `moves.json` joined with the state the scan
  * sealed, read by scripts/moves.ts), makes them itself on the pull request's base, main's tip (for the merge queue's
@@ -24,14 +25,14 @@
  * moves to, whether it crosses a major, and what it clears. Who opened the pull request decides nothing here.
  */
 
-import { madeByStep, stepOf } from '../apps/factory/src/github/made.ts';
+import { madeByLine, madeByStep, namedMajor, stepOf } from '../apps/factory/src/github/made.ts';
 import { spans } from '../apps/factory/src/github/pin-guard.ts';
 import { editAt } from '../apps/factory/src/github/pins.ts';
 import type { ReadMove } from '../apps/factory/src/github/scanning.ts';
 import { moveOf } from '../apps/factory/src/patching/sends.ts';
 import { repositoryOfImage } from '../apps/factory/src/repositories.ts';
 import { readTarget, type Target } from '../apps/factory/src/vulnerabilities/fixes.ts';
-import { bringsPins, type Move as PinStepMove } from '../apps/runner/src/pins.ts';
+import type { Move as PinStepMove } from '../apps/runner/src/pins.ts';
 import type { MoveResult } from './review-routing.ts';
 
 export type { MoveResult } from './review-routing.ts';
@@ -128,7 +129,7 @@ function differing(a: string, b: string): number[] {
  */
 function stepMove(move: ScanMove, app: boolean, base: MoveIO['base']): PinStepMove | string | undefined {
   if (!app) return madeByStep(move) ? stepOf(move, base('mise.lock')) : undefined;
-  if (!move.lockfile && !bringsPins(move.name)) return undefined;
+  if (!madeByLine(move)) return undefined;
   const made = moveOf(move.repository, move);
   if (typeof made === 'string') return made;
   return { ecosystem: made.ecosystem, name: made.name, from: made.from, to: made.to };
@@ -266,11 +267,14 @@ export async function proveMove(
       reason: `${path}:${at} is ${quote(line, 'missing')} where the scan's moves make ${quote(want, 'no line')}`,
     };
   }
-  const major = carried.filter((move) => move.major && move.clears.CRITICAL === 0);
+  const major = carried.filter(namedMajor);
   const names = carried.map((move) => (move.lockfile ? move.name : `${move.name} to ${shortTarget(move.to)}`));
   const title = `${carried.length === 1 ? 'The scan’s move' : `The scan’s ${plural(carried.length, 'move')}`} of ${names.join(', ')}, made by the gate on main and the same as the pull request`;
   return major.length
-    ? { rule: 'major', title: `${title}; a major that clears no Critical: ${major.map((m) => m.name).join(', ')}` }
+    ? {
+        rule: 'major',
+        title: `${title}; a major that clears no Critical by Trivy’s rating: ${major.map((m) => m.name).join(', ')}`,
+      }
     : { rule: 'move', title };
 }
 

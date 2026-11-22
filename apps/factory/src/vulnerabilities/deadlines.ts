@@ -74,7 +74,7 @@ import {
 } from './moves.ts';
 import { satisfies } from './node.ts';
 import { DIGEST, hasRegistry, repositoryOf, splitReference } from './reference.ts';
-import { nodeInImage, PinsRefused, releaseAge, runsNode } from './registry.ts';
+import { nodeInImage, PinsRefused, releaseAge, releasedAt, runsNode } from './registry.ts';
 import {
   alertKey,
   type Finding,
@@ -1537,14 +1537,18 @@ function realSources(
       );
       const body = json(answer.text, source);
       if (!Array.isArray(body)) throw new Error(`${source} is not a list`);
+      // A release's day is its downloads' (`releasedAt`): an asset uploaded again to an older release is as young as
+      // the upload.
       return (body as { tag_name?: unknown; published_at?: unknown; draft?: unknown; prerelease?: unknown }[]).flatMap(
-        (release) =>
-          typeof release.tag_name === 'string' &&
-          typeof release.published_at === 'string' &&
-          release.draft !== true &&
-          release.prerelease !== true
-            ? [{ version: release.tag_name.replace(/^v/, ''), published: release.published_at }]
-            : [],
+        (release) => {
+          const published = releasedAt(release);
+          return typeof release.tag_name === 'string' &&
+            published !== undefined &&
+            release.draft !== true &&
+            release.prerelease !== true
+            ? [{ version: release.tag_name.replace(/^v/, ''), published }]
+            : [];
+        },
       );
     },
     async tool(tool, version) {

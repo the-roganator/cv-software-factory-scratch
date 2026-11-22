@@ -68,7 +68,6 @@ import {
 } from '@software-factory/events';
 import { z } from 'zod';
 import { guardrailsFor } from '../../../../../policy/refusals.ts';
-import { withMadeAs } from '../../github/made-as.ts';
 import { filesIn, PatchRefused } from '../../github/patches.ts';
 import { plainPath, protectedWords } from '../../github/paths.ts';
 import { GitHubWorkerError } from '../../github/worker-client.ts';
@@ -846,8 +845,7 @@ export const coder = defineAgent<CoderInput, CoderResult>({
     // An improvement's branch is named from its request's title, as its public view has it: a branch is public.
     const named = state.request ? (await context.request()).title : need(state.ticket, 'a ticket').title;
     const branch = state.pullRequest?.branch ?? branchFor(workItem, named);
-    // The pin step's time and answers last, for the review gate to make the move again so (`made-as.ts`).
-    const message = withMadeAs(cutTo(`${title}\n\n${note}`, 9_000), context.pinned?.made);
+    const message = cutTo(`${title}\n\n${note}`, 9_000);
     const contradicts = spec.contradicts ?? [];
     const head = await context.once('push', async (again) => {
       // The tests the spec in force contradicts go into the description before the commit, since a gate's run reads
