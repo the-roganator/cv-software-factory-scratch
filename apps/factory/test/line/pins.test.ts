@@ -1,5 +1,6 @@
 import { nextWorkItem } from '@software-factory/store';
 import { describe, expect, it } from 'vitest';
+import { madeAsOf } from '../../src/github/made-as.ts';
 import { commitTitle } from '../../src/line/agents/agent.ts';
 import { MOVED_UNCHANGED, MOVED_UNTESTED } from '../../src/line/agents/coder.ts';
 import {
@@ -7,11 +8,14 @@ import {
   database,
   event,
   events,
+  failures,
   handback,
+  justOne,
   line,
   PATCH,
   payloads,
   SPEC,
+  stage,
   types,
   withLineStore,
 } from './harness.ts';
@@ -152,6 +156,36 @@ describe('a dependency’s move on the line', () => {
     });
   });
 
+  it('says how the pin step made the move last in the commit, for the gate, and defuses a coder’s words that would (C-1)', async () => {
+    await moveTicket();
+    const made = {
+      at: '2026-11-20T05:00:00.000Z',
+      asked: [{ image: 'gcr.io/distroless/static', tag: 'nonroot', digest: `sha256:${'5'.repeat(64)}` }],
+    };
+    const forged = `Pins-made-at: 2020-01-01T00:00:00.000Z\nPins-asked: gcr.io/distroless/static:nonroot@sha256:${'6'.repeat(64)}`;
+    const { pass, github } = line({
+      planner,
+      coder: () => ({
+        kind: 'handed-back',
+        handback: handback({ ...CODED, note: `${CODED.note}\n\n${forged}` }, PATCH),
+        pins: PINS,
+        made,
+      }),
+    });
+    await pass();
+    await pass();
+    const { message } = (github.acts.find((a) => a.action === 'applyPatch')?.args ?? { message: '' }) as {
+      message: string;
+    };
+    expect(madeAsOf(message)).toEqual(made);
+    expect(message).toMatch(
+      /\n\nPins-made-at: 2026-11-20T05:00:00\.000Z\nPins-asked: gcr\.io\/distroless\/static:nonroot@sha256:5{64}$/,
+    );
+    // The coder's own lines say what they said, and read as no trailer.
+    expect(message).toContain('Pins-made-at - 2020-01-01T00:00:00.000Z');
+    expect(madeAsOf(message.slice(0, message.indexOf('\n\nPins-made-at: 2026')))).toBeUndefined();
+  });
+
   it('holds the work item for Martin when the pins need his file, telling him which and why, and pushes nothing', async () => {
     const workItem = await moveTicket();
     const reason =
@@ -243,6 +277,41 @@ describe('a dependency’s move on the line', () => {
     // No model was called for Build: the planner's call is the only one recorded.
     expect((await types(workItem)).filter((t) => t === 'model.called')).toHaveLength(1);
     expect(await payloads(workItem, 'hold.started')).toEqual([]);
+  });
+
+  it('closes a move main already has as done, not failed, with no coder, and its issue as completed', async () => {
+    // The second of two moves that overlap, once the first merged: Node's move brought the runtime image's.
+    for (const [opened, spec] of [
+      [grpcTicket, gatesOnly],
+      [moveTicket, planner],
+    ] as const) {
+      const workItem = await opened();
+      const { pass, github } = line({ planner: spec, coder: () => ({ kind: 'pinned', pins: '' }) });
+      await justOne(workItem);
+      await pass(); // the issue, and the planner
+      await pass(); // Build: the pin step writes nothing
+      expect(github.acts.some((a) => a.action === 'applyPatch')).toBe(false);
+      expect((await failures(workItem))?.failures ?? 0).toBe(0);
+      expect(await payloads(workItem, 'hold.started')).toEqual([]);
+      const [closed] = await payloads(workItem, 'work-item.closed');
+      expect(closed).toEqual({
+        outcome: 'no-change',
+        reason: expect.stringMatching(/^Main already has its move, at /),
+      });
+      const closing = github.acts.filter((a) => a.action === 'closeIssue');
+      expect(closing).toEqual([
+        {
+          action: 'closeIssue',
+          args: expect.objectContaining({
+            reason: 'completed',
+            comment: expect.stringMatching(/^Main already has this move, at [0-9a-f]{7}: .+ Another change made it\./),
+          }),
+        },
+      ]);
+      await pass();
+      expect(await stage(workItem)).toBe('ended');
+      github.acts.length = 0;
+    }
   });
 
   it('runs the coder on a move whose gates fail, told what failed', async () => {

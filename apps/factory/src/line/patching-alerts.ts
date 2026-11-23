@@ -39,8 +39,8 @@ type Move = Day['repositories'][number]['moves'][number];
 
 const DAY = 24 * 3_600_000;
 
-/** The lanes only Martin moves: his approval, his cluster's own command, and what no pull request of the App's can write. */
-const HIS: readonly Move['lane'][] = ['approval', 'cluster', 'issue'];
+/** The lanes only Martin moves: his cluster's own command, and what no pull request of the App's can write. */
+const HIS: readonly Move['lane'][] = ['cluster', 'issue'];
 
 /** The counts so far, what each has counted, and the deadlines of the last day's moves, by move. */
 export interface PatchingTally {

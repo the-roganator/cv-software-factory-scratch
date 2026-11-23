@@ -263,6 +263,26 @@ describe('a move that needs no coder', () => {
     expect(writtenVersion({ ecosystem: 'npm', name: 'invented-pkg', from: '2.0.0', to: '2.0.3' }, pins)).toBe('2.0.4');
   });
 
+  it('holds a package at two versions, moved to a floor for each, to the lower floor in either order', () => {
+    const pins = (older: string) =>
+      [
+        'diff --git a/pnpm-lock.yaml b/pnpm-lock.yaml',
+        '--- a/pnpm-lock.yaml',
+        '+++ b/pnpm-lock.yaml',
+        '@@ -10,3 +10,3 @@ packages:',
+        ' ',
+        '-  invented-twice@6.11.0:',
+        `+  invented-twice@${older}:`,
+        '-  invented-twice@7.6.4:',
+        '+  invented-twice@7.6.6:',
+        '',
+      ].join('\n');
+    const move = (to: string) => ({ ecosystem: 'npm' as const, name: 'invented-twice', from: '6.11.0,7.6.4', to });
+    expect(writtenVersion(move('6.11.5,7.6.6'), pins('6.11.5'))).toBe('6.11.5');
+    expect(writtenVersion(move('7.6.6,6.11.5'), pins('6.11.5'))).toBe('6.11.5');
+    expect(() => writtenVersion(move('7.6.6,6.11.5'), pins('6.11.4'))).toThrow(UnreadMove);
+  });
+
   it('says a package’s target as a floor, and Node’s or an image’s as it is, before the pins exist', () => {
     expect(targetWords({ ecosystem: 'npm', to: '1.14.5' })).toBe('1.14.5 or later');
     expect(targetWords({ ecosystem: 'node', to: '24.11.1' })).toBe('24.11.1');
