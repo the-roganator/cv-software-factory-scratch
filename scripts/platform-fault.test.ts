@@ -93,4 +93,16 @@ describe('why the cluster did not come up', () => {
     );
     expect(out.trimEnd()).toHaveLength(200);
   });
+
+  it('ends a call that catches SIGTERM and goes on waiting, at its limit and two seconds more', () => {
+    const fault = runner({ free: FREE, df: DF, curl: '401', getent: 'x', kubectl: '' }, { 'make.log': 'up\n' });
+    // Docker that waits on past SIGTERM, as a CLI that catches it to cancel its request may.
+    const dir = dirs[dirs.length - 1] as string;
+    writeFileSync(join(dir, 'bin', 'docker'), '#!/bin/sh\ntrap "" TERM\nwhile :; do sleep 1; done\n');
+    const started = Date.now();
+    const { status, out } = fault('timed out');
+    expect(status).toBe(0);
+    expect(out).toMatch(/^timed out \| .* \| docker no \| pod none \| up\n$/);
+    expect(Date.now() - started).toBeLessThan(20_000);
+  }, 30_000);
 });
