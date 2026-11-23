@@ -2,20 +2,20 @@
 
 ## Outcome
 
-The `cv-software-factory` repo is public, tidy and green. On a fresh clone, `make up` creates a local Kubernetes cluster where Argo CD deploys the telemetry stack, Postgres and a console skeleton built by CI. The skeleton's traces, metrics and logs appear in Grafana.
+The `cv-software-factory-scratch` repo is public, tidy and green. On a fresh clone, `make up` creates a local Kubernetes cluster where Argo CD deploys the telemetry stack, Postgres and a console skeleton built by CI. The skeleton's traces, metrics and logs appear in Grafana.
 
 Nothing clever happens yet. This milestone proves the delivery path and sets the standard for every later commit.
 
 ## Decisions
 
-- Repos under the `mrogan` GitHub account: `cv-software-factory` (public from day one), `cv-software-factory-private`, and later `cv-worlds-worst-website`. MIT licence.
+- Repos under the `mrogan` GitHub account: `cv-software-factory-scratch` (public from day one), `cv-software-factory-private`, and later `cv-worlds-worst-website-scratch`. MIT licence.
 - OrbStack is the container runtime.
 
 ## Tasks
 
 ### 1. Repo and hygiene baseline
 
-- `git init` in the project root; this folder becomes `cv-software-factory`. Create it with `gh repo create mrogan/cv-software-factory --public`.
+- `git init` in the project root; this folder becomes `cv-software-factory-scratch`. Create it with `gh repo create mrogan/cv-software-factory --public`.
 - `.gitignore` covering `node_modules`, build output, `.env*`, `.DS_Store`, `.obsidian/` and `.claude/settings.local.json`; `.editorconfig`.
 - `LICENSE`, `SECURITY.md`, `CONTRIBUTING.md` (the factory does most of the work; how outside contributions are handled), `CODEOWNERS`, issue and PR templates.
 - A short, honest README for a hiring manager: what this is and why (from `INTENT.md`), that it is under construction, and links to the intent and the spec.
@@ -65,7 +65,7 @@ Update the spec, `COMPONENTS/` and `docs/AGENTS.md` wherever reality differs. Wr
 
 ## Exit criteria
 
-- [x] `cv-software-factory` is on GitHub with every hygiene item in spec section 9 that applies at this stage; CI is green; the ruleset blocks a direct push to `main`.
+- [x] `cv-software-factory-scratch` is on GitHub with every hygiene item in spec section 9 that applies at this stage; CI is green; the ruleset blocks a direct push to `main`.
 - [x] On a fresh clone, `mise install && make up` gives a running cluster in under 10 minutes; `make check` passes; `make down` leaves nothing behind.
 - [x] The console skeleton is running in the cluster from a CI-built GHCR image, and `/version` shows the commit it was built from.
 - [x] Its traces, metrics and logs are visible in Grafana.
@@ -113,7 +113,7 @@ What the milestone taught, and where each lesson now lives.
 - `SECURITY.md` links straight to the private report form, the one thing Scorecard's Security-Policy check found missing.
 - Git hooks print nothing when they pass.
 
-**Left open:** see the [issues](https://github.com/the-roganator/cv-software-factory/issues).
+**Left open:** see the [issues](https://github.com/the-roganator/cv-software-factory-scratch/issues).
 
 ## Out of scope
 

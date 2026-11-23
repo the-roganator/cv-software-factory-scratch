@@ -37,7 +37,7 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { FACTORY_REPOSITORY, repositoryOfImage } from '../repositories.ts';
+import { repositoryOfImage } from '../repositories.ts';
 import { PROOF } from './proof.ts';
 import { DIGEST_PATTERN, splitReference } from './reference.ts';
 
@@ -132,7 +132,7 @@ const NAMED_TO_BE_REFUSED: Record<string, string> = {
 const CI_SCRIPTS = ['apps/console/zap/scan.ts'];
 
 /** Where CI's copies of Docker's official images and Playwright's are kept (scripts/ci-images.sh). */
-const MIRROR = `ghcr.io/${FACTORY_REPOSITORY}/mirror/`;
+const MIRROR = 'ghcr.io/the-roganator/cv-software-factory/mirror/';
 
 /** A reference by digest, as any file writes it, and kustomize's `digest:` beside a name. */
 const BY_DIGEST = new RegExp(

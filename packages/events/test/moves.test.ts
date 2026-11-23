@@ -38,7 +38,7 @@ const signal = (move: object) => ({
   version: 'a'.repeat(40),
   symptom: 'vulnerable-dependency',
   move: {
-    repository: 'the-roganator/cv-worlds-worst-website',
+    repository: 'the-roganator/cv-worlds-worst-website-scratch',
     from: '1.2.3',
     to: '1.2.4',
     ...move,
@@ -59,7 +59,7 @@ describe("a move's public views", () => {
   it('withhold a lockfile move’s package, versions and lines, and every advisory, in its signal', () => {
     const shown = view('signal.received', signal(lockfile));
     expect(shown.move).toEqual({
-      repository: 'the-roganator/cv-worlds-worst-website',
+      repository: 'the-roganator/cv-worlds-worst-website-scratch',
       name: 'a package in `pnpm-lock.yaml`',
       ecosystem: 'npm',
       from: '',
@@ -150,7 +150,7 @@ describe("a move's public views", () => {
 
 describe("a move's disclosure", () => {
   const disclosed = {
-    repository: 'the-roganator/cv-worlds-worst-website',
+    repository: 'the-roganator/cv-worlds-worst-website-scratch',
     number: 41,
     move: {
       name: 'left-pad',

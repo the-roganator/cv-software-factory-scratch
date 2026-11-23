@@ -37,7 +37,7 @@
 # to deploy/, so a change to them fails `make check` until this is run again.
 set -euo pipefail
 
-context="${KUBE_CONTEXT:-k3d-software-factory}"
+context="${KUBE_CONTEXT:-k3d-software-factory-scratch}"
 as=system:serviceaccount:factory:admin
 # REFUSALS_OUT writes the record elsewhere, as `make guardrails` takes it, and leaves deploy/test/ as it is.
 out="${REFUSALS_OUT:-$(dirname "$0")/../deploy/test/rollout-refusals.json}"

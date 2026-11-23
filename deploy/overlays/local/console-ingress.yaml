@@ -1,4 +1,4 @@
-# Local only: the console at https://console.localhost:8443. Public profiles are reached through a tunnel instead.
+# Local only: the console at https://console.localhost:9443. Public profiles are reached through a tunnel instead.
 # Traefik ends TLS with the certificate `make up` gives it in the `console-tls` Secret, from a local authority that may
 # sign for `localhost` names only (scripts/local-ca.ts). Until the Secret exists, Traefik serves its own default one.
 #
@@ -68,7 +68,7 @@ spec:
                 port:
                   name: http
 ---
-# Plain HTTP on the console's host, http://console.localhost:8080, is sent to HTTPS. The redirect is the console's
+# Plain HTTP on the console's host, http://console.localhost:9080, is sent to HTTPS. The redirect is the console's
 # own, not the entrypoint's, so the app's hosts keep plain HTTP. Not permanent, so no browser remembers it.
 apiVersion: traefik.io/v1alpha1
 kind: Middleware
