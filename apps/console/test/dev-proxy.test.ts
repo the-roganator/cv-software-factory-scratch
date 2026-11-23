@@ -29,13 +29,13 @@ describe("pnpm dev's proxy", () => {
   afterEach(() => vi.unstubAllEnvs());
 
   it("removes Cookie on the way to the console's server", async () => {
-    vi.stubEnv('ADMIN_URL', 'http://localhost:8080');
+    vi.stubEnv('ADMIN_URL', 'http://localhost:9080');
     const paths = await forwarded();
     for (const path of ['/api', '/artifacts', '/health', '/version']) expect(paths[path], path).toEqual(['origin']);
   });
 
   it('passes it to the admin service', async () => {
-    vi.stubEnv('ADMIN_URL', 'http://localhost:8080');
+    vi.stubEnv('ADMIN_URL', 'http://localhost:9080');
     expect((await forwarded())['/admin']).toEqual(['cookie', 'origin']);
   });
 });
