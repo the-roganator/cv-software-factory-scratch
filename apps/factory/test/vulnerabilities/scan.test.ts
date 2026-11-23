@@ -96,8 +96,9 @@ function checkout() {
   return root;
 }
 
-const OURS = `ghcr.io/the-roganator/cv-software-factory/factory-runner@${digest('1')}`;
-const SIGNER = 'https://github.com/the-roganator/cv-software-factory/.github/workflows/build.yml@refs/heads/main';
+const OURS = `ghcr.io/the-roganator/cv-software-factory-scratch/factory-runner@${digest('1')}`;
+const SIGNER =
+  'https://github.com/the-roganator/cv-software-factory-scratch/.github/workflows/build.yml@refs/heads/main';
 const POSTGRES = `postgres:18.6-alpine3.24@${digest('2')}`;
 
 const items = (): Item[] => [
@@ -272,7 +273,7 @@ describe('an item it cannot read', () => {
     expect(lines).toContain(`The proof image shows ${PROOF.advisory} in its Node 24.22.0, read from its image.`);
     expect(lines).toContain('The results are in 1 of 20 runs, each a category of its own:');
     expect(lines.filter((line) => line.startsWith('  vulnerabilities/'))).toEqual([
-      '  vulnerabilities/01: 3 results, 3 items: lockfile pnpm-lock.yaml; deploy/ours/kustomization.yaml ghcr.io/the-roganator/cv-software-factory/factory-runner; deploy/base/postgres/statefulset.yaml postgres',
+      '  vulnerabilities/01: 3 results, 3 items: lockfile pnpm-lock.yaml; deploy/ours/kustomization.yaml ghcr.io/the-roganator/cv-software-factory-scratch/factory-runner; deploy/base/postgres/statefulset.yaml postgres',
     ]);
     // The proof's own finding is not the repository's: nothing of it is in the file.
     const results = sarif(outcome.findings).runs[0]?.results ?? [];
