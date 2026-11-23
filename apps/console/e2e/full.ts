@@ -32,7 +32,7 @@ export function full<T extends RawEvent>(event: T): T {
     type Day = { repositories: { repository: string; moves: { lockfile: boolean; package?: unknown }[] }[] };
     const day = event.payload as Day;
     const repositories = day.repositories.map((r) =>
-      r.repository === 'the-roganator/cv-worlds-worst-website'
+      r.repository === 'the-roganator/cv-worlds-worst-website-scratch'
         ? { ...r, moves: r.moves.map((m) => (m.lockfile && !m.package ? { ...m, package: WITHHELD } : m)) }
         : r,
     );
