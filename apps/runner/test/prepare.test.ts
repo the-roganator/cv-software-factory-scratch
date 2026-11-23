@@ -235,7 +235,7 @@ describe('the prepare step, on a dependency’s work item', () => {
     git('commit', '--quiet', '--message', 'more');
     return { url: `file://${dir}`, commit: git('rev-parse', 'HEAD').trim() };
   }
-  const envFor = (url: string, commit: string, move: unknown) => {
+  const envFor = (url: string, commit: string, move: unknown, made?: unknown) => {
     const work = mkdtempSync(join(tmpdir(), 'work-'));
     const own = mkdtempSync(join(tmpdir(), 'prepare-'));
     mkdirSync(join(own, 'home'));
@@ -247,7 +247,15 @@ describe('the prepare step, on a dependency’s work item', () => {
         PREPARE: own,
         HOME: join(own, 'home'),
         npm_config_store_dir: join(own, 'store'),
-        RUNNER_STEP: JSON.stringify({ agent: 'coder', repository: url, commit, prompt: 'Fix it.', maxTurns: 5, move }),
+        RUNNER_STEP: JSON.stringify({
+          agent: 'coder',
+          repository: url,
+          commit,
+          prompt: 'Fix it.',
+          maxTurns: 5,
+          move,
+          made,
+        }),
       },
     };
   };
@@ -270,12 +278,6 @@ describe('the prepare step, on a dependency’s work item', () => {
     const pins = said.find((line) => line.msg === 'the pins');
     expect(pins).toMatchObject({ move });
     expect(pins.pins).toContain(`+FROM gcr.io/distroless/static:nonroot@${NEW}`);
-    // How it made them, for the review gate to make them again so: when, and each tag's digest it was given (C-1).
-    expect(pins.made).toEqual({
-      at: expect.stringMatching(/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/),
-      asked: [{ image: 'gcr.io/distroless/static', tag: 'nonroot', digest: NEW }],
-    });
-    expect(Math.abs(Date.parse(pins.made.at) - Date.now())).toBeLessThan(60_000);
     expect(said.at(-1)).toMatchObject({ msg: 'installed the dependencies' });
     const repo = join(work, 'repo');
     // Committed, so the agent's patch, measured from where it starts, never holds them.
@@ -284,6 +286,30 @@ describe('the prepare step, on a dependency’s work item', () => {
       `chore(deps): move gcr.io/distroless/static from nonroot@${OLD} to nonroot@${NEW} pins`,
     );
     expect(git('status', '--porcelain', '--', 'Dockerfile')).toBe('');
+  });
+
+  it('makes the move with the digest the scan was given for a tag, though its registry answers another since (S2-M1)', async () => {
+    const { url, commit } = originWith({ Dockerfile: `FROM gcr.io/distroless/static:nonroot@${OLD}\n` });
+    const move = {
+      ecosystem: 'docker',
+      name: 'gcr.io/distroless/static',
+      from: `nonroot@${OLD}`,
+      to: `nonroot@${NEW}`,
+    };
+    const made = {
+      at: '2026-11-20T05:00:00Z',
+      asked: [{ image: 'gcr.io/distroless/static', tag: 'nonroot', digest: NEW }],
+    };
+    // The tag was pushed again after the scan.
+    const get = async () => new Response(null, { headers: { 'docker-content-digest': `sha256:${'3'.repeat(64)}` } });
+    const lines: string[] = [];
+    await prepare(envFor(url, commit, move, made).env, (line) => lines.push(line), { get });
+    const pins = lines.map((line) => JSON.parse(line)).find((line) => line.msg === 'the pins');
+    expect(pins.pins).toContain(`+FROM gcr.io/distroless/static:nonroot@${NEW}`);
+    // Asked of its registry now, as with no scan to make it from, the move is refused.
+    await expect(prepare(envFor(url, commit, move).env, () => {}, { get })).rejects.toThrow(
+      /is sha256:3{64} in its registry/,
+    );
   });
 
   it('takes a package at two versions as the dependency sense sends it, and moves each copy', async () => {

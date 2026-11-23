@@ -52,6 +52,21 @@ export function releaseAge(miseToml: string): number {
   return Number(m[1]) * { d: 86_400_000, h: 3_600_000, m: 60_000 }[m[2] as 'd' | 'h' | 'm'];
 }
 
+/**
+ * When a GitHub release's downloads became what they are, as its releases API gives it: the later of its
+ * `published_at` and each asset's `updated_at`, since a maintainer can upload an asset again to a release published
+ * long before. Nothing for a release not published.
+ */
+export function releasedAt(release: { published_at?: unknown; assets?: unknown }): string | undefined {
+  if (typeof release.published_at !== 'string' || Number.isNaN(Date.parse(release.published_at))) return undefined;
+  let at = release.published_at;
+  for (const asset of Array.isArray(release.assets) ? (release.assets as { updated_at?: unknown }[]) : []) {
+    const updated = asset?.updated_at;
+    if (typeof updated === 'string' && Date.parse(updated) > Date.parse(at)) at = updated;
+  }
+  return at;
+}
+
 const json = async (get: Get, url: string): Promise<unknown> => {
   const response = await get(url);
   if (!response.ok) throw new PinsRefused(`${url}: ${response.status}`);

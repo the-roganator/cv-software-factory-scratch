@@ -21,7 +21,6 @@ import {
 import { redactSecrets } from '@software-factory/events/public';
 import type { Logger } from 'pino';
 import { z } from 'zod';
-import type { MadeAs } from '../../github/made-as.ts';
 import type { ActionArgs, ActionName, ActionResult, ReadArgs, ReadName, ReadResult } from '../../github/server.ts';
 import type { Handback, Step } from '../../runners/steps.ts';
 import type { Draft } from '../gates.ts';
@@ -120,7 +119,7 @@ export interface EffectsContext extends StepContext {
    * the lockfile after. Nothing when it wrote neither. `alone` when no agent ran: the move asks for nothing but its
    * pins (`movesAlone`), and the line makes the commit itself.
    */
-  pinned?: { pins?: string; lockfile?: string; alone?: true; made?: MadeAs } | undefined;
+  pinned?: { pins?: string; lockfile?: string; alone?: true } | undefined;
   /** The line's log, for what a result does that its events do not say in full. */
   log: Pick<Logger, 'warn'>;
 }
@@ -279,6 +278,8 @@ export interface StepOf {
   commits?: { message: string; patch: string }[] | undefined;
   /** A dependency's move, for the pin step to write before the agent starts (`apps/runner/src/pins.ts`). */
   move?: Step['move'] | undefined;
+  /** How the scan made the move, for the pin step to make it the same (`Step['made']`). */
+  made?: Step['made'] | undefined;
 }
 
 /**
@@ -287,7 +288,7 @@ export interface StepOf {
  */
 export function stepFrom(
   definition: Pick<Agent, 'agent' | 'skill' | 'maxTurns' | 'resultFiles'>,
-  { repository, commit, base, prompt, resume, seed, commits, move }: StepOf,
+  { repository, commit, base, prompt, resume, seed, commits, move, made }: StepOf,
 ): Step {
   return {
     agent: definition.agent,
@@ -303,6 +304,7 @@ export function stepFrom(
     ...(commits?.length ? { commits } : {}),
     ...(resume ? { resume } : {}),
     ...(move ? { move } : {}),
+    ...(move && made ? { made } : {}),
   };
 }
 

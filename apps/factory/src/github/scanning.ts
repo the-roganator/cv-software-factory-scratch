@@ -8,9 +8,9 @@
  * (vulnerabilities/state.ts, ADR 0021), for what `moves.json` withholds: a lockfile move's package and versions, and
  * each move's findings. It reads no alert: code scanning is where findings are shown, not where the worker learns them.
  *
- * A third, `pins`, sealed the same way, holds the moves the run made with the pin step for the pin watch to commit
- * (github/made.ts), where it made any: absent, there are none; there and not opening for that run and its commit, the
- * read fails.
+ * A third, `pins`, sealed the same way, holds the moves the run made with the pin step (github/made.ts), where it
+ * made any: in the factory for the pin watch to commit, in the app for the line's pin step to make again as the scan
+ * made them. Absent, there are none; there and not opening for that run and its commit, the read fails.
  *
  * Both are the scan's by where they are, one run's, and each is held to the other: a state that does not open with
  * the repository's key for that run, a finding in a move past the list, or a count that differs from `moves.json`'s,
@@ -26,7 +26,6 @@
  */
 import { createHmac } from 'node:crypto';
 import { z } from 'zod';
-import { FACTORY_REPOSITORY } from '../repositories.ts';
 import { type Fix, type Target, targetText } from '../vulnerabilities/fixes.ts';
 import type { Kind } from '../vulnerabilities/inventory.ts';
 import {
@@ -82,8 +81,13 @@ export interface ScanRun {
 /** One finding a move clears, as the scan's state gives it. */
 export interface MoveFinding {
   advisory: string;
-  /** As the scan rated the result; the move's counts are by the higher of this and the publisher's (deadlines.ts). */
+  /**
+   * Trivy's rating of the result, or Node's of its own advisory; the move's counts are by the higher of this and the
+   * publisher's (deadlines.ts).
+   */
   severity: Severity;
+  /** Trivy's type of the result it was in (`pnpm`, `debian`…), or `node` for Node's own advisory (scan.ts). */
+  type: string;
   package: string;
   installed: string;
   file: string;
@@ -126,8 +130,9 @@ export interface Moves {
   file: Omit<MovesFile, 'moves'> | null;
   moves: ReadMove[];
   /**
-   * The moves the run made with the pin step, for the pin watch to commit (github/made.ts): absent where it made none,
-   * as for a repository whose line makes its moves, or a run before it did.
+   * The moves the run made with the pin step (github/made.ts): in the factory for the pin watch to commit, in the app
+   * for the time and the answers its line's pin step makes them again with. Absent where it made none, or for a run
+   * before it did.
    */
   made?: Made | undefined;
 }
@@ -378,10 +383,7 @@ export class ScanReads {
     const [moves, sealed, made] = await Promise.all([
       this.#artifact(repo, run, MOVES_ARTIFACT, MOVES_FILE, MAX_FILE_BYTES),
       this.#artifact(repo, run, STATE_ARTIFACT, STATE_FILE, MAX_SEALED_BYTES),
-      // The moves made for the pin watch, which moves this repository's pins alone: the app's are its line's.
-      repo === FACTORY_REPOSITORY
-        ? this.#artifact(repo, run, MADE_ARTIFACT, MADE_FILE, MAX_SEALED_BYTES)
-        : Promise.resolve(undefined),
+      this.#artifact(repo, run, MADE_ARTIFACT, MADE_FILE, MAX_SEALED_BYTES),
     ]);
     if (!moves) {
       if (run.conclusion === 'success') throw disagrees(repo, `run ${run.id} succeeded and left no ${MOVES_FILE}`);
@@ -542,6 +544,7 @@ export function joined(
     list.push({
       advisory: each.advisory,
       severity: each.severity,
+      type: each.type,
       package: each.package,
       installed: each.installed,
       file: each.file,

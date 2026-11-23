@@ -1,10 +1,15 @@
 /**
- * The factory's moves no pin's line can write, made by its scan for the pin watch to commit: a lockfile's package,
- * which pnpm moves, a tool mise pins, which mise locks, and an image that brings another pin with it (`bringsPins`: the
- * Node it runs, or Playwright's library), whose `FROM`s the step moves with what it brings. Each is the pin step's own
- * move (apps/runner/src/pins.ts),
- * made by scripts/derive.ts on the commit the scan read, in the scan's run (scripts/pins.ts), and sealed with the
- * scan's key beside its state, since what it writes names a package the public list withholds: the artifact `pins`.
+ * The moves no pin's line can write, made by the scan with the pin step: a lockfile's package, which pnpm moves, a tool
+ * mise pins, which mise locks, and an image that brings another pin with it (`bringsPins`: the Node it runs, or
+ * Playwright's library), whose `FROM`s the step moves with what it brings. Each is the pin step's own move
+ * (apps/runner/src/pins.ts), made by scripts/derive.ts on the commit the scan read, in the scan's run (scripts/pins.ts),
+ * and sealed with the scan's key beside its state, since what it writes names a package the public list withholds: the
+ * artifact `pins`.
+ *
+ * In the factory they are the pin watch's moves, which it commits (`madeByStep`). In the app they are the line's
+ * (`madeByLine`), which its pin step makes again on main's tip and commits itself: what the scan made of them is the
+ * time it made them as of and the digest it was given for each tag it asked (`askedIn`), which the line's pin step is
+ * given, so the line makes them as the scan did.
  *
  * The moves are made in groups, by the files they write, as the pin watch keeps one pull request for a file's moves:
  * every lockfile move of the day in one, every move of mise's in another. Each group's moves are made in the order of
@@ -21,7 +26,7 @@ import { moveOf } from '../patching/sends.ts';
 import { readTarget } from '../vulnerabilities/fixes.ts';
 import { bringsPins, libraryOf } from '../vulnerabilities/registry.ts';
 import { openJson, StateError, sealJson } from '../vulnerabilities/state.ts';
-import type { ReadMove } from './scanning.ts';
+import type { MoveFinding, ReadMove } from './scanning.ts';
 
 /** The scan's artifact of the moves it made, and the file in it. */
 export const MADE_ARTIFACT = 'pins';
@@ -79,12 +84,38 @@ export interface Made {
   groups: MadeGroup[];
 }
 
-/** Whether the review gate will name a move `major` (scripts/move.ts): across a major, clearing no Critical. */
-export const namedMajor = (move: Pick<ReadMove, 'major' | 'clears'>): boolean =>
-  move.major && move.clears.CRITICAL === 0;
+/**
+ * A Critical by Trivy's own rating, as the state gives a finding (`severity`). A publisher's rating, which the move's
+ * counts and deadline take where it is higher, may hold a major and never release one: the party that ships the major
+ * cannot ask for its merge. Node's own advisories are rated by Node alone (scan.ts's `nodeFindingsOf`), so none of
+ * them is one.
+ */
+export const trivysCritical = (finding: Pick<MoveFinding, 'severity' | 'type'>): boolean =>
+  finding.severity === 'CRITICAL' && finding.type !== 'node';
+
+/**
+ * Whether the review gate names a move `major` (scripts/move.ts): across a major, clearing no Critical by Trivy's own
+ * rating (`trivysCritical`).
+ */
+export const namedMajor = (move: Pick<ReadMove, 'major' | 'findings'>): boolean =>
+  move.major && !move.findings.some(trivysCritical);
+
+/**
+ * The digest each tag of an image was found at by the scan's step, each tag once: the first group's answer where two
+ * asked the same tag. None from a run before it kept them.
+ */
+export function askedIn(made: Pick<Made, 'groups'>): Asked[] {
+  const asked = new Map<string, Asked>();
+  for (const group of made.groups)
+    for (const each of group.asked ?? []) {
+      const key = `${each.image}:${each.tag}`;
+      if (!asked.has(key)) asked.set(key, each);
+    }
+  return [...asked.values()];
+}
 
 /** The group a move the step makes is in: the files it writes, and whether it is named `major`. */
-export const groupOf = (move: Pick<ReadMove, 'lockfile' | 'pins' | 'major' | 'clears' | 'name'>) => ({
+export const groupOf = (move: Pick<ReadMove, 'lockfile' | 'pins' | 'major' | 'findings' | 'name'>) => ({
   files: writtenBy(move),
   major: namedMajor(move),
 });
@@ -104,6 +135,13 @@ export const madeByStep = (move: Pick<ReadMove, 'lockfile' | 'pins' | 'name' | '
   move.lockfile ||
   move.pins.some((pin) => MISE.test(pin.file)) ||
   (readTarget(move.to)?.kind === 'image' && bringsPins(move.name));
+
+/**
+ * Whether a move of the app's is made by its line's pin step, not by a pin's edit: a lockfile's, or an image's that
+ * brings another pin with it (`bringsPins`), Node among them. The review gate makes the same moves so (scripts/move.ts).
+ */
+export const madeByLine = (move: Pick<ReadMove, 'lockfile' | 'name'>): boolean =>
+  move.lockfile || bringsPins(move.name);
 
 /**
  * The files a move the step makes writes, by which it is grouped: a lockfile's, where the scan found its package (its
