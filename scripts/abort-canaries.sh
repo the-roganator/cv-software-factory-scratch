@@ -22,7 +22,7 @@
 # blip aborts all the same.
 set -euo pipefail
 
-read -r -a kubectl <<<"${KUBECTL:-kubectl --context k3d-software-factory}"
+read -r -a kubectl <<<"${KUBECTL:-kubectl --context k3d-software-factory-scratch}"
 wait="${WAIT:-60}"
 tries="${STABLE_TRIES:-3}"
 if ! [[ "$tries" =~ ^[1-9][0-9]*$ ]]; then
