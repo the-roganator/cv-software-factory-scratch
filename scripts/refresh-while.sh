@@ -14,7 +14,7 @@
 # KUBECTL is the kubectl command, with its context (the Makefile's).
 set -uo pipefail
 
-read -r -a kubectl <<<"${KUBECTL:-kubectl --context k3d-software-factory}"
+read -r -a kubectl <<<"${KUBECTL:-kubectl --context k3d-software-factory-scratch}"
 interval=${INTERVAL:-15}
 
 "$@" &
