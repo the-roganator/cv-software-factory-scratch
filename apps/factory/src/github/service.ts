@@ -110,9 +110,9 @@ export async function startGitHubWorker(config: GitHubConfig, log: Logger) {
         `pins in ${repo}`,
         pinWatch({ github, reads: liveReads, actions, recorder, ...recorded, log, only }, repo),
       );
-      // Each of those pull requests is added to the merge queue once the gate passes it as a pin move and its checks
-      // are green (ADR 0017), recorded instead in a dry run; only a move the watch is told to take, as it opens only
-      // those. One the gate held is Martin's, as is all else.
+      // Each of those pull requests is added to the merge queue once the gate passes it by a rule the autonomy level
+      // queues and its checks are green (ADR 0017), recorded instead in a dry run; only a move the watch is told to
+      // take, as it opens only those. One the gate held is Martin's, as is all else.
       poller.watch(
         `queue pins in ${repo}`,
         pinQueueWatch({ github, reads: liveReads, actions, recorder, heads, log, level }, repo, only),
