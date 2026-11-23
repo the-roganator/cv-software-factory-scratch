@@ -881,7 +881,7 @@ describe('platform.yml', () => {
   it('gives the cluster a read of the contents alone, and the job that decides a read of the queue’s pull request', () => {
     expect(workflow.permissions).toEqual({});
     expect(Object.keys(jobs).sort()).toEqual(['platform', 'which']);
-    expect(jobs.platform?.permissions).toEqual({ contents: 'read' });
+    expect(jobs.platform?.permissions).toEqual({ contents: 'read', statuses: 'write' });
     expect(jobs.which?.permissions).toEqual({
       actions: 'read',
       checks: 'read',
