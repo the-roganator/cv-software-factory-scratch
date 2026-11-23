@@ -6,8 +6,8 @@
 import type { Moves } from '../../src/github/scanning.ts';
 import type { ScannedImage } from '../../src/patching/compare.ts';
 
-export const FACTORY = 'the-roganator/cv-software-factory';
-export const APP = 'the-roganator/cv-worlds-worst-website';
+export const FACTORY = 'the-roganator/cv-software-factory-scratch';
+export const APP = 'the-roganator/cv-worlds-worst-website-scratch';
 
 const zero = { CRITICAL: 0, HIGH: 0, MEDIUM: 0, LOW: 0, UNKNOWN: 0 };
 export const digest = (n: number) => `sha256:${String(n).repeat(64).slice(0, 64)}`;
@@ -16,8 +16,8 @@ export const digest = (n: number) => `sha256:${String(n).repeat(64).slice(0, 64)
 export const FACTORY_SCANNED: ScannedImage[] = [
   {
     kind: 'ours',
-    item: `ghcr.io/the-roganator/cv-software-factory/factory@${digest(1)}`,
-    image: `ghcr.io/the-roganator/cv-software-factory/factory@${digest(1)}`,
+    item: `ghcr.io/the-roganator/cv-software-factory-scratch/factory@${digest(1)}`,
+    image: `ghcr.io/the-roganator/cv-software-factory-scratch/factory@${digest(1)}`,
     digests: [digest(1), digest(2), digest(3)],
     pin: { file: 'deploy/example/images.yaml', line: 17 },
   },
@@ -47,8 +47,8 @@ export const FACTORY_SCANNED: ScannedImage[] = [
 export const APP_SCANNED: ScannedImage[] = [
   {
     kind: 'ours',
-    item: `ghcr.io/the-roganator/cv-worlds-worst-website/website@${digest(9)}`,
-    image: `ghcr.io/the-roganator/cv-worlds-worst-website/website@${digest(9)}`,
+    item: `ghcr.io/the-roganator/cv-worlds-worst-website-scratch/website@${digest(9)}`,
+    image: `ghcr.io/the-roganator/cv-worlds-worst-website-scratch/website@${digest(9)}`,
     digests: [digest(9), digest(10)],
     pin: { file: 'deploy/example/website.yaml', line: 5 },
   },
@@ -78,7 +78,7 @@ const run = (id: number) => ({
   conclusion: 'success',
   headSha: 'a'.repeat(40),
   updatedAt: '2026-11-11T04:58:00Z',
-  url: `https://github.com/the-roganator/cv-software-factory/actions/runs/${id}`,
+  url: `https://github.com/the-roganator/cv-software-factory-scratch/actions/runs/${id}`,
 });
 
 /** The factory's day: an image move, and a lockfile's move whose package the scan's state gives. */
@@ -145,7 +145,10 @@ export function factoryMoves(scanned: ScannedImage[] = FACTORY_SCANNED): Moves {
 export function appMoves(scanned: ScannedImage[] = APP_SCANNED): Moves {
   return {
     repository: APP,
-    run: { ...run(42000000202), url: 'https://github.com/the-roganator/cv-worlds-worst-website/actions/runs/1' },
+    run: {
+      ...run(42000000202),
+      url: 'https://github.com/the-roganator/cv-worlds-worst-website-scratch/actions/runs/1',
+    },
     file: {
       version: 1,
       repository: APP,
@@ -190,8 +193,8 @@ export function agreeing() {
     pod('factory', 'line-7d9f-abcde', [
       {
         name: 'line',
-        image: `ghcr.io/the-roganator/cv-software-factory/factory@${digest(1)}`,
-        imageID: `ghcr.io/the-roganator/cv-software-factory/factory@${digest(1)}`,
+        image: `ghcr.io/the-roganator/cv-software-factory-scratch/factory@${digest(1)}`,
+        imageID: `ghcr.io/the-roganator/cv-software-factory-scratch/factory@${digest(1)}`,
       },
     ]),
     pod('factory', 'postgres-0', [
@@ -214,8 +217,8 @@ export function agreeing() {
     pod('website', 'website-abc-1', [
       {
         name: 'website',
-        image: `ghcr.io/the-roganator/cv-worlds-worst-website/website@${digest(9)}`,
-        imageID: `ghcr.io/the-roganator/cv-worlds-worst-website/website@${digest(10)}`,
+        image: `ghcr.io/the-roganator/cv-worlds-worst-website-scratch/website@${digest(9)}`,
+        imageID: `ghcr.io/the-roganator/cv-worlds-worst-website-scratch/website@${digest(10)}`,
       },
     ]),
   ];

@@ -1,5 +1,5 @@
 /**
- * The factory's GitHub App, `mrogan-software-factory`: how its private key becomes the short-lived installation
+ * The factory's GitHub App, `the-roganator-scratch-factory`: how its private key becomes the short-lived installation
  * tokens that every call to GitHub carries.
  *
  * The key signs a JSON Web Token that says "I am the App" for ten minutes at most. GitHub exchanges that for an

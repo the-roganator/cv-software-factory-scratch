@@ -176,13 +176,13 @@ describe('a dependency’s move on the line', () => {
     });
     // The run the gate reads too: its time, and each tag once, the first group's answer where two asked it.
     github.moves = {
-      repository: 'the-roganator/cv-worlds-worst-website',
+      repository: 'the-roganator/cv-worlds-worst-website-scratch',
       run: { id: 42, event: 'schedule', conclusion: 'success', headSha: 'c'.repeat(40), updatedAt: '', url: '' },
       file: { judged: '2026-11-20T05:00:00Z' } as Moves['file'],
       moves: [],
       made: {
         version: 1,
-        repository: 'the-roganator/cv-worlds-worst-website',
+        repository: 'the-roganator/cv-worlds-worst-website-scratch',
         run: '42',
         commit: 'c'.repeat(40),
         groups: [group([nonroot]), group([{ ...nonroot, digest: `sha256:${'6'.repeat(64)}` }, node])],

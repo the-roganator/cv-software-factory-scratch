@@ -96,7 +96,7 @@
 # `read-only-telemetry`, for the proof that nothing of ours writes to production but what may.
 set -euo pipefail
 
-context="${KUBE_CONTEXT:-k3d-software-factory}"
+context="${KUBE_CONTEXT:-k3d-software-factory-scratch}"
 kubectl=(kubectl --context "$context" -n factory)
 record=${1:-}
 taken=null

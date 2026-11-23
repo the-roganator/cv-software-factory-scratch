@@ -1,6 +1,6 @@
 /**
  * The app's repository as the path's test checks it out (path.ts): its pins' files as they are in
- * `the-roganator/cv-worlds-worst-website`, each whole, and a small invented `package.json` and `pnpm-lock.yaml`. To
+ * `the-roganator/cv-worlds-worst-website-scratch`, each whole, and a small invented `package.json` and `pnpm-lock.yaml`. To
  * refresh one, copy it from the app's `main` again; the test names the pins it expects to find. Text here and no
  * files, so that nothing that reads this repository's own pins (scripts/ci-images.sh, scripts/image-pins.test.ts)
  * takes the app's for one of them: the build stage's image is written apart from its `FROM` for the same reason.
