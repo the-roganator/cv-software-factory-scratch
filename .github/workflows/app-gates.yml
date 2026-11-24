@@ -59,7 +59,7 @@ jobs:
             exit 1
           fi
       # The change first, with its merge commit's parents, for its base.
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@28802689a136bfcdb721715abd713740beecbe07 # v7.0.1
         with:
           path: change
           fetch-depth: 2
