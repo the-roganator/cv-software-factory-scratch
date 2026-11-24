@@ -51,7 +51,7 @@
 # The review App is the-roganator's, App ID 5470762, installed on every repository there. Until its key is in the
 # `review` environment, as the secret REVIEW_APP_PRIVATE_KEY, the gate says its verdict and posts nothing.
 #
-# Shared: cv-worlds-worst-website calls this workflow at a pinned commit from its own review.yml, with a `review`
+# Shared: cv-worlds-worst-website-scratch calls this workflow at a pinned commit from its own review.yml, with a `review`
 # environment of its own, so both repositories keep one rule. A caller pinned here does as this repository does: a
 # workflow of its own that calls pull-request.yml runs on `pull_request`, `pull_request_review` and `merge_group` and
 # holds nothing that can write, and its review.yml runs on `workflow_run` after it, with `workflow_call` to this file. This copy judges

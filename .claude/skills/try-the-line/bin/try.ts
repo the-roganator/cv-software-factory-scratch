@@ -20,7 +20,7 @@ import {
 } from '../../../../scripts/cluster-lock.ts';
 
 /** This repository's images, each with the Dockerfile that builds it. */
-export const REGISTRY = 'ghcr.io/the-roganator/cv-software-factory';
+export const REGISTRY = 'ghcr.io/the-roganator/cv-software-factory-scratch';
 export const IMAGES: Record<string, string> = {
   factory: 'apps/factory/Dockerfile',
   'factory-runner': 'apps/runner/Dockerfile',
@@ -450,7 +450,7 @@ export function chooseApplied(render: K8sObject[], names: string[]): { chosen: K
 }
 
 /** The cluster every try is on. */
-export const CONTEXT = 'k3d-software-factory';
+export const CONTEXT = 'k3d-software-factory-scratch';
 
 /** The resource kubectl names an object's kind by: `rolebinding.rbac.authorization.k8s.io`, `serviceaccount`. */
 export const kubectlResource = (r: ObjectRef): string => {
@@ -999,7 +999,7 @@ export function end(ops: Ops, path: string, options: EndOptions, lockPath: strin
   if (moved.has('line') && line?.state === 'started') {
     throw new Refused(
       "the line is started, on the try's images: stop it first, which only Martin's command line writes,\n" +
-        '  make stop-the-line KUBECTL="kubectl --context k3d-software-factory" REASON="putting a try back"\n' +
+        '  make stop-the-line KUBECTL="kubectl --context k3d-software-factory-scratch" REASON="putting a try back"\n' +
         'then run `try end` again. Nothing has been changed.',
     );
   }

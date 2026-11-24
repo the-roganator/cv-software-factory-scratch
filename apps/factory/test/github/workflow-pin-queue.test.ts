@@ -313,7 +313,7 @@ describe('the workflow pin queue watch', () => {
       [[review(HEAD, { head: NEWER })], /does not judge #81 at its head/],
       [[review(HEAD, {}, { number: 82 })], /does not judge #81 at its head/],
       // Only the review App's check is the gate's: the factory's own App, or GitHub Actions, can post one of that name.
-      [[review(HEAD, {}, { app: 5187559 })], /has posted no review check/],
+      [[review(HEAD, {}, { app: 5774780 })], /has posted no review check/],
       [[review(HEAD, {}, { app: 15368 })], /has posted no review check/],
       // The latest of the review App's runs on the head decides.
       [[review(HEAD), review(HEAD, { rule: 'held' })], /the gate's rule is held/],
@@ -377,7 +377,9 @@ describe('the workflow pin queue watch', () => {
     expect(THEIRS).toMatch(/waits for Martin to run the check again, or for Dependabot's next rebase/);
     expect(calls(sent)).toEqual([]);
     // The factory's own App's run of a required check counts for nothing.
-    const own = harness({ runs: () => [...green().slice(1), run('check', 'success', 'mrogan-software-factory')] });
+    const own = harness({
+      runs: () => [...green().slice(1), run('check', 'success', 'the-roganator-scratch-factory')],
+    });
     await own.pass();
     expect(own.enqueued).toEqual([]);
   });

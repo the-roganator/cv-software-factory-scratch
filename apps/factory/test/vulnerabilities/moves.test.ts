@@ -22,7 +22,7 @@ import type { Finding, Severity } from '../../src/vulnerabilities/sarif.ts';
  */
 const NOW = Date.parse('2026-11-10T04:30:00Z');
 const DAY = 86_400_000;
-const REPOSITORY = 'the-roganator/cv-software-factory';
+const REPOSITORY = 'the-roganator/cv-software-factory-scratch';
 const DIGEST = `sha256:${'e'.repeat(64)}`;
 const context = (over: Partial<Context> = {}): Context => ({
   repository: REPOSITORY,

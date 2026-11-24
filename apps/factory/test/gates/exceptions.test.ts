@@ -10,8 +10,8 @@ import { except, type Finding } from '../../src/gates/lockfile-scan.ts';
  * lockfile scan, the image scan and dependency review agree on, and an expired entry, or one for another item or
  * repository, excepts nothing in any of them.
  */
-const APP = 'the-roganator/cv-worlds-worst-website';
-const FACTORY = 'the-roganator/cv-software-factory';
+const APP = 'the-roganator/cv-worlds-worst-website-scratch';
+const FACTORY = 'the-roganator/cv-software-factory-scratch';
 const TODAY = '2026-11-11';
 const PACKAGE = 'invented-pkg';
 const CVE = 'CVE-2099-20001';
@@ -106,7 +106,9 @@ describe("the app's dependency gates, over one policy", () => {
   });
 
   it("names the app's own image as its list does, by the repository, whatever case", () => {
-    expect(ownImage('The-Roganator/CV-Worlds-Worst-Website')).toBe('ghcr.io/the-roganator/cv-worlds-worst-website');
+    expect(ownImage('The-Roganator/CV-Worlds-Worst-Website-Scratch')).toBe(
+      'ghcr.io/the-roganator/cv-worlds-worst-website-scratch',
+    );
     // With a digest, an entry is the same image's.
     const pinned = [entry({ item: `${ownImage(APP)}@sha256:${'b'.repeat(64)}` })];
     expect(newIn(imageBase, imageChange, APP, pinned, TODAY).failing).toEqual([]);

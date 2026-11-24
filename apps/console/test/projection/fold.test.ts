@@ -165,7 +165,7 @@ describe('a move named by its issue', () => {
       traces: [],
     })
     .add(2, 'issue.opened', 'factory', {
-      repository: 'the-roganator/cv-worlds-worst-website',
+      repository: 'the-roganator/cv-worlds-worst-website-scratch',
       number: 77,
       move: {
         name: 'left-pad',
@@ -196,7 +196,7 @@ describe('a move named by its issue', () => {
       type: 'package',
       dependency: { name: 'left-pad', ecosystem: 'npm', from: '1.2.3', to: '1.2.4', security: true },
     });
-    expect(sheet?.issue).toEqual({ repository: 'the-roganator/cv-worlds-worst-website', number: 77 });
+    expect(sheet?.issue).toEqual({ repository: 'the-roganator/cv-worlds-worst-website-scratch', number: 77 });
   });
 
   it('keeps the versions it had when the issue named the fingerprint’s move alone', () => {
@@ -226,7 +226,7 @@ describe('a disclosed move reopened', () => {
       dryRun: false,
     } as const;
     const issue = {
-      repository: 'the-roganator/cv-worlds-worst-website',
+      repository: 'the-roganator/cv-worlds-worst-website-scratch',
       number: 78,
       move: { name: 'left-pad', ecosystem: 'npm' },
     } as const;
