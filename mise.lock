@@ -9,13 +9,11 @@ specifiers = ["1.10"]
 
 [tools.argo-rollouts."platforms.linux-arm64"]
 checksum = "sha256:c677dec8cdf124b2ff60f475587ebd4a728015e512a1a1090a8c21b119ebbdf1"
-checksum_source = "mise-versions"
 url = "https://github.com/argoproj/argo-rollouts/releases/download/v1.10.1/kubectl-argo-rollouts-linux-arm64"
 url_api = "https://api.github.com/repos/argoproj/argo-rollouts/releases/assets/633798003"
 
 [tools.argo-rollouts."platforms.linux-x64"]
 checksum = "sha256:fb28a5ba80939aae8e6cb4c04c1e809d080938a2f0d03d496311fc643b4b92cd"
-checksum_source = "mise-versions"
 url = "https://github.com/argoproj/argo-rollouts/releases/download/v1.10.1/kubectl-argo-rollouts-linux-amd64"
 url_api = "https://api.github.com/repos/argoproj/argo-rollouts/releases/assets/633798009"
 
@@ -26,7 +24,6 @@ url_api = "https://api.github.com/repos/argoproj/argo-rollouts/releases/assets/6
 
 [tools.argo-rollouts."platforms.macos-x64"]
 checksum = "sha256:11d26b7b2e6f1df771bb69db773cc98d2722d256f44da16193631f6fd2866b13"
-checksum_source = "mise-versions"
 url = "https://github.com/argoproj/argo-rollouts/releases/download/v1.10.1/kubectl-argo-rollouts-darwin-amd64"
 url_api = "https://api.github.com/repos/argoproj/argo-rollouts/releases/assets/633798008"
 
@@ -37,25 +34,21 @@ specifiers = ["3.6"]
 
 [tools.argocd."platforms.linux-arm64"]
 checksum = "sha256:6636e9183de7dba666b673a417986e7ff54dbadd948b2f9f6c83bcf7d33ebb94"
-checksum_source = "mise-versions"
 url = "https://github.com/argoproj/argo-cd/releases/download/v3.6.1/argocd-linux-arm64"
 url_api = "https://api.github.com/repos/argoproj/argo-cd/releases/assets/709772974"
 
 [tools.argocd."platforms.linux-x64"]
 checksum = "sha256:46d2fc941071f0a0c36326a67a431d34b1479e1a24737f7b367abc93968beadc"
-checksum_source = "mise-versions"
 url = "https://github.com/argoproj/argo-cd/releases/download/v3.6.1/argocd-linux-amd64"
 url_api = "https://api.github.com/repos/argoproj/argo-cd/releases/assets/709772491"
 
 [tools.argocd."platforms.macos-arm64"]
 checksum = "sha256:2e4a88082bfcb25dd56369ed9fe807d941ce1d916efb5a080eea6ac00347dfdf"
-checksum_source = "mise-versions"
 url = "https://github.com/argoproj/argo-cd/releases/download/v3.6.1/argocd-darwin-arm64"
 url_api = "https://api.github.com/repos/argoproj/argo-cd/releases/assets/709773168"
 
 [tools.argocd."platforms.macos-x64"]
 checksum = "sha256:d692139261045daee54bf5f23e7ce9c2051ebd1abc90106cccc8c0468e565f86"
-checksum_source = "mise-versions"
 url = "https://github.com/argoproj/argo-cd/releases/download/v3.6.1/argocd-darwin-amd64"
 url_api = "https://api.github.com/repos/argoproj/argo-cd/releases/assets/709772492"
 
@@ -95,25 +88,21 @@ specifiers = ["0"]
 
 [tools.crane."platforms.linux-arm64"]
 checksum = "sha256:898c0cff975f898a33e8c4580bdafb0e7c02c7faa33374e946762f97c4ab7110"
-checksum_source = "mise-versions"
 url = "https://github.com/google/go-containerregistry/releases/download/v0.22.1/go-containerregistry_Linux_arm64.tar.gz"
 url_api = "https://api.github.com/repos/google/go-containerregistry/releases/assets/543544372"
 
 [tools.crane."platforms.linux-x64"]
 checksum = "sha256:0ab7a1d6932a213aed964ce97666c3077fe691c8606413674a8b3e0b9ec4cda0"
-checksum_source = "mise-versions"
 url = "https://github.com/google/go-containerregistry/releases/download/v0.22.1/go-containerregistry_Linux_x86_64.tar.gz"
 url_api = "https://api.github.com/repos/google/go-containerregistry/releases/assets/543544389"
 
 [tools.crane."platforms.macos-arm64"]
 checksum = "sha256:2231fc8df8806d20d680ff1225db44e095a55dd6ac1ae8eced4faf4b278b78fb"
-checksum_source = "mise-versions"
 url = "https://github.com/google/go-containerregistry/releases/download/v0.22.1/go-containerregistry_Darwin_arm64.tar.gz"
 url_api = "https://api.github.com/repos/google/go-containerregistry/releases/assets/543544436"
 
 [tools.crane."platforms.macos-x64"]
 checksum = "sha256:6fedd06a648c11335f0e8b9547e4783002c30e9336047fec292942cd518bb799"
-checksum_source = "mise-versions"
 url = "https://github.com/google/go-containerregistry/releases/download/v0.22.1/go-containerregistry_Darwin_x86_64.tar.gz"
 url_api = "https://api.github.com/repos/google/go-containerregistry/releases/assets/543544434"
 
@@ -168,29 +157,29 @@ checksum = "sha256:34bec4eba761ba5c16d1965ee6b8f5b0abe5993974a802274e2a4f0418893
 url = "https://get.helm.sh/helm-v4.3.1-darwin-amd64.tar.gz"
 
 [[tools.k3d]]
-version = "5.8.3"
+version = "5.9.0"
 backend = "aqua:k3d-io/k3d"
 specifiers = ["5"]
 
 [tools.k3d."platforms.linux-arm64"]
-checksum = "sha256:0b8110f2229631af7402fb828259330985918b08fefd38b7f1b788a1c8687216"
-url = "https://github.com/k3d-io/k3d/releases/download/v5.8.3/k3d-linux-arm64"
-url_api = "https://api.github.com/repos/k3d-io/k3d/releases/assets/229450023"
+checksum = "sha256:03cde5cf23e6e8e67de5a039ecf26e5b85aca82fba3e5d13dadf904cd218a250"
+url = "https://github.com/k3d-io/k3d/releases/download/v5.9.0/k3d-linux-arm64"
+url_api = "https://api.github.com/repos/k3d-io/k3d/releases/assets/436305757"
 
 [tools.k3d."platforms.linux-x64"]
-checksum = "sha256:dbaa79a76ace7f4ca230a1ff41dc7d8a5036a8ad0309e9c54f9bf3836dbe853e"
-url = "https://github.com/k3d-io/k3d/releases/download/v5.8.3/k3d-linux-amd64"
-url_api = "https://api.github.com/repos/k3d-io/k3d/releases/assets/229450045"
+checksum = "sha256:06d8f25bc3a971c4eb29e0ff08429b180402db0f4dec838c9eac427e296800a0"
+url = "https://github.com/k3d-io/k3d/releases/download/v5.9.0/k3d-linux-amd64"
+url_api = "https://api.github.com/repos/k3d-io/k3d/releases/assets/436305793"
 
 [tools.k3d."platforms.macos-arm64"]
-checksum = "sha256:8da468daa7dc7cf7cdd4735f90a9bb05179fa27858250f62e3d8cdf5b5ca0698"
-url = "https://github.com/k3d-io/k3d/releases/download/v5.8.3/k3d-darwin-arm64"
-url_api = "https://api.github.com/repos/k3d-io/k3d/releases/assets/229450067"
+checksum = "sha256:fe106541d5d0a3f18debcd4d432a16f8c0ce3e6ddc06f8fbb6f696a122313e00"
+url = "https://github.com/k3d-io/k3d/releases/download/v5.9.0/k3d-darwin-arm64"
+url_api = "https://api.github.com/repos/k3d-io/k3d/releases/assets/436305875"
 
 [tools.k3d."platforms.macos-x64"]
-checksum = "sha256:fd0f8e9e8ea4d8bc3674572ca6ed0833b639bf57c43c708616d937377324cfea"
-url = "https://github.com/k3d-io/k3d/releases/download/v5.8.3/k3d-darwin-amd64"
-url_api = "https://api.github.com/repos/k3d-io/k3d/releases/assets/229450076"
+checksum = "sha256:b4aabc37534f95b9c764e7823f2df923f50d57600837aa60a06266cce47db732"
+url = "https://github.com/k3d-io/k3d/releases/download/v5.9.0/k3d-darwin-amd64"
+url_api = "https://api.github.com/repos/k3d-io/k3d/releases/assets/436305915"
 
 [[tools.kubectl]]
 version = "1.37.2"
@@ -220,13 +209,11 @@ specifiers = ["5"]
 
 [tools.kustomize."platforms.linux-arm64"]
 checksum = "sha256:9867b76482cfc6d25b546abc1d2b5a32bd137505aba640649b4b378f64f6d68f"
-checksum_source = "mise-versions"
 url = "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize/v5.8.3/kustomize_v5.8.3_linux_arm64.tar.gz"
 url_api = "https://api.github.com/repos/kubernetes-sigs/kustomize/releases/assets/621661325"
 
 [tools.kustomize."platforms.linux-x64"]
 checksum = "sha256:cb9e31198d3f63b44848bd0afc4c8efc56e6cfef9c93a4a39a211940e6decd61"
-checksum_source = "mise-versions"
 url = "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize/v5.8.3/kustomize_v5.8.3_linux_amd64.tar.gz"
 url_api = "https://api.github.com/repos/kubernetes-sigs/kustomize/releases/assets/621661332"
 
@@ -237,7 +224,6 @@ url_api = "https://api.github.com/repos/kubernetes-sigs/kustomize/releases/asset
 
 [tools.kustomize."platforms.macos-x64"]
 checksum = "sha256:d08fb85846c3d977f0e2a66e7ff45f1b5264c294685e5e726e1a8bdfe0da8dee"
-checksum_source = "mise-versions"
 url = "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize/v5.8.3/kustomize_v5.8.3_darwin_amd64.tar.gz"
 url_api = "https://api.github.com/repos/kubernetes-sigs/kustomize/releases/assets/621661334"
 
@@ -298,13 +284,11 @@ specifiers = ["3.15"]
 
 [tools.promtool."platforms.linux-arm64"]
 checksum = "sha256:ceb6d21493c37ca0b4513b147642797c68cf39a0f50a444d50e1e80c74f21b26"
-checksum_source = "mise-versions"
 url = "https://github.com/prometheus/prometheus/releases/download/v3.15.1/prometheus-3.15.1.linux-arm64.tar.gz"
 url_api = "https://api.github.com/repos/prometheus/prometheus/releases/assets/662697891"
 
 [tools.promtool."platforms.linux-x64"]
 checksum = "sha256:6a726885328ad9efebbf36e876ce2fb6225468a71fd1e7ce3ba666d5f4d97a84"
-checksum_source = "mise-versions"
 url = "https://github.com/prometheus/prometheus/releases/download/v3.15.1/prometheus-3.15.1.linux-amd64.tar.gz"
 url_api = "https://api.github.com/repos/prometheus/prometheus/releases/assets/662697731"
 
@@ -315,7 +299,6 @@ url_api = "https://api.github.com/repos/prometheus/prometheus/releases/assets/66
 
 [tools.promtool."platforms.macos-x64"]
 checksum = "sha256:c89fcb30045d8c394c9d93e96cbbee3aaf2448a48326b417e811eb4e528edf88"
-checksum_source = "mise-versions"
 url = "https://github.com/prometheus/prometheus/releases/download/v3.15.1/prometheus-3.15.1.darwin-amd64.tar.gz"
 url_api = "https://api.github.com/repos/prometheus/prometheus/releases/assets/662695728"
 
