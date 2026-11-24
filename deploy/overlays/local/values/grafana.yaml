@@ -1,4 +1,4 @@
-# Local only: open without logging in, at http://grafana.localhost:8080.
+# Local only: open without logging in, at http://grafana.localhost:9080.
 grafana.ini:
   auth.anonymous:
     enabled: true

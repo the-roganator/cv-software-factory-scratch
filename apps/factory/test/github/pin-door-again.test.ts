@@ -180,7 +180,7 @@ describe('the door, asked again each earlier bypass', () => {
       expect([refused.status, refused.error]).toEqual([422, 'branch-refused']);
     }
     // The repository in any other spelling is not one the door serves.
-    for (const other of ['The-Roganator/cv-software-factory', `${FACTORY}/`, `${FACTORY}.git`, ` ${FACTORY}`]) {
+    for (const other of ['The-Roganator/cv-software-factory-scratch', `${FACTORY}/`, `${FACTORY}.git`, ` ${FACTORY}`]) {
       expect((await ask(url, 'enqueuePullRequest', { ...asked, repo: other })).status).toBe(400);
     }
     // No route beside it: no action merges, enables auto-merge, or passes a query through.
@@ -349,11 +349,14 @@ describe('the door, asked what it once still served', () => {
   });
 
   it('starts no worker configured for this repository in another case than the guards name it', () => {
-    for (const spelled of ['The-Roganator/CV-Software-Factory', 'the-roganator/CV-worlds-worst-website']) {
+    for (const spelled of [
+      'The-Roganator/CV-Software-Factory-Scratch',
+      'the-roganator/CV-worlds-worst-website-Scratch',
+    ]) {
       expect(() => configFromEnv({ GITHUB_REPOSITORIES: spelled }), spelled).toThrow(/as the worker's guards name it/);
     }
-    expect(configFromEnv({ GITHUB_REPOSITORIES: 'the-roganator/cv-software-factory' }).repositories).toEqual([
-      'the-roganator/cv-software-factory',
+    expect(configFromEnv({ GITHUB_REPOSITORIES: 'the-roganator/cv-software-factory-scratch' }).repositories).toEqual([
+      'the-roganator/cv-software-factory-scratch',
     ]);
   });
 });

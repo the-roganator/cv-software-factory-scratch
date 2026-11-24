@@ -59,8 +59,8 @@ describe("Argo CD's images, pulled first", () => {
     const { status, out, calls } = pull(['ok', 'ok']);
     expect(status).toBe(0);
     expect(calls).toEqual([
-      'exec k3d-software-factory-server-0 timeout 1 crictl pull quay.io/argoproj/argocd:v3.6.1',
-      'exec k3d-software-factory-server-0 timeout 1 crictl pull ecr-public.aws.com/docker/library/redis:8.6.4-alpine',
+      'exec k3d-software-factory-scratch-server-0 timeout 1 crictl pull quay.io/argoproj/argocd:v3.6.1',
+      'exec k3d-software-factory-scratch-server-0 timeout 1 crictl pull ecr-public.aws.com/docker/library/redis:8.6.4-alpine',
     ]);
     expect(out).toMatch(/^Pulled quay\.io\/argoproj\/argocd:v3\.6\.1 in \d+s \(try 1 of 3\)\.$/m);
   });

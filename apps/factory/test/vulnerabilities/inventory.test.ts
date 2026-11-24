@@ -373,10 +373,10 @@ describe('the list of this repository', () => {
       ]),
     );
     expect(items.filter((item) => item.kind === 'ours').map((item) => item.name.split('@')[0])).toEqual([
-      'ghcr.io/the-roganator/cv-software-factory/console',
-      'ghcr.io/the-roganator/cv-software-factory/factory',
-      'ghcr.io/the-roganator/cv-software-factory/factory-browser',
-      'ghcr.io/the-roganator/cv-software-factory/factory-runner',
+      'ghcr.io/the-roganator/cv-software-factory-scratch/console',
+      'ghcr.io/the-roganator/cv-software-factory-scratch/factory',
+      'ghcr.io/the-roganator/cv-software-factory-scratch/factory-browser',
+      'ghcr.io/the-roganator/cv-software-factory-scratch/factory-runner',
     ]);
   });
 
@@ -412,16 +412,16 @@ describe('reading a pin', () => {
 
   it("signs an image of ours as build.yml on its repository's main, for the repositories review routing trusts alone", () => {
     for (const image of [
-      'ghcr.io/the-roganator/cv-software-factory/console',
-      'ghcr.io/the-roganator/cv-worlds-worst-website',
+      'ghcr.io/the-roganator/cv-software-factory-scratch/console',
+      'ghcr.io/the-roganator/cv-worlds-worst-website-scratch',
       'ghcr.io/the-roganator/other-repository',
-      'ghcr.io/someone-else/cv-software-factory/console',
+      'ghcr.io/someone-else/cv-software-factory-scratch/console',
       'quay.io/example/sidecar',
     ]) {
       const repository = routedSigner(image);
       expect(signerOf(image), image).toBe(repository ? pipeline(repository).identity : undefined);
     }
-    expect(signerOf('ghcr.io/the-roganator/cv-worlds-worst-website')).toBeDefined();
+    expect(signerOf('ghcr.io/the-roganator/cv-worlds-worst-website-scratch')).toBeDefined();
   });
 
   it("finds an image's tag past a registry's port and before its digest", () => {
