@@ -987,7 +987,7 @@ describe('a move’s look again', () => {
           version: OLD,
           symptom: 'vulnerable-dependency',
           move: {
-            repository: 'the-roganator/cv-worlds-worst-website',
+            repository: 'the-roganator/cv-worlds-worst-website-scratch',
             ...move,
             pins: [{ file: 'pnpm-lock.yaml', line: 40 }],
           },

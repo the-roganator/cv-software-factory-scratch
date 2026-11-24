@@ -15,7 +15,7 @@
 # changed by a pull request, or another workflow given its name, can only make the honest gate look again, or leave the
 # check missing, which holds the pull request as a failing check does.
 #
-# Shared: cv-worlds-worst-website calls this workflow at a pinned commit, so both repositories keep one title rule, out
+# Shared: cv-worlds-worst-website-scratch calls this workflow at a pinned commit, so both repositories keep one title rule, out
 # of reach of anything that can write to the app's repository, and ask their gates alike.
 name: pull request
 # A run on the merge queue's commit is named by the queue's branch, which names its pull request; on a pull request,
