@@ -1,6 +1,6 @@
 {
   "name": "software-factory",
-  "version": "0.12.0",
+  "version": "0.13.0",
   "private": true,
   "description": "AI agents and deterministic gates that look after a live web app.",
   "license": "MIT",
@@ -18,12 +18,12 @@
     "@software-factory/testing": "workspace:*",
     "@types/node": "^24.19.2",
     "@types/pngjs": "^6.0.5",
-    "fast-check": "^4.11.0",
+    "fast-check": "^4.10.2",
     "lefthook": "^2.2.1",
     "pixelmatch": "^8.0.0",
     "pngjs": "^7.0.0",
     "typescript": "^7.0.2",
-    "vitest": "^5.1.1",
+    "vitest": "^5.1.0",
     "yaml": "^2.9.1"
   }
 }
