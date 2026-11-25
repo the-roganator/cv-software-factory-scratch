@@ -67,7 +67,7 @@ extra() { # [<name>]
 }
 # A baseline, with batch.env's STAGED_EXTRA: built, checked, reset and pinned, then root Synced and Healthy.
 baseline() { # <log>
-  echo "real repo queued: $(gh run list -R the-roganator/cv-software-factory --status queued -L 100 --json databaseId -q length)"
+  echo "real repo queued: $(gh run list -R the-roganator/cv-software-factory-scratch --status queued -L 100 --json databaseId -q length)"
   # SKIP_CHECK=1 leaves out `make check` in the copies, for a baseline one of the copy's own tests fails by design (X4).
   for step in build check reset pin-images; do
     [ -n "${SKIP_CHECK:-}" ] && [ "$step" = check ] && { echo "== check skipped $(date -u +%H:%MZ)"; continue; }

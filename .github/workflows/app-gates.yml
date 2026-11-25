@@ -1,7 +1,7 @@
 # The app's gates (spec section 4.1), beside its own lint, types and tests: what a pull request to the app must pass
 # that the app's repository cannot loosen.
 #
-# Shared: cv-worlds-worst-website calls this workflow at a pinned commit, from its pull requests and its merge queue.
+# Shared: cv-worlds-worst-website-scratch calls this workflow at a pinned commit, from its pull requests and its merge queue.
 # The scripts come from this repository at that commit, and the probes and crawler from the factory-browser image this
 # repository's local profile pins, so nothing in a pull request to the app changes how it is judged.
 #

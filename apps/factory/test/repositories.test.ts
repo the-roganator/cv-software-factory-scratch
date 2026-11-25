@@ -17,7 +17,7 @@ describe('the two repositories', () => {
 
   it('refuses a name outside the-roganator, in another case, with a dot or a space, not owner/name, or one for both', () => {
     for (const name of [
-      'someone/cv-worlds-worst-website',
+      'someone/cv-worlds-worst-website-scratch',
       'The-Roganator/scratch-app',
       'the-roganator/Scratch',
       'the-roganator/scratch.app',

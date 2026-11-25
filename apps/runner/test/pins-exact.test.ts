@@ -300,7 +300,7 @@ describe('a routine update of a package, made by pnpm itself', { timeout: 120_00
     const key = readKey(newKey());
     const made: Made = {
       version: 1,
-      repository: 'the-roganator/cv-software-factory',
+      repository: 'the-roganator/cv-software-factory-scratch',
       run: '7',
       commit: 'a'.repeat(40),
       groups: [

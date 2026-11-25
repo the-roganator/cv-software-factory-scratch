@@ -59,8 +59,8 @@ describe("Argo CD's images, pulled first", () => {
     const { status, out, calls } = pull(['ok', 'ok']);
     expect(status).toBe(0);
     expect(calls).toEqual([
-      'exec k3d-software-factory-server-0 timeout 1 crictl pull quay.io/argoproj/argocd:v3.6.1',
-      'exec k3d-software-factory-server-0 timeout 1 crictl pull ecr-public.aws.com/docker/library/redis:8.6.4-alpine',
+      'exec k3d-software-factory-scratch-server-0 timeout 1 crictl pull quay.io/argoproj/argocd:v3.6.1',
+      'exec k3d-software-factory-scratch-server-0 timeout 1 crictl pull ecr-public.aws.com/docker/library/redis:8.6.4-alpine',
     ]);
     expect(out).toMatch(/^Pulled quay\.io\/argoproj\/argocd:v3\.6\.1 in \d+s \(try 1 of 3\)\.$/m);
   });
@@ -78,7 +78,9 @@ describe("Argo CD's images, pulled first", () => {
     // 3 tries of 4s each would take 12s; the deadline leaves room for one, after the margin and the kill outside it.
     const { status, out, calls } = pull(['hang', 'hang', 'hang', 'hang'], { LIMIT: '4', DEADLINE: '21' });
     expect(status).toBe(1);
-    expect(calls[0]).toBe('exec k3d-software-factory-server-0 timeout 4 crictl pull quay.io/argoproj/argocd:v3.6.1');
+    expect(calls[0]).toBe(
+      'exec k3d-software-factory-scratch-server-0 timeout 4 crictl pull quay.io/argoproj/argocd:v3.6.1',
+    );
     expect(calls.length).toBeLessThan(3);
     expect(out).toContain(
       "::error::quay.io/argoproj/argocd:v3.6.1 did not pull into the node within the 21s all of Argo CD's images have",
