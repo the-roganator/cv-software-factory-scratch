@@ -33,7 +33,7 @@ export const RECORDS = new Map<string, Uint8Array>();
 type Refused = PayloadOf<'action.refused'>;
 type Signed = Omit<Refused, 'record' | 'signature' | 'count' | 'lastAt'>;
 
-const APP = 'the-roganator/cv-worlds-worst-website';
+const APP = 'the-roganator/cv-worlds-worst-website-scratch';
 
 /**
  * A refusal the GitHub worker kept and signed, as the line appends it for no work item: with its record and signature,
@@ -81,7 +81,7 @@ export default line
     mechanism: 'admission-control',
     action: 'Admit Pod factory/try-runner, refused by factory-images',
     output:
-      'admission webhook "ivpol.validate.kyverno.svc-fail-finegrained-factory-images" denied the request: Policy factory-images failed: images must be signed by build.yml on main: ghcr.io/the-roganator/cv-software-factory/factory-runner:dev',
+      'admission webhook "ivpol.validate.kyverno.svc-fail-finegrained-factory-images" denied the request: Policy factory-images failed: images must be signed by build.yml on main: ghcr.io/the-roganator/cv-software-factory-scratch/factory-runner:dev',
     guardrails: guardrailsFor('admission-control', 'image'),
     subject: { namespace: 'factory', kind: 'Pod', name: 'try-runner', uid: '2b8e4f10-6c3d-4e7a-8b19-0a5d2c7e9f31' },
   })
@@ -148,9 +148,9 @@ export default line
     'action.refused',
     'factory',
     'The GitHub worker refused an action: github-guard',
-    relayed('the-roganator/cv-software-factory', null, at('166:40:00'), {
+    relayed('the-roganator/cv-software-factory-scratch', null, at('166:40:00'), {
       mechanism: 'github-guard',
-      action: 'openDeploy branch deploy/console in the-roganator/cv-software-factory',
+      action: 'openDeploy branch deploy/console in the-roganator/cv-software-factory-scratch',
       output: 'refused: branch deploy/console is not one of the factory’s deploy branches',
       guardrails: guardrailsFor('github-guard', 'deploy'),
     }),

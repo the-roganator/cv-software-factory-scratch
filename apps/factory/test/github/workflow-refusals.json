@@ -1,6 +1,6 @@
 [
   {
-    "repo": "the-roganator/cv-software-factory",
+    "repo": "the-roganator/cv-software-factory-scratch",
     "at": "2026-10-31T21:17:31.567Z",
     "attempted": "a signed commit (createCommitOnBranch) adding .github/workflows/factory-refusal.yml on factory/workflow-refusal",
     "control": {
@@ -13,7 +13,7 @@
     "message": "Resource not accessible by integration"
   },
   {
-    "repo": "the-roganator/cv-worlds-worst-website",
+    "repo": "the-roganator/cv-worlds-worst-website-scratch",
     "at": "2026-10-31T21:17:37.020Z",
     "attempted": "a signed commit (createCommitOnBranch) adding .github/workflows/factory-refusal.yml on factory/workflow-refusal",
     "control": {
