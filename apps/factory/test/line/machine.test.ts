@@ -2470,7 +2470,7 @@ describe('the record of a work item’s issue', () => {
     expect(recordFirst(planner, fold([ticket]), 41)).toEqual({ do: 'record-issue', issue: 41 });
     const recorded: LineEvent = {
       type: 'issue.opened',
-      payload: { repository: 'the-roganator/cv-worlds-worst-website', number: 41 },
+      payload: { repository: 'the-roganator/cv-worlds-worst-website-scratch', number: 41 },
     };
     expect(recordFirst(planner, fold([ticket, recorded]), 41)).toEqual(planner);
   });
@@ -2487,7 +2487,7 @@ describe('the record of a work item’s issue', () => {
 });
 
 describe('a newer scan of a move the line has open', () => {
-  const REPO = 'the-roganator/cv-worlds-worst-website';
+  const REPO = 'the-roganator/cv-worlds-worst-website-scratch';
   const move: LineEvent = {
     type: 'ticket.opened',
     payload: {
