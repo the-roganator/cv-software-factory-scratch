@@ -175,7 +175,7 @@ describe('An improvement Martin asked for', () => {
 });
 
 describe('Preview it', () => {
-  const APP = 'http://website.localhost:8080';
+  const APP = 'http://website.localhost:9080';
 
   it('opens the first page the spec names, on the app’s own origin, or the front page', () => {
     expect(previewHref(APP, 'delivery-dates', '/products/blue-mug')).toBe(

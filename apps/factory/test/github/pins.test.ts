@@ -941,7 +941,7 @@ describe('one pull request for the day’s moves at one file', () => {
     const apart = branchOf(behind());
     const updates = openPins(repo).find((p) => p.head === apart);
     expect(updates?.body).toContain(
-      "The factory's pin watch makes 2 of the day’s routine updates, as the scan of run [42000000101](https://github.com/the-roganator/cv-software-factory/actions/runs/42000000101) lists (judged 2026-11-11T06:15:00Z). Each is a routine update: a newer release, with no advisory behind it and no deadline. It changes nothing but the version or digest at each pin.",
+      "The factory's pin watch makes 2 of the day’s routine updates, as the scan of run [42000000101](https://github.com/the-roganator/cv-software-factory-scratch/actions/runs/42000000101) lists (judged 2026-11-11T06:15:00Z). Each is a routine update: a newer release, with no advisory behind it and no deadline. It changes nothing but the version or digest at each pin.",
     );
     expect(updates?.body).toContain(`| \`kyverno\` | \`${KYVERNO}:9\` | \`3.5.0\` | \`3.6.1\` |`);
     expect(updates?.body).toContain('The review gate passes it as `move` when it is exactly the scan’s moves');
@@ -957,7 +957,7 @@ describe('one pull request for the day’s moves at one file', () => {
     await w.pass();
     expect(updates?.title).toBe('chore(pin): move kyverno to 3.6.1');
     expect(updates?.body).toContain(
-      'moves `kyverno` from `3.5.0` to `chart kyverno 3.6.1`, as the scan of run [42000000101](https://github.com/the-roganator/cv-software-factory/actions/runs/42000000101) lists (judged 2026-11-11T06:15:00Z). It is a routine update: a newer release, with no advisory behind it and no deadline.',
+      'moves `kyverno` from `3.5.0` to `chart kyverno 3.6.1`, as the scan of run [42000000101](https://github.com/the-roganator/cv-software-factory-scratch/actions/runs/42000000101) lists (judged 2026-11-11T06:15:00Z). It is a routine update: a newer release, with no advisory behind it and no deadline.',
     );
     expect(updates?.body).toContain('| Routine update | Leaves on the same pins |');
     expect(updates?.body).toContain('| `kyverno` | 2 medium |');

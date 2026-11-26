@@ -28,7 +28,7 @@ const SYFT = 'ghcr.io/anchore/syft:v1.57.1@sha256:03215d0e98b661d0ecbc8575dbc14d
 const DEVCONTAINER =
   'mcr.microsoft.com/devcontainers/base:ubuntu-24.04@sha256:d94c97dd9cacf183d0a6fd12a8e87b526e9e928307674ae9c94139139c0c6eae';
 const OURS =
-  'ghcr.io/the-roganator/cv-worlds-worst-website@sha256:0a04e1fd9bf6c935daf23027064c493bb8a59a5a2a913b3b7ed82aae2d4168d1';
+  'ghcr.io/the-roganator/cv-worlds-worst-website-scratch@sha256:0a04e1fd9bf6c935daf23027064c493bb8a59a5a2a913b3b7ed82aae2d4168d1';
 
 const image = (kind: ReadTarget['kind'], file: string, line: number, reference: string): ReadTarget => ({
   key: `${file} ${reference.split('@')[0]?.replace(/:[^:/]+$/, '')}`,

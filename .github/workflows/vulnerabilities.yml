@@ -6,7 +6,7 @@
 # that repository's code scanning, at the line that pins it, in one of the categories `vulnerabilities/01` to
 # `vulnerabilities/20`: the file has a run for each, no run over the 5,000 results code scanning keeps of one.
 #
-# Shared: cv-worlds-worst-website calls this workflow at a pinned commit, grants `actions: read`, `contents: write`,
+# Shared: cv-worlds-worst-website-scratch calls this workflow at a pinned commit, grants `actions: read`, `contents: write`,
 # `packages: read` and `security-events: write`, and passes SCAN_STATE_KEY by name; each job takes only what it names
 # below of that. Its results reach its own code scanning and its snapshot its own graph, since the upload and the
 # submission name the calling repository. The scripts (the lockfile gate's reading of a lockfile

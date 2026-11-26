@@ -1417,7 +1417,7 @@ describe('Verify on the line', () => {
 
   /** A routine update's work item, merged and released, with its row at Release. */
   async function routineReleased() {
-    const repository = 'the-roganator/cv-worlds-worst-website';
+    const repository = 'the-roganator/cv-worlds-worst-website-scratch';
     const grpc = { name: '@grpc/grpc-js', ecosystem: 'npm' as const, from: '1.14.4', to: '1.14.5' };
     const workItem = await nextWorkItem(database.as.triage);
     await events.append([
@@ -1797,7 +1797,7 @@ describe('Verify on the line', () => {
     it('reopens a move’s ticket the dry run verified on its move, never a route', async () => {
       const workItem = await nextWorkItem(database.as.triage);
       const move = {
-        repository: 'the-roganator/cv-worlds-worst-website',
+        repository: 'the-roganator/cv-worlds-worst-website-scratch',
         name: 'node',
         ecosystem: 'docker' as const,
         from: '24.11.0-alpine',
