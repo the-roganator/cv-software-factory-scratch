@@ -340,7 +340,7 @@ describe('Dependabot’s pull request, which the App did not open', () => {
     ['from a branch that only ends as its own does', { ref: 'x/dependabot/github_actions/factory-0b5a7c9d1e' }],
     ['from a branch whose name is not plain', { ref: 'dependabot/github_actions/../../main' }],
     ['from one of the factory’s branches', { ref: 'factory/1296-prices' }],
-    ['from a fork’s branch of that name', { from: 'dependabot/cv-worlds-worst-website' }],
+    ['from a fork’s branch of that name', { from: 'dependabot/cv-worlds-worst-website-scratch' }],
     ['into another branch', { base: 'release' }],
   ])('is never added to the merge queue when it is one %s', async (_what, over) => {
     const { github: gh, sent } = github([pull(150, over), queued]);

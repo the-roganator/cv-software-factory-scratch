@@ -72,7 +72,7 @@ export default defineConfig({
       LOG_LEVEL: 'error',
       OTEL_SDK_DISABLED: 'true',
       // The app a flag's "Preview it" opens: the local cluster's, as its Deployment names it.
-      APP_URL: 'http://website.localhost:8080',
+      APP_URL: 'http://website.localhost:9080',
     },
     stdout: 'pipe' as const,
     reuseExistingServer: false,

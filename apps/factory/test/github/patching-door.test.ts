@@ -12,7 +12,7 @@ import { createWorkerServer, PATCHING_READS } from '../../src/github/server.ts';
 describe('the GitHub worker’s door for the sense', () => {
   let close: (() => void) | undefined;
   afterEach(() => close?.());
-  const REPO = 'the-roganator/cv-software-factory';
+  const REPO = 'the-roganator/cv-software-factory-scratch';
 
   async function door() {
     const asked: string[] = [];

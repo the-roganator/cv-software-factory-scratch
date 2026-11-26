@@ -17,7 +17,7 @@
 # whole, IMAGES the images (one a line) in place of the chart's, for the tests.
 set -uo pipefail
 
-node=${CLUSTER_NODE:-k3d-software-factory-server-0}
+node=${CLUSTER_NODE:-k3d-software-factory-scratch-server-0}
 tries=${TRIES:-3}
 limit=${LIMIT:-45}
 deadline=${DEADLINE:-420}

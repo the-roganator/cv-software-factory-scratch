@@ -22,7 +22,7 @@ const refusal = (
   mechanism: 'github-guard' | 'token-permission' | 'review-gate',
   number: number | null,
 ): SignedRefusal => ({
-  repo: number === null ? 'the-roganator/cv-software-factory' : 'the-roganator/cv-worlds-worst-website',
+  repo: number === null ? 'the-roganator/cv-software-factory-scratch' : 'the-roganator/cv-worlds-worst-website-scratch',
   number,
   at: '2026-11-03T12:00:00.000Z',
   payload: { mechanism, action: `${mechanism} action`, output: `${mechanism} output`, guardrails: [1] },
@@ -84,7 +84,7 @@ describe('attack 2 (workflow)', () => {
 });
 
 describe('attack 3 (test)', () => {
-  const pullRequest = { repository: 'the-roganator/cv-worlds-worst-website', number: 5, head: 'a'.repeat(40) };
+  const pullRequest = { repository: 'the-roganator/cv-worlds-worst-website-scratch', number: 5, head: 'a'.repeat(40) };
   it('relays the review check’s refusal and names the pull request it opened', async () => {
     const events = fakeEvents();
     const result = await testAttempt({ door: door({ refusals: [refusal('review-gate', 5)], pullRequest }) })(

@@ -26,7 +26,7 @@ const key = refusalKey(publicPem(worker));
 
 const PAYLOAD = {
   mechanism: 'github-guard',
-  action: 'Commit to .github/workflows/ci.yml in the-roganator/cv-worlds-worst-website',
+  action: 'Commit to .github/workflows/ci.yml in the-roganator/cv-worlds-worst-website-scratch',
   output: 'refused: no step may change .github/workflows/ci.yml',
   guardrails: [1],
 };
@@ -38,7 +38,7 @@ async function signed(
   signer = worker.privateKey,
 ): Promise<SignedRefusal['payload']> {
   const bytes = recordBytes({
-    repo: 'the-roganator/cv-worlds-worst-website',
+    repo: 'the-roganator/cv-worlds-worst-website-scratch',
     number: 41,
     at: '2026-10-05T09:00:00.000Z',
     payload,
