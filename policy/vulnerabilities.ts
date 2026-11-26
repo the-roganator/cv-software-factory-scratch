@@ -37,7 +37,44 @@ export const MAX_DAYS = 90;
 /** An advisory id the scan's results carry. */
 export const ADVISORY = /^(CVE-\d{4}-\d{4,}|GHSA(-[23456789cfghjmpqrvwx]{4}){3})$/;
 
-export const EXCEPTIONS: Exception[] = [];
+export const EXCEPTIONS: Exception[] = [
+  {
+    repository: 'the-roganator/cv-worlds-worst-website',
+    item: 'pnpm-lock.yaml',
+    advisory: 'CVE-2024-28849',
+    package: 'follow-redirects',
+    reason:
+      'A scratch copy’s set-up, never the real policy: the patching harness’s test 21 has the scan name 1.15.4 first, and lifts this for it to name 1.15.6.',
+    expires: '2027-02-08',
+  },
+  {
+    repository: 'the-roganator/cv-worlds-worst-website',
+    item: 'pnpm-lock.yaml',
+    advisory: 'GHSA-cxjh-pqwp-8mfp',
+    package: 'follow-redirects',
+    reason:
+      'A scratch copy’s set-up, never the real policy: the patching harness’s test 21 has the scan name 1.15.4 first, and lifts this for it to name 1.15.6.',
+    expires: '2027-02-08',
+  },
+  {
+    repository: 'the-roganator/cv-worlds-worst-website',
+    item: 'pnpm-lock.yaml',
+    advisory: 'CVE-2026-40895',
+    package: 'follow-redirects',
+    reason:
+      'A scratch copy’s set-up, never the real policy: the patching harness’s test 21 has the scan name 1.15.4 first, lifts the exception of the advisory 1.15.6 fixes for it to name 1.15.6, and keeps this one of the advisory only 1.16.0 fixes throughout.',
+    expires: '2027-02-08',
+  },
+  {
+    repository: 'the-roganator/cv-worlds-worst-website',
+    item: 'pnpm-lock.yaml',
+    advisory: 'GHSA-r4q5-vmmm-2653',
+    package: 'follow-redirects',
+    reason:
+      'A scratch copy’s set-up, never the real policy: the patching harness’s test 21 has the scan name 1.15.4 first, lifts the exception of the advisory 1.15.6 fixes for it to name 1.15.6, and keeps this one of the advisory only 1.16.0 fixes throughout.',
+    expires: '2027-02-08',
+  },
+];
 
 /**
  * A package or an image the scan lists no routine move for (apps/factory/src/vulnerabilities/routine.ts), and why: it
