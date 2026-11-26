@@ -23,7 +23,7 @@ import { newKey, open, readKey, type StateRoutine, seal } from '../../src/vulner
  */
 const DAY = 86_400_000;
 const NOW = Date.parse('2026-11-10T04:30:00Z');
-const REPOSITORY = 'the-roganator/cv-software-factory';
+const REPOSITORY = 'the-roganator/cv-software-factory-scratch';
 const ago = (days: number, now = NOW) => new Date(now - days * DAY).toISOString();
 const digest = (letter: string) => `sha256:${letter.repeat(64)}`;
 const POLICY: Routine = { days: 3, majorDays: 7, contentDays: 1, slackHours: 0, leave: [] };
@@ -618,16 +618,16 @@ describe('an image’s pin that is behind', () => {
 
   it('names the runtime stage of an image of ours by its Dockerfile, and never the image of ours itself', async () => {
     const ours: ReadTarget = {
-      key: 'deploy/overlays/local/image/kustomization.yaml ghcr.io/the-roganator/cv-software-factory/console',
+      key: 'deploy/overlays/local/image/kustomization.yaml ghcr.io/the-roganator/cv-software-factory-scratch/console',
       kind: 'ours',
       file: 'deploy/overlays/local/image/kustomization.yaml',
-      label: `ghcr.io/the-roganator/cv-software-factory/console@${digest('9')}`,
-      image: `ghcr.io/the-roganator/cv-software-factory/console@${digest('9')}`,
+      label: `ghcr.io/the-roganator/cv-software-factory-scratch/console@${digest('9')}`,
+      image: `ghcr.io/the-roganator/cv-software-factory-scratch/console@${digest('9')}`,
       line: 9,
     };
     const runtime = `gcr.io/distroless/static:1.2.0@${digest('a')}`;
     const world: World = {
-      targets: [ours, image(`ghcr.io/the-roganator/cv-software-factory/runner:1.0.0@${digest('9')}`)],
+      targets: [ours, image(`ghcr.io/the-roganator/cv-software-factory-scratch/runner:1.0.0@${digest('9')}`)],
       files: { 'apps/console/Dockerfile': `FROM build:1 AS build\nFROM ${runtime}\n` },
       tags: { 'gcr.io/distroless/static': ['1.2.0', '1.3.0'] },
       digests: { 'gcr.io/distroless/static:1.3.0': digest('b') },

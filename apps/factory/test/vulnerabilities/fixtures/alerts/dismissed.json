@@ -3,8 +3,8 @@
     "number": 201,
     "created_at": "2026-11-10T07:47:45Z",
     "updated_at": "2026-11-10T07:47:46Z",
-    "url": "https://api.github.com/repos/the-roganator/cv-software-factory/code-scanning/alerts/201",
-    "html_url": "https://github.com/the-roganator/cv-software-factory/security/code-scanning/201",
+    "url": "https://api.github.com/repos/the-roganator/cv-software-factory-scratch/code-scanning/alerts/201",
+    "html_url": "https://github.com/the-roganator/cv-software-factory-scratch/security/code-scanning/201",
     "state": "dismissed",
     "fixed_at": null,
     "dismissed_by": {
@@ -50,7 +50,7 @@
       },
       "classifications": []
     },
-    "instances_url": "https://api.github.com/repos/the-roganator/cv-software-factory/code-scanning/alerts/201/instances",
+    "instances_url": "https://api.github.com/repos/the-roganator/cv-software-factory-scratch/code-scanning/alerts/201/instances",
     "dismissal_approved_by": null,
     "assignees": [],
     "linked_pull_requests": [],
@@ -60,8 +60,8 @@
     "number": 202,
     "created_at": "2026-11-10T07:47:45Z",
     "updated_at": "2026-11-10T07:47:46Z",
-    "url": "https://api.github.com/repos/the-roganator/cv-software-factory/code-scanning/alerts/202",
-    "html_url": "https://github.com/the-roganator/cv-software-factory/security/code-scanning/202",
+    "url": "https://api.github.com/repos/the-roganator/cv-software-factory-scratch/code-scanning/alerts/202",
+    "html_url": "https://github.com/the-roganator/cv-software-factory-scratch/security/code-scanning/202",
     "state": "dismissed",
     "fixed_at": null,
     "dismissed_by": {
@@ -107,7 +107,7 @@
       },
       "classifications": []
     },
-    "instances_url": "https://api.github.com/repos/the-roganator/cv-software-factory/code-scanning/alerts/202/instances",
+    "instances_url": "https://api.github.com/repos/the-roganator/cv-software-factory-scratch/code-scanning/alerts/202/instances",
     "dismissal_approved_by": null,
     "assignees": [],
     "linked_pull_requests": [],
@@ -117,8 +117,8 @@
     "number": 203,
     "created_at": "2026-11-10T07:47:45Z",
     "updated_at": "2026-11-10T07:47:46Z",
-    "url": "https://api.github.com/repos/the-roganator/cv-software-factory/code-scanning/alerts/203",
-    "html_url": "https://github.com/the-roganator/cv-software-factory/security/code-scanning/203",
+    "url": "https://api.github.com/repos/the-roganator/cv-software-factory-scratch/code-scanning/alerts/203",
+    "html_url": "https://github.com/the-roganator/cv-software-factory-scratch/security/code-scanning/203",
     "state": "dismissed",
     "fixed_at": null,
     "dismissed_by": {
@@ -164,7 +164,7 @@
       },
       "classifications": []
     },
-    "instances_url": "https://api.github.com/repos/the-roganator/cv-software-factory/code-scanning/alerts/203/instances",
+    "instances_url": "https://api.github.com/repos/the-roganator/cv-software-factory-scratch/code-scanning/alerts/203/instances",
     "dismissal_approved_by": null,
     "assignees": [],
     "linked_pull_requests": [],
@@ -174,8 +174,8 @@
     "number": 204,
     "created_at": "2026-11-10T07:47:45Z",
     "updated_at": "2026-11-10T07:47:46Z",
-    "url": "https://api.github.com/repos/the-roganator/cv-software-factory/code-scanning/alerts/204",
-    "html_url": "https://github.com/the-roganator/cv-software-factory/security/code-scanning/204",
+    "url": "https://api.github.com/repos/the-roganator/cv-software-factory-scratch/code-scanning/alerts/204",
+    "html_url": "https://github.com/the-roganator/cv-software-factory-scratch/security/code-scanning/204",
     "state": "dismissed",
     "fixed_at": null,
     "dismissed_by": {
@@ -221,7 +221,7 @@
       },
       "classifications": []
     },
-    "instances_url": "https://api.github.com/repos/the-roganator/cv-software-factory/code-scanning/alerts/204/instances",
+    "instances_url": "https://api.github.com/repos/the-roganator/cv-software-factory-scratch/code-scanning/alerts/204/instances",
     "dismissal_approved_by": null,
     "assignees": [],
     "linked_pull_requests": [],
@@ -231,8 +231,8 @@
     "number": 205,
     "created_at": "2026-11-10T07:47:45Z",
     "updated_at": "2026-11-10T07:47:46Z",
-    "url": "https://api.github.com/repos/the-roganator/cv-software-factory/code-scanning/alerts/205",
-    "html_url": "https://github.com/the-roganator/cv-software-factory/security/code-scanning/205",
+    "url": "https://api.github.com/repos/the-roganator/cv-software-factory-scratch/code-scanning/alerts/205",
+    "html_url": "https://github.com/the-roganator/cv-software-factory-scratch/security/code-scanning/205",
     "state": "dismissed",
     "fixed_at": null,
     "dismissed_by": {
@@ -278,7 +278,7 @@
       },
       "classifications": []
     },
-    "instances_url": "https://api.github.com/repos/the-roganator/cv-software-factory/code-scanning/alerts/205/instances",
+    "instances_url": "https://api.github.com/repos/the-roganator/cv-software-factory-scratch/code-scanning/alerts/205/instances",
     "dismissal_approved_by": null,
     "assignees": [],
     "linked_pull_requests": [],

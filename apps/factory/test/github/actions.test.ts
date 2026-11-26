@@ -192,7 +192,7 @@ describe('acting in GitHub', () => {
     const reply = `Answered in ${SHA}: the factory’s reviewer, review 2, finds this put right.`;
     const suggestion = '**Suggestion**\n\nName the test for what it shows.';
     const declined = 'Declined by the factory’s coder: the name says what it shows.';
-    const app = { login: 'mrogan-software-factory' };
+    const app = { login: 'the-roganator-scratch-factory' };
     const thread = (
       id: string,
       isResolved: boolean,
@@ -245,7 +245,11 @@ describe('acting in GitHub', () => {
       { path: 'test/search.test.ts', line: 4, body: suggestion, reply: declined },
     ]);
     const asked = calls(sent).map((s) => s.body as { query: string; variables: Record<string, unknown> });
-    expect(asked[0]?.variables).toEqual({ owner: 'the-roganator', name: 'cv-worlds-worst-website', number: 66 });
+    expect(asked[0]?.variables).toEqual({
+      owner: 'the-roganator',
+      name: 'cv-worlds-worst-website-scratch',
+      number: 66,
+    });
     expect(
       asked
         .slice(1)

@@ -25,17 +25,17 @@ s{\b127\.0\.0\.1:8443(:443)?\b}{127.0.0.1:9443$1}g;
 s{\b6550\b}{6551}g if $ARGV =~ m{(cluster\.yaml|local-cluster\.test\.ts)$};
 if ($ARGV =~ m{LOCAL-CLUSTER\.md$}) { s{\b6550\b}{6551}g; s{:8080\b}{:9080}g; s{:8443\b}{:9443}g }
 # The Keychain entries only the scratch cluster reads: its App's key, and no Pushover, so it never reaches the phone.
-s{(?<![\w-])factory-github-app-key\b}{scratch-factory-github-app-key}g;
-s{(?<![\w-])(pushover-app-token|pushover-user-key)\b}{scratch-$1}g;
+s{(?<![\w-])scratch-factory-github-app-key\b}{scratch-factory-github-app-key}g;
+s{(?<![\w-])(scratch-pushover-app-token|scratch-pushover-user-key)\b}{scratch-$1}g;
 # The scratch App, wherever the real factory App is named: slug and bot login, App id, client id, bot user id.
-s{(?<![\w-])mrogan-software-factory(?![\w-])}{$slug}g;
+s{(?<![\w-])the-roganator-scratch-factory(?![\w-])}{$slug}g;
 s{\bIv23liE1Dj3iYkwWX59z\b}{$client}g;
-s{(?<![\d.])5187559(?![\d.])}{$app}g;
-s{(?<![\d.])337765427(?![\d.])}{$bot}g;
-# The same ids as TypeScript writes them, with numeric separators (APP_USER = 337_765_427).
+s{(?<![\d.])5774780(?![\d.])}{$app}g;
+s{(?<![\d.])357103795(?![\d.])}{$bot}g;
+# The same ids as TypeScript writes them, with numeric separators (APP_USER = 357_103_795).
 sub grouped { my $n = reverse shift; $n =~ s/(\d{3})(?=\d)/$1_/g; scalar reverse $n }
-s{(?<![\d._])5_187_559(?![\d_])}{grouped($app)}ge;
-s{(?<![\d._])337_765_427(?![\d_])}{grouped($bot)}ge;
+s{(?<![\d._])5_774_780(?![\d_])}{grouped($app)}ge;
+s{(?<![\d._])357_103_795(?![\d_])}{grouped($bot)}ge;
 # Martin's operator commands reach the store through a port-forward on the Mac: ports of the scratch cluster's own, so
 # a forward that failed can never leave a command talking to the real cluster's Postgres on the real one's port.
 s{\b1543([23])\b}{2543$1}g if $ARGV =~ m{Makefile$};

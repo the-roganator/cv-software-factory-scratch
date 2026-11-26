@@ -9,11 +9,11 @@ Patching is proven on the real thing, not on its own tests: a real scan, real pu
 
 ## Never
 
-- **Never the real cluster.** Every command names the context `k3d-software-factory-scratch`; never `k3d-software-factory`. Never run `make` for the scratch cluster from a checkout of this repository: only in the factory copy's clone, `work/factory` in the state folder, whose Makefile names the scratch cluster, as `bin/copies.sh` does (it refuses a clone that names the real one).
+- **Never the real cluster.** Every command names the context `k3d-software-factory-scratch`; never `k3d-software-factory-scratch`. Never run `make` for the scratch cluster from a checkout of this repository: only in the factory copy's clone, `work/factory` in the state folder, whose Makefile names the scratch cluster, as `bin/copies.sh` does (it refuses a clone that names the real one).
 - **Never `make upgrade-cluster` in the copy.** The copy pins an older k3s and k3d on purpose, for test 14, and it would move the scratch cluster down to them.
 - **Never write to the real repositories.** The scripts write only to a repository whose name ends `-scratch`, and refuse any other; the real two are read, to build a baseline and to close what they closed.
 - **One session at a time.** A run resets the copies and restarts the scratch cluster's workers; two at once read each other's pull requests as their own. Before starting, `pgrep -fl 'confirm.sh|harness.ts|copies.sh'` prints nothing, and no `batch.env` or file in the state folder's `staged/` was written minutes ago: either is another session's.
-- **Look at the shared runners before a reset.** The copies queue on the organisation's free runners beside the real repositories: `gh run list -R the-roganator/cv-software-factory --status queued` prints the real repository's queued runs, and nothing when none waits. A run in progress does not count. A reset or a batch starts a dozen runs; when the real ones are waiting, wait.
+- **Look at the shared runners before a reset.** The copies queue on the organisation's free runners beside the real repositories: `gh run list -R the-roganator/cv-software-factory-scratch --status queued` prints the real repository's queued runs, and nothing when none waits. A run in progress does not count. A reset or a batch starts a dozen runs; when the real ones are waiting, wait.
 - **Never `kubectl delete job migrate`** on the scratch cluster: its Argo CD finalizer hangs the delete and every sync behind it.
 
 A pass's timings are part of its verdict: keep the Mac quiet while one runs.

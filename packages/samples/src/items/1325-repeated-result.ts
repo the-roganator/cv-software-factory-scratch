@@ -25,8 +25,8 @@ export default new Item('1325', '2026-10-06T15:05:00+01:00')
     story:
       'The search journey searched for “brush” and found the first brush listed twice. Triage opened a ticket from the probe’s own request.',
   })
-  .at('0:10', 'issue.opened', 'factory', 'Opened issue #1333 in the-roganator/cv-worlds-worst-website', {
-    repository: 'the-roganator/cv-worlds-worst-website',
+  .at('0:10', 'issue.opened', 'factory', 'Opened issue #1333 in the-roganator/cv-worlds-worst-website-scratch', {
+    repository: 'the-roganator/cv-worlds-worst-website-scratch',
     number: 1333,
   })
   .calls('planner', '0:20', '2:10', { calls: 3, input: 30_000, output: 2_000, cached: 0.3 })

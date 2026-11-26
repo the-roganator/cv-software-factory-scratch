@@ -31,7 +31,7 @@ export function idle(policy: Policy, repository: string, names: string[], today:
 }
 
 const HEADER = [
-  "# Generated from policy/vulnerabilities.ts on cv-software-factory's main by scripts/osv-scanner.ts: do not edit.",
+  "# Generated from policy/vulnerabilities.ts on cv-software-factory-scratch's main by scripts/osv-scanner.ts: do not edit.",
   '# Each advisory excepted for an item of this repository, until its earliest expiry, for Scorecard. The daily scan',
   '# warns when this file and the policy differ.',
 ];

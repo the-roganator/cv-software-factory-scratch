@@ -53,11 +53,11 @@ images:
 ${images.map(([name, d, image]) => `- digest: ${d}\n  name: ${name}\n  newName: ghcr.io/${image}`).join('\n')}
 `;
 const FACTORY_PIN = pinFile([
-  ['factory', digest('1'), 'the-roganator/cv-software-factory/factory'],
-  ['factory-browser', digest('2'), 'the-roganator/cv-software-factory/factory-browser'],
+  ['factory', digest('1'), 'the-roganator/cv-software-factory-scratch/factory'],
+  ['factory-browser', digest('2'), 'the-roganator/cv-software-factory-scratch/factory-browser'],
 ]);
-const CONSOLE_PIN_FILE = pinFile([['console', digest('3'), 'the-roganator/cv-software-factory/console']]);
-const APP_PIN_FILE = pinFile([['website', digest('1'), 'the-roganator/cv-worlds-worst-website']]);
+const CONSOLE_PIN_FILE = pinFile([['console', digest('3'), 'the-roganator/cv-software-factory-scratch/console']]);
+const APP_PIN_FILE = pinFile([['website', digest('1'), 'the-roganator/cv-worlds-worst-website-scratch']]);
 const BOTH = { [CONSOLE_PIN.file]: CONSOLE_PIN_FILE, [FACTORY_PINS.file]: FACTORY_PIN };
 /** The body of a deploy pull request that lists what it brings already. */
 const LISTED =
@@ -279,11 +279,11 @@ function github(
 /** GHCR: the factory built from c and b, its browser image not yet from c, the console from c, and every pin from a. */
 function ghcr(revision: string | ((image: string) => string) = commit('a')): Registry {
   const built: Record<string, string[]> = {
-    'the-roganator/cv-software-factory/factory': ['a', 'b', 'c'].map(commit),
-    'the-roganator/cv-software-factory/factory-browser': ['a', 'b'].map(commit),
-    'the-roganator/cv-software-factory/factory-runner': ['a', 'b', 'c'].map(commit),
-    'the-roganator/cv-software-factory/console': ['a', 'c'].map(commit),
-    'the-roganator/cv-worlds-worst-website': ['a', 'b'].map(commit),
+    'the-roganator/cv-software-factory-scratch/factory': ['a', 'b', 'c'].map(commit),
+    'the-roganator/cv-software-factory-scratch/factory-browser': ['a', 'b'].map(commit),
+    'the-roganator/cv-software-factory-scratch/factory-runner': ['a', 'b', 'c'].map(commit),
+    'the-roganator/cv-software-factory-scratch/console': ['a', 'c'].map(commit),
+    'the-roganator/cv-worlds-worst-website-scratch': ['a', 'b'].map(commit),
   };
   return {
     tags: async (image: string) => built[image] ?? [],
@@ -384,7 +384,7 @@ describe('the deploy watch', () => {
     });
     // Opened without the list, which its next write adds.
     expect(bringsIn((writes(gh.sent)[4] as { body: { body: string } }).body.body)).toBe(false);
-    const url = 'https://github.com/the-roganator/cv-software-factory';
+    const url = 'https://github.com/the-roganator/cv-software-factory-scratch';
     expect((writes(gh.sent).at(-1) as { body: { body: string } }).body.body).toBe(
       `Runs [\`bbbbbbb\`](${url}/commit/${commit('b')}) on the local cluster: [the changes since \`aaaaaaa\`](${url}/compare/${commit('a')}...${commit('b')}).
 
@@ -453,7 +453,7 @@ It brings one pull request merged since the pinned commit, newest first:
       },
     ]);
     expect(body).toBe(
-      `Runs [\`ccccccc\`](https://github.com/the-roganator/cv-worlds-worst-website/commit/${commit('c')}) on the local cluster.
+      `Runs [\`ccccccc\`](https://github.com/the-roganator/cv-worlds-worst-website-scratch/commit/${commit('c')}) on the local cluster.
 
 | Image | Digest |
 |---|---|
@@ -476,7 +476,7 @@ Argo CD deploys it from \`deploy/overlays/local\` once this merges. A newer buil
   it('leaves out an image the pin file does not pin yet: the change that brings it in pins it', async () => {
     const later = {
       ...FACTORY_PINS,
-      images: [...FACTORY_PINS.images, { name: 'later', image: 'the-roganator/cv-software-factory/later' }],
+      images: [...FACTORY_PINS.images, { name: 'later', image: 'the-roganator/cv-software-factory-scratch/later' }],
     };
     const target = { ...FACTORY, pins: [CONSOLE_PIN, later] };
     const gh = github(target);
@@ -502,7 +502,7 @@ Argo CD deploys it from \`deploy/overlays/local\` once this merges. A newer buil
       [CONSOLE_PIN.file]: CONSOLE_PIN_FILE.replace(digest('3'), digest('7')),
       [FACTORY_PINS.file]: FACTORY_PIN.replace(digest('1'), digest('7')).replace(digest('2'), digest('8')),
     });
-    const url = 'https://github.com/the-roganator/cv-software-factory';
+    const url = 'https://github.com/the-roganator/cv-software-factory-scratch';
     expect((writes(gh.sent).at(-1) as { body: { body: string } }).body.body).toBe(
       `Runs on the local cluster:
 
@@ -1069,13 +1069,21 @@ describe('the deploy watch and signatures', () => {
     const gh = github(FACTORY);
     await watch(gh, FACTORY, ghcr(), undefined, signed)();
     expect(signed.asked).toEqual([
-      ['the-roganator/cv-software-factory/factory', digest('7'), pipeline('the-roganator/cv-software-factory')],
-      ['the-roganator/cv-software-factory/factory-browser', digest('8'), pipeline('the-roganator/cv-software-factory')],
+      [
+        'the-roganator/cv-software-factory-scratch/factory',
+        digest('7'),
+        pipeline('the-roganator/cv-software-factory-scratch'),
+      ],
+      [
+        'the-roganator/cv-software-factory-scratch/factory-browser',
+        digest('8'),
+        pipeline('the-roganator/cv-software-factory-scratch'),
+      ],
     ]);
     expect(steps(gh.sent)).toContain('POST pulls');
     const app = github(APP, { pins: { [APP_PIN.file]: APP_PIN_FILE } });
     await watch(app, APP, ghcr(), undefined, signed)();
-    expect(signed.asked.at(-1)?.[2]).toEqual(pipeline('the-roganator/cv-worlds-worst-website'));
+    expect(signed.asked.at(-1)?.[2]).toEqual(pipeline('the-roganator/cv-worlds-worst-website-scratch'));
   });
 
   /** A log that keeps what it was told, at info and above. */
@@ -1097,7 +1105,7 @@ describe('the deploy watch and signatures', () => {
         level: 30,
         msg: 'waiting for a build to be signed before proposing it',
         digest: digest('8'),
-        reason: `the-roganator/cv-software-factory/factory-browser@${digest('8')} has no signature`,
+        reason: `the-roganator/cv-software-factory-scratch/factory-browser@${digest('8')} has no signature`,
       }),
     ]);
     signed.unsigned.length = 0;
@@ -1162,7 +1170,7 @@ describe('the deploy watch and signatures', () => {
         level: 40,
         msg: 'did not propose a build its pipeline did not sign',
         digest: digest('7'),
-        reason: `the-roganator/cv-software-factory/factory@${digest('7')} has no signature by them`,
+        reason: `the-roganator/cv-software-factory-scratch/factory@${digest('7')} has no signature by them`,
       }),
     ]);
     expect(writes(gh.sent)).toEqual([]);
@@ -1183,7 +1191,7 @@ describe('the deploy watch and signatures', () => {
 describe('the newest build, as the line reads it', () => {
   const APP_REPO = APP.repo;
   const APP_PINS = { [APP_PIN.file]: APP_PIN_FILE };
-  const WEBSITE = 'the-roganator/cv-worlds-worst-website';
+  const WEBSITE = 'the-roganator/cv-worlds-worst-website-scratch';
   /** A check run GitHub Actions posted for one of the app's build jobs. */
   const job = (id: number, name: string, conclusion: string | null, run = 900) => ({
     id,
@@ -1328,7 +1336,7 @@ describe('the newest build, as the line reads it', () => {
 });
 
 describe('the release watch', () => {
-  const REPO = 'the-roganator/cv-software-factory';
+  const REPO = 'the-roganator/cv-software-factory-scratch';
   function main() {
     let head = 'a';
     const { github: gh } = client([
@@ -1454,7 +1462,7 @@ describe('what a deploy carries', () => {
       number: 70,
       commit: commit('b'),
       pinned: commit('a'),
-      digests: [{ name: 'website', image: 'the-roganator/cv-worlds-worst-website', digest: digest('7') }],
+      digests: [{ name: 'website', image: 'the-roganator/cv-worlds-worst-website-scratch', digest: digest('7') }],
     });
     expect(proposals.get(FACTORY.repo, APP.branch)).toBeNull();
     // A worker started again learns of the open one on its first pass.
@@ -1576,12 +1584,14 @@ describe('the list of pull requests', () => {
 
 describe('the images a repository deploys', () => {
   it("knows a deployed image only under the repository's owner", () => {
-    const repo = 'the-roganator/cv-worlds-worst-website';
-    expect(deployedImage(repo, 'the-roganator/cv-worlds-worst-website')).toBe('the-roganator/cv-worlds-worst-website');
+    const repo = 'the-roganator/cv-worlds-worst-website-scratch';
+    expect(deployedImage(repo, 'the-roganator/cv-worlds-worst-website-scratch')).toBe(
+      'the-roganator/cv-worlds-worst-website-scratch',
+    );
     for (const image of [
       'mrogan/cv-worlds-worst-website',
-      'someone/cv-worlds-worst-website',
-      'the-roganator/cv-software-factory/factory',
+      'someone/cv-worlds-worst-website-scratch',
+      'the-roganator/cv-software-factory-scratch/factory',
       'mrogan/cv-software-factory/factory',
     ]) {
       expect(() => deployedImage(repo, image)).toThrow(DeployRefused);
@@ -1593,14 +1603,18 @@ describe('the images a repository deploys', () => {
       repin(FACTORY_PIN, {
         commit: commit('b'),
         digests: [
-          { name: 'factory', image: 'the-roganator/cv-software-factory/factory', digest: digest('7') },
-          { name: 'factory-browser', image: 'the-roganator/cv-software-factory/factory-browser', digest: digest('8') },
+          { name: 'factory', image: 'the-roganator/cv-software-factory-scratch/factory', digest: digest('7') },
+          {
+            name: 'factory-browser',
+            image: 'the-roganator/cv-software-factory-scratch/factory-browser',
+            digest: digest('8'),
+          },
         ],
       }),
     ).toBe(
       pinFile([
-        ['factory', digest('7'), 'the-roganator/cv-software-factory/factory'],
-        ['factory-browser', digest('8'), 'the-roganator/cv-software-factory/factory-browser'],
+        ['factory', digest('7'), 'the-roganator/cv-software-factory-scratch/factory'],
+        ['factory-browser', digest('8'), 'the-roganator/cv-software-factory-scratch/factory-browser'],
       ]),
     );
   });
@@ -1610,7 +1624,7 @@ describe('the images a repository deploys', () => {
     expect(() =>
       repin(elsewhere, {
         commit: commit('c'),
-        digests: [{ name: 'console', image: 'the-roganator/cv-software-factory/console', digest: digest('9') }],
+        digests: [{ name: 'console', image: 'the-roganator/cv-software-factory-scratch/console', digest: digest('9') }],
       }),
     ).toThrow(PinFileError);
     await expect(newerBuild({ registry: ghcr() }, CONSOLE_PIN, elsewhere, [{ sha: commit('c') }])).rejects.toThrow(
