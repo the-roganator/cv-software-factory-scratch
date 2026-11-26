@@ -290,15 +290,15 @@ Small judgements about untrusted text use TypeSafe's Jev model rather than a gen
 
 | Repo | Visibility | Contains |
 |---|---|---|
-| `cv-software-factory` | Public | Orchestrator, agents, gateway, gates, console, infrastructure, docs |
-| `cv-worlds-worst-website` | Public | The app, its tests, workflows and manifests |
+| `cv-software-factory-scratch` | Public | Orchestrator, agents, gateway, gates, console, infrastructure, docs |
+| `cv-worlds-worst-website-scratch` | Public | The app, its tests, workflows and manifests |
 | `cv-software-factory-private` | Private | The correct app, the defect patches, answer key, injector catalogue, environment settings |
 
 The two public repositories are the organisation `the-roganator`'s, for GitHub's merge queue (ADR 0014). The private one stays with Martin's account, `mrogan`: GitHub Apps installed across the organisation, the review App among them, must never reach the answer key, which only the scoreboard reads.
 
 Nothing from the private repo is ever copied into a public repo, a visitor-visible log or an agent's context. The one exception is the app's first commit, which the private repo publishes after a check that the tree gives no defect away, at the start and again at each reset (ADR 0016). Between them the app changes only in its public repo.
 
-The gates the two public repos share (the pull request title check, CodeQL, Scorecard, and the app's gates: its journeys compared with the base's, test integrity, tests first, dependency review and an image scan) live in `cv-software-factory` and are called from the app's repo at a pinned commit, and one script applies the same rulesets and security settings to both. An agent that can write to the app's repo cannot loosen them.
+The gates the two public repos share (the pull request title check, CodeQL, Scorecard, and the app's gates: its journeys compared with the base's, test integrity, tests first, dependency review and an image scan) live in `cv-software-factory-scratch` and are called from the app's repo at a pinned commit, and one script applies the same rulesets and security settings to both. An agent that can write to the app's repo cannot loosen them.
 
 Public repos must be exemplary:
 
@@ -306,7 +306,7 @@ Public repos must be exemplary:
 - Owned by the `the-roganator` GitHub organisation. MIT `LICENSE`, `SECURITY.md`, `CONTRIBUTING.md`, `CODEOWNERS`, issue and PR templates.
 - Formatter, linter and type-checker enforced by pre-commit and CI; `.editorconfig`; a dev container.
 - Conventional Commits; squash-merged PRs linking ticket and evidence; semantic releases with generated changelog; automated dependency updates; committed lockfiles. New dependency releases wait a day before they can be installed, install scripts run only when allowed by name, and a release with weaker provenance than its predecessor is refused.
-- Agent work authored by the factory's GitHub App identity, `mrogan-software-factory`, which opens every pull request a machine opens: fixes, deploys and releases. No workflow opens or approves a pull request. An agent's pull request description fits its change: the describer writes it from the ticket, the spec, the diff and the review. The template's questions (problem, evidence, change, tests, risk, rollout) are what a reviewer should be able to answer from it, not headings to fill.
+- Agent work authored by the factory's GitHub App identity, `the-roganator-scratch-factory`, which opens every pull request a machine opens: fixes, deploys and releases. No workflow opens or approves a pull request. An agent's pull request description fits its change: the describer writes it from the ticket, the spec, the diff and the review. The template's questions (problem, evidence, change, tests, risk, rollout) are what a reviewer should be able to answer from it, not headings to fill.
 - Supply chain: a branch ruleset on `main` that nobody bypasses (PRs only, through the merge queue, required checks, CodeQL's results with no new security alert of medium severity or higher and no new error, linear and signed history; review as the required `review` check, posted by the review App alone when Martin opened the pull request or approved its head, ADR 0014; CODEOWNERS for protected paths); secret scanning and push protection; Actions pinned by SHA with minimal `permissions`; `pull_request` never `pull_request_target` for untrusted code; OIDC for cloud access; OpenSSF Scorecard ≥ 8.
 - Only true badges: CI, coverage, Scorecard, release. No clutter.
 

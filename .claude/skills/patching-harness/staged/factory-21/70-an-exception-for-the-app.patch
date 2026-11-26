@@ -10,7 +10,7 @@ index 0ed8caa0..77c9e336 100644
 -export const EXCEPTIONS: Exception[] = [];
 +export const EXCEPTIONS: Exception[] = [
 +  {
-+    repository: 'the-roganator/cv-worlds-worst-website',
++    repository: 'the-roganator/cv-worlds-worst-website-scratch',
 +    item: 'pnpm-lock.yaml',
 +    advisory: 'CVE-2026-40895',
 +    package: 'follow-redirects',
@@ -19,7 +19,7 @@ index 0ed8caa0..77c9e336 100644
 +    expires: '2027-02-20',
 +  },
 +  {
-+    repository: 'the-roganator/cv-worlds-worst-website',
++    repository: 'the-roganator/cv-worlds-worst-website-scratch',
 +    item: 'pnpm-lock.yaml',
 +    advisory: 'GHSA-r4q5-vmmm-2653',
 +    package: 'follow-redirects',

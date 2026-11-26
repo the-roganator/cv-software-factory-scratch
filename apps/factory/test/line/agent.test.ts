@@ -156,9 +156,9 @@ describe('what a published text may not do from the App’s account', () => {
       'Fixes #1234',
       'This closes #12.',
       'fixed: #3',
-      'Resolves the-roganator/cv-worlds-worst-website#7',
+      'Resolves the-roganator/cv-worlds-worst-website-scratch#7',
       'CLOSED GH-9',
-      'resolve https://github.com/the-roganator/cv-worlds-worst-website/issues/4',
+      'resolve https://github.com/the-roganator/cv-worlds-worst-website-scratch/issues/4',
       'It came from a ticket.\n\n`fixes #5`',
     ]) {
       expect(closesAnIssue(closing), closing).toBe(true);

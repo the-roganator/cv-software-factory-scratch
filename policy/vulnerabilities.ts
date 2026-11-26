@@ -39,7 +39,7 @@ export const ADVISORY = /^(CVE-\d{4}-\d{4,}|GHSA(-[23456789cfghjmpqrvwx]{4}){3})
 
 export const EXCEPTIONS: Exception[] = [
   {
-    repository: 'the-roganator/cv-worlds-worst-website',
+    repository: 'the-roganator/cv-worlds-worst-website-scratch',
     item: 'pnpm-lock.yaml',
     advisory: 'CVE-2024-28849',
     package: 'follow-redirects',
@@ -48,7 +48,7 @@ export const EXCEPTIONS: Exception[] = [
     expires: '2027-02-08',
   },
   {
-    repository: 'the-roganator/cv-worlds-worst-website',
+    repository: 'the-roganator/cv-worlds-worst-website-scratch',
     item: 'pnpm-lock.yaml',
     advisory: 'GHSA-cxjh-pqwp-8mfp',
     package: 'follow-redirects',
@@ -57,7 +57,7 @@ export const EXCEPTIONS: Exception[] = [
     expires: '2027-02-08',
   },
   {
-    repository: 'the-roganator/cv-worlds-worst-website',
+    repository: 'the-roganator/cv-worlds-worst-website-scratch',
     item: 'pnpm-lock.yaml',
     advisory: 'CVE-2026-40895',
     package: 'follow-redirects',
@@ -66,7 +66,7 @@ export const EXCEPTIONS: Exception[] = [
     expires: '2027-02-08',
   },
   {
-    repository: 'the-roganator/cv-worlds-worst-website',
+    repository: 'the-roganator/cv-worlds-worst-website-scratch',
     item: 'pnpm-lock.yaml',
     advisory: 'GHSA-r4q5-vmmm-2653',
     package: 'follow-redirects',

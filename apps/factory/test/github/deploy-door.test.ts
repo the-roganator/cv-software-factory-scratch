@@ -37,7 +37,7 @@ afterEach(() => {
 });
 
 const PIN_FILE = 'deploy/overlays/local/example-image/kustomization.yaml';
-const IMAGE = 'ghcr.io/the-roganator/cv-software-factory';
+const IMAGE = 'ghcr.io/the-roganator/cv-software-factory-scratch';
 const PINNED = {
   factory: digest('factory/pinned'),
   browser: digest('browser/pinned'),
