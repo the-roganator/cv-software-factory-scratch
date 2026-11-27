@@ -57,8 +57,8 @@ const parameters = (type: string) => parametersOf(rules(checks), type);
 
 describe('the ruleset on main (ADR 0014)', () => {
   it('requires the cluster check here, a job platform.yml runs on every pull request and on the queue’s commit', () => {
-    expect(REPOSITORIES['the-roganator/cv-software-factory']).toContain(PLATFORM_CHECK);
-    expect(REPOSITORIES['the-roganator/cv-worlds-worst-website']).not.toContain(PLATFORM_CHECK);
+    expect(REPOSITORIES['the-roganator/cv-software-factory-scratch']).toContain(PLATFORM_CHECK);
+    expect(REPOSITORIES['the-roganator/cv-worlds-worst-website-scratch']).not.toContain(PLATFORM_CHECK);
     const workflow = parse(readFileSync('.github/workflows/platform.yml', 'utf-8')) as {
       on: Record<string, unknown>;
       jobs: Record<string, { name?: string; if?: string }>;
@@ -87,8 +87,8 @@ describe('the ruleset on main (ADR 0014)', () => {
   });
 
   it('requires the lockfile scan in both repositories, as each reports it', () => {
-    expect(REPOSITORIES['the-roganator/cv-software-factory']).toContain('lockfile scan');
-    expect(REPOSITORIES['the-roganator/cv-worlds-worst-website']).toContain('gates / lockfile scan');
+    expect(REPOSITORIES['the-roganator/cv-software-factory-scratch']).toContain('lockfile scan');
+    expect(REPOSITORIES['the-roganator/cv-worlds-worst-website-scratch']).toContain('gates / lockfile scan');
   });
 
   it("requires of the app's gates only jobs app-gates.yml names, as its gates job reports them", () => {
@@ -96,7 +96,7 @@ describe('the ruleset on main (ADR 0014)', () => {
       jobs: Record<string, { name?: string }>;
     };
     const jobs = Object.values(workflow.jobs).map((job) => job.name);
-    const gates = (REPOSITORIES['the-roganator/cv-worlds-worst-website'] ?? [])
+    const gates = (REPOSITORIES['the-roganator/cv-worlds-worst-website-scratch'] ?? [])
       .filter((check) => check.startsWith('gates / '))
       .map((check) => check.slice('gates / '.length));
     expect(gates).toEqual(['journeys', 'test integrity', 'dependency review', 'image scan', 'lockfile scan']);
@@ -361,12 +361,15 @@ describe('the GitHub Apps', () => {
 describe('the environments that hold a key', () => {
   it('are review and the scan’s state in both repositories, and the drift check in this one alone', () => {
     expect(Object.keys(ENVIRONMENTS)).toEqual(Object.keys(REPOSITORIES));
-    expect(ENVIRONMENTS['the-roganator/cv-software-factory']).toEqual([
+    expect(ENVIRONMENTS['the-roganator/cv-software-factory-scratch']).toEqual([
       REVIEW_ENVIRONMENT,
       DRIFT_CHECK_ENVIRONMENT,
       SCAN_STATE_ENVIRONMENT,
     ]);
-    expect(ENVIRONMENTS['the-roganator/cv-worlds-worst-website']).toEqual([REVIEW_ENVIRONMENT, SCAN_STATE_ENVIRONMENT]);
+    expect(ENVIRONMENTS['the-roganator/cv-worlds-worst-website-scratch']).toEqual([
+      REVIEW_ENVIRONMENT,
+      SCAN_STATE_ENVIRONMENT,
+    ]);
   });
 });
 

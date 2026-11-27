@@ -35,7 +35,7 @@ const last = () => {
 /** The samples as Martin's full events carry them: each lockfile move's package, and its pull request's. */
 const FULL = SAMPLES.map((e) => own(e as never) as PublicEvent);
 const names = (rows: readonly PatchingRow[]) => rows.map((row) => row.name ?? `(withheld) ${row.key}`);
-const FACTORY = 'the-roganator/cv-software-factory';
+const FACTORY = 'the-roganator/cv-software-factory-scratch';
 
 describe('Patching, as a visitor reads the samples', () => {
   const view = read(patchingView(SAMPLES, foldItems(SAMPLES), END));
@@ -57,7 +57,7 @@ describe('Patching, as a visitor reads the samples', () => {
   it('then what moves by itself, by earliest deadline', () => {
     expect(names(view.moving)).toEqual([
       'example/scanner-proxy',
-      '(withheld) the-roganator/cv-worlds-worst-website lockfile 1',
+      '(withheld) the-roganator/cv-worlds-worst-website-scratch lockfile 1',
       'example-dashboards',
       'example/sbom-tool',
       'example/cache',
@@ -101,7 +101,10 @@ describe('Patching, as a visitor reads the samples', () => {
   it('says when the pull requests were read, and the one fix that waits its day', () => {
     expect(view.read).toBe(Date.parse('2026-10-06T05:12:00.000Z'));
     expect(view.waitDay).toEqual({ count: 1, name: 'example/cache' });
-    expect(view.scans.map((scan) => scan.repository)).toEqual([FACTORY, 'the-roganator/cv-worlds-worst-website']);
+    expect(view.scans.map((scan) => scan.repository)).toEqual([
+      FACTORY,
+      'the-roganator/cv-worlds-worst-website-scratch',
+    ]);
   });
 
   it('lists what was done in the last 28 days, newest first: merged, closed for a newer target, no longer listed', () => {
@@ -582,7 +585,7 @@ describe('an empty day', () => {
     expect(shown.day.passed).toBe(false);
     expect(shown.day.failed).toEqual(['other']);
     expect(shown.day.unjudged).toEqual([
-      { repository: FACTORY, url: 'https://github.com/the-roganator/cv-software-factory/actions/runs/1834977' },
+      { repository: FACTORY, url: 'https://github.com/the-roganator/cv-software-factory-scratch/actions/runs/1834977' },
     ]);
     expect(shown.compared).toBe(false);
     expect(shown.day.broken).toEqual([]);
@@ -599,8 +602,8 @@ describe('an empty day', () => {
     const shown = read(dayView(broken, END, []));
     expect(shown.day.broken).toEqual([
       {
-        repository: 'the-roganator/cv-worlds-worst-website',
-        url: 'https://github.com/the-roganator/cv-worlds-worst-website/actions/runs/1834981',
+        repository: 'the-roganator/cv-worlds-worst-website-scratch',
+        url: 'https://github.com/the-roganator/cv-worlds-worst-website-scratch/actions/runs/1834981',
       },
     ]);
     expect(shown.nothing).toBe('failed');

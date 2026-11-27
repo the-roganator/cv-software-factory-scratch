@@ -59,7 +59,7 @@ Requests name a pinned version such as `jev-1.13.0`, never the `jev-latest` alia
 
 ### Questions as code, thresholds as policy
 
-- Each question set (for example `triage/v1`) lives in the `cv-software-factory` repo as typed TypeScript and is reviewed like any other code. Question keys are for code only and are not sent to the model, so every instruction must carry its full meaning.
+- Each question set (for example `triage/v1`) lives in the `cv-software-factory-scratch` repo as typed TypeScript and is reviewed like any other code. Question keys are for code only and are not sent to the model, so every instruction must carry its full meaning.
 - Routing thresholds live in human-owned policy configuration alongside the gate thresholds, under CODEOWNERS. Agents cannot change them (guardrail 1).
 
 ### Events

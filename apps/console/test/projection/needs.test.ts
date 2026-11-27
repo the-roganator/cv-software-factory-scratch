@@ -501,7 +501,7 @@ describe('Needs you', () => {
           ? {
               verb: 'Deploy',
               pullRequest: change.pullRequest,
-              href: `https://github.com/the-roganator/cv-worlds-worst-website/pull/${change.pullRequest}`,
+              href: `https://github.com/the-roganator/cv-worlds-worst-website-scratch/pull/${change.pullRequest}`,
               // What Martin does there, which the card says beside it: merge it once its checks pass, now, or once he
               // has seen why the queue took it out; or nothing, while the queue merges it.
               there: THERE[change.state],
@@ -531,7 +531,7 @@ describe('Needs you', () => {
       String((at(t).need?.evidence as { text?: string } | undefined)?.text).replace(/^Merged at \d\d:\d\d\. /, '');
     const unsigned: PayloadOf<'build.unsigned'> = {
       commit: 'c'.repeat(40),
-      image: 'the-roganator/cv-worlds-worst-website',
+      image: 'the-roganator/cv-worlds-worst-website-scratch',
       digest: `sha256:${'7'.repeat(64)}`,
       signature: 'unsigned',
       reason: 'no signature',
@@ -541,7 +541,7 @@ describe('Needs you', () => {
     expect(at(5).need).toMatchObject({
       kicker: 'Its build is not signed',
       link: {
-        href: 'https://github.com/the-roganator/cv-worlds-worst-website/actions/runs/900/job/2',
+        href: 'https://github.com/the-roganator/cv-worlds-worst-website-scratch/actions/runs/900/job/2',
         label: 'See sign and attest on GitHub',
       },
       way: undefined,
@@ -749,7 +749,7 @@ describe('Needs you', () => {
       expect(realNeed?.way).toEqual({
         verb: 'Review',
         pullRequest: 1327,
-        href: 'https://github.com/the-roganator/cv-worlds-worst-website/pull/1327',
+        href: 'https://github.com/the-roganator/cv-worlds-worst-website-scratch/pull/1327',
         there: 'approve-merge',
       });
       // The line closes the work item, its issue and its pull request, unmerged.
