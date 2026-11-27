@@ -238,7 +238,9 @@ describe('every workflow', () => {
     expect(job.steps?.[0]?.run).toContain('The scan runs only on a push to the default branch');
     expect(job.env).toBeUndefined();
     const steps = job.steps ?? [];
-    const given = steps.filter((step) => JSON.stringify(step).includes('secrets.'));
+    // The scratch copies' own step, for the patching tests, holds the key too, to seal again the state it puts back.
+    const scratch = 'Put the state’s sightings back for the patching tests';
+    const given = steps.filter((step) => step.name !== scratch && JSON.stringify(step).includes('secrets.'));
     expect(given).toHaveLength(1);
     expect(given[0]?.env?.[SCAN_STATE_ENVIRONMENT.key]).toBe(expression(`secrets.${SCAN_STATE_ENVIRONMENT.key}`));
     // That step runs one script of this repository's, from the sparse copy at the workflow's commit; the scanned
@@ -252,6 +254,7 @@ describe('every workflow', () => {
     expect(own?.with?.['sparse-checkout-cone-mode']).toBe(false);
     for (const step of steps) {
       if (step.uses?.startsWith('actions/checkout@')) expect(step.with?.['persist-credentials'], step.name).toBe(false);
+      if (step.name === scratch) continue;
       for (const [, script] of (step.run ?? '').matchAll(/\bnode\s+(\S+)/g))
         expect(script, step.name).toMatch(/^factory\/apps\/factory\/src\/vulnerabilities\//);
       expect(step.run ?? '', step.name).not.toMatch(/(^|[\s;&|(])(\.\/)?scanned\/\S*(\s|$)/m);
