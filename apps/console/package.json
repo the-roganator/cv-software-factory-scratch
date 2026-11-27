@@ -18,7 +18,7 @@
     "@opentelemetry/sdk-node": "^0.301.2",
     "@software-factory/events": "workspace:*",
     "@software-factory/store": "workspace:*",
-    "pino": "^10.4.0",
+    "pino": "^10.3.1",
     "postgres": "^4.1.1"
   },
   "devDependencies": {
