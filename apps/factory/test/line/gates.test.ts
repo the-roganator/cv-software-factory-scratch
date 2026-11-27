@@ -343,7 +343,7 @@ describe('the gates, as events', () => {
         state: 'closed',
         merged: true,
         mergeCommit: MERGED,
-        mergedBy: 'mrogan-software-factory[bot]',
+        mergedBy: 'the-roganator-scratch-factory[bot]',
       });
       expect(read(FAILED_AGAIN, merged)).toEqual(['gate.finished', 'gates.finished', 'pull-request.merged']);
       const { stage, next } = decide(events, facts);

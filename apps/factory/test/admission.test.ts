@@ -190,19 +190,19 @@ describe('admission control', () => {
       spec: { matchImageReferences: { glob: string }[]; variables: { name: string; expression: string }[] };
     };
     expect(source.spec.matchImageReferences.map((m) => m.glob)).toEqual([
-      `${OURS}cv-software-factory/*@*`,
-      `${OURS}cv-worlds-worst-website@*`,
-      `${OURS}cv-worlds-worst-website:*@*`,
+      `${OURS}cv-software-factory-scratch/*@*`,
+      `${OURS}cv-worlds-worst-website-scratch@*`,
+      `${OURS}cv-worlds-worst-website-scratch:*@*`,
     ]);
     const ours = source.spec.variables.find((v) => v.name === 'ours')?.expression ?? '';
     expect(listed(ours)).toEqual([
-      `${OURS}cv-software-factory/`,
-      `${OURS}cv-worlds-worst-website`,
-      `${OURS}cv-worlds-worst-website:`,
-      `${OURS}cv-worlds-worst-website@`,
+      `${OURS}cv-software-factory-scratch/`,
+      `${OURS}cv-worlds-worst-website-scratch`,
+      `${OURS}cv-worlds-worst-website-scratch:`,
+      `${OURS}cv-worlds-worst-website-scratch@`,
     ]);
     const ready = readFileSync(fileURLToPath(new URL('../../../scripts/admission-ready.sh', import.meta.url)), 'utf-8');
-    expect(ready).toContain(`${OURS}cv-software-factory/* | ${OURS}cv-worlds-worst-website)`);
+    expect(ready).toContain(`${OURS}cv-software-factory-scratch/* | ${OURS}cv-worlds-worst-website-scratch)`);
     expect(ready).toContain(`https://github.com/${OURS.split('/')[1]}/$1/.github/workflows/build.yml@refs/heads/main`);
   });
 
@@ -231,18 +231,18 @@ describe('admission control', () => {
     // The factory's namespaces: every image the profile pins from build.yml, and none of the app's.
     const pinned = [...named(parse(await read('overlays/local/factory-image/kustomization.yaml')), new Set())];
     pinned.push(...named(parse(await read('overlays/local/console-image/kustomization.yaml')), new Set()));
-    expect(pinned.filter((i) => !i.startsWith(`${OURS}cv-software-factory/`))).toEqual([]);
+    expect(pinned.filter((i) => !i.startsWith(`${OURS}cv-software-factory-scratch/`))).toEqual([]);
     const factory = await copy('factory');
     expect(factory.factory.sort()).toEqual(pinned.sort());
     expect(factory.website).toEqual([]);
     // The app's namespace: the app, and the factory's browser for the analysis Job that walks a canary's journeys.
     const website = await copy('website');
-    expect(website.factory).toEqual([`${OURS}cv-software-factory/factory-browser`]);
-    expect(website.website).toEqual([`${OURS}cv-worlds-worst-website`]);
+    expect(website.factory).toEqual([`${OURS}cv-software-factory-scratch/factory-browser`]);
+    expect(website.website).toEqual([`${OURS}cv-worlds-worst-website-scratch`]);
     // The scoreboard's namespace, beside the answer key: the factory's own image, which the scoreboard runs, alone.
     const scoreboard = await copy('scoreboard');
     expect(scoreboard.namespaces).toEqual(['scoreboard']);
-    expect(scoreboard.factory).toEqual([`${OURS}cv-software-factory/factory`]);
+    expect(scoreboard.factory).toEqual([`${OURS}cv-software-factory-scratch/factory`]);
     expect(scoreboard.website).toEqual([]);
     const deployment = parse(await read('base/scoreboard/deployment.yaml')) as {
       spec: { template: { spec: { containers: { image: string }[]; initContainers?: unknown[] } } };

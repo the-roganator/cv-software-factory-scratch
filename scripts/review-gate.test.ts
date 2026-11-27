@@ -686,7 +686,7 @@ describe('judging a pull request through the API', () => {
   });
 
   describe("a move, taken from the move job's answers", () => {
-    const FACTORY = 'the-roganator/cv-software-factory';
+    const FACTORY = 'the-roganator/cv-software-factory-scratch';
     const here: PullRequest = {
       ...theirs,
       head: { ...theirs.head, ref: 'factory/pin/prometheus', repo: { full_name: FACTORY } },
@@ -781,7 +781,7 @@ describe('judging a pull request through the API', () => {
   });
 
   describe('an exact pin of the factory’s workflows', () => {
-    const FACTORY = 'the-roganator/cv-software-factory';
+    const FACTORY = 'the-roganator/cv-software-factory-scratch';
     const OLD = '1'.repeat(40);
     const NEW = '2'.repeat(40);
     const call = (workflow: string, commit: string) =>
@@ -985,10 +985,10 @@ describe('judging a pull request through the API', () => {
       {
         filename: 'deploy/website/kustomization.yaml',
         status: 'modified',
-        patch: `@@ -1,3 +1,3 @@\n images:\n-- digest: ${digest('1')}\n+- digest: ${digest('2')}\n   newName: ghcr.io/the-roganator/cv-worlds-worst-website`,
+        patch: `@@ -1,3 +1,3 @@\n images:\n-- digest: ${digest('1')}\n+- digest: ${digest('2')}\n   newName: ghcr.io/the-roganator/cv-worlds-worst-website-scratch`,
       },
     ];
-    const kustomization = `images:\n- digest: ${digest('2')}\n  newName: ghcr.io/the-roganator/cv-worlds-worst-website\n`;
+    const kustomization = `images:\n- digest: ${digest('2')}\n  newName: ghcr.io/the-roganator/cv-worlds-worst-website-scratch\n`;
     afterEach(() => vi.useRealTimers());
 
     it('is tried again, and if it still cannot be made, a wait that names why: never a pass, nor its tags', async () => {
@@ -1053,7 +1053,7 @@ describe('judging a pull request through the API', () => {
       expect(said).toMatchObject({ pass: false, rule: 'held' });
       expect(said.pending).toBeUndefined();
       expect(said.title).toContain(
-        `Not an exact pin: ghcr.io/the-roganator/cv-worlds-worst-website@${'2'.repeat(7)}: ghcr.io answered 404`,
+        `Not an exact pin: ghcr.io/the-roganator/cv-worlds-worst-website-scratch@${'2'.repeat(7)}: ghcr.io answered 404`,
       );
     });
   });

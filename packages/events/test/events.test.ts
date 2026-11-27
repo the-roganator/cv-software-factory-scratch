@@ -1048,7 +1048,11 @@ describe('upcasting the real catalogue', () => {
           refusals: [43],
           attempts: [{ what: 'Open a pull request that deletes a test', result: 'review: refused', refused: true }],
           subject: {
-            pullRequest: { repository: 'the-roganator/cv-worlds-worst-website', number: 412, head: 'a'.repeat(40) },
+            pullRequest: {
+              repository: 'the-roganator/cv-worlds-worst-website-scratch',
+              number: 412,
+              head: 'a'.repeat(40),
+            },
           },
         }),
       ).ok,
@@ -1793,7 +1797,7 @@ describe('upcasting the real catalogue', () => {
         rule: 'held',
         tags: [{ tag: 'dependency-change', because: ['pnpm-lock.yaml'] }],
         said: '#12: held for its risk tags: dependency-change',
-        check: 'https://github.com/the-roganator/cv-worlds-worst-website/runs/1',
+        check: 'https://github.com/the-roganator/cv-worlds-worst-website-scratch/runs/1',
         approving: true,
       },
     };
@@ -2305,7 +2309,10 @@ describe('a guardrail’s proof', () => {
         ...payload,
       },
     } as NewEvent);
-  const run = { url: 'https://github.com/the-roganator/cv-software-factory/actions/runs/123456', at: opened.ts };
+  const run = {
+    url: 'https://github.com/the-roganator/cv-software-factory-scratch/actions/runs/123456',
+    at: opened.ts,
+  };
 
   it('names the guardrails it proves, each once, of spec 6’s eleven, and is the line’s, on no work item', () => {
     expect(proved({})).toEqual({ ok: true });

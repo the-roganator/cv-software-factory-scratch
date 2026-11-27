@@ -1729,7 +1729,7 @@ export const FIXTURES: { [A in LineAgent]: Record<string, Fixture<A>> } = {
                   {
                     level: 'error',
                     text: 'Failed to load resource: the server responded with a status of 404 (Not Found)',
-                    source: 'http://website.localhost:8080/assets/report.js',
+                    source: 'http://website.localhost:9080/assets/report.js',
                   },
                 ],
               },

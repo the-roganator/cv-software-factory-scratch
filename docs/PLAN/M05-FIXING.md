@@ -80,8 +80,8 @@ Each task is its own pull request, in order, each demonstrable.
 ### 0. Settled before the start
 
 - Martin has agreed the decisions above, and settled anything this file asks him.
-- Martin has created the GitHub App, `mrogan-software-factory` (its work shows as `mrogan-software-factory[bot]`), on his account, installable only there, with no webhook and no user authorisation. It may read and write contents, pull requests, checks and issues, with metadata read-only and nothing else. It is installed on the two public repositories only. Its avatar is the design system's mark, so its work never wears Martin's face.
-- The App's private key is in Martin's macOS Keychain as `factory-github-app-key`, base64-encoded, because `security find-generic-password -w` prints a value with newlines as hex. `make up` decodes it.
+- Martin has created the GitHub App, `the-roganator-scratch-factory` (its work shows as `the-roganator-scratch-factory[bot]`), on his account, installable only there, with no webhook and no user authorisation. It may read and write contents, pull requests, checks and issues, with metadata read-only and nothing else. It is installed on the two public repositories only. Its avatar is the design system's mark, so its work never wears Martin's face.
+- The App's private key is in Martin's macOS Keychain as `scratch-factory-github-app-key`, base64-encoded, because `security find-generic-password -w` prints a value with newlines as hex. `make up` decodes it.
 - Martin has an Anthropic API key for a Claude Console workspace of its own, with a monthly spend limit above the gateway's caps, in the Keychain as `anthropic-api-key`.
 - LM Studio serves `qwen/qwen3.8-27b` on `127.0.0.1:1234` on Martin's Mac.
 
@@ -252,7 +252,7 @@ Spec sections 4.1, 7 and 9; `COMPONENTS/` (the line, the agents and the App's pu
 
 On 4 and 5 October 2026.
 
-- **The App cannot change a workflow.** Asked for a signed commit adding a workflow, after a control commit it was allowed, GitHub answered `Resource not accessible by integration` in both repositories (`apps/factory/test/github/workflow-refusals.json`). The control commits were verified, signed by GitHub and authored by `mrogan-software-factory[bot]`.
+- **The App cannot change a workflow.** Asked for a signed commit adding a workflow, after a control commit it was allowed, GitHub answered `Resource not accessible by integration` in both repositories (`apps/factory/test/github/workflow-refusals.json`). The control commits were verified, signed by GitHub and authored by `the-roganator-scratch-factory[bot]`.
 - **The app's gates, on a pull request that changes nothing they judge:** test integrity, dependency review and the image scan pass; tests first fails, as it must for a change with no tests. The journeys gate, run locally against a copy of the app whose about page answered 500, failed on that one check and passed over the 23 the base already fails, in 48 seconds.
 - **The gateway on Anthropic and on LM Studio.** A runner's call went to Claude Sonnet 5.5 at medium effort, the policy's choice, though it asked for Opus, and cost $0.0001; the same call on another day, in another session, replayed. On `local`, Qwen answered through the same endpoint, at no cost.
 - **A smoke run, outside the cluster.** The line's code, with each Job run as a container of the `factory-runner` image and the agent's container on a network that reached only the gateway and the handback: the coder on Qwen wrote the failing test, ran it, fixed the off-by-one, ran it again, and handed back a two-file patch in 2.8 minutes and 8 turns. The fence passed it, and the dry-run GitHub worker recorded the commit on the seeded base. The containers were set up by hand, for this run only.
@@ -343,11 +343,11 @@ Written as Part A's pull requests (#62 to #73, and the app's #9 to #11) merged, 
 
 - Each pull request had one reviewer, then a review across the whole stack lined up the findings that span pull requests. That found four major problems in the runners and one in the gateway. In each, a side with privileges trusted what the sandbox handed it. Every finding was answered on its pull request.
 - In a stack of squash-merged pull requests, every fix low in the stack means rebasing everything above it. Whether Part B tries GitHub's stacked pull requests is still open.
-- No test runs the real Agent SDK against the gateway's allow-lists: an [issue](https://github.com/the-roganator/cv-software-factory/issues).
+- No test runs the real Agent SDK against the gateway's allow-lists: an [issue](https://github.com/the-roganator/cv-software-factory-scratch/issues).
 
 **Still to run:** nothing; the runs are in the results.
 
-**Left open:** see the [issues](https://github.com/the-roganator/cv-software-factory/issues), and the Part B tasks that gained items from review (9 and 15).
+**Left open:** see the [issues](https://github.com/the-roganator/cv-software-factory-scratch/issues), and the Part B tasks that gained items from review (9 and 15).
 
 ### Part B
 
@@ -401,4 +401,4 @@ The line took 1001 at 23:45 UTC on 6 October and held it nine minutes later. Twe
 - A review that blocks and returns to the coder, and a patch the scope fence refuses, on a real work item. Tests cover both; no run has met either.
 - A night-long soak, for the GitHub worker's memory and leases over many hours, and one on Qwen at the tuned settings over a ticket like 1007.
 
-**Left open:** see the [issues](https://github.com/the-roganator/cv-software-factory/issues).
+**Left open:** see the [issues](https://github.com/the-roganator/cv-software-factory-scratch/issues).
