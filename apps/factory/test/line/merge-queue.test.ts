@@ -13,7 +13,7 @@ import { clock, database, event, line, martin, payloads, stage, ticket, types, w
 
 withLineStore();
 
-const REPO = 'the-roganator/cv-worlds-worst-website';
+const REPO = 'the-roganator/cv-worlds-worst-website-scratch';
 const { privateKey, publicKey } = generateKeyPairSync('ed25519');
 
 /** Martin's controls, as the admin service appends them. */
@@ -88,7 +88,7 @@ describe('the line, merging through the queue', () => {
       state: 'closed',
       merged: true,
       mergeCommit: 'c'.repeat(40),
-      mergedBy: 'mrogan-software-factory[bot]',
+      mergedBy: 'the-roganator-scratch-factory[bot]',
     });
     await pass();
     expect(await payloads(workItem, 'pull-request.merged')).toEqual([

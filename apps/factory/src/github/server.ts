@@ -68,7 +68,7 @@ const anchor = z
 const number = z.number().int().positive();
 const text = (max: number) => z.string().max(max);
 const digest = z.string().regex(DIGEST);
-/** An image as GHCR names it, such as `the-roganator/cv-worlds-worst-website`. */
+/** An image as GHCR names it, such as `the-roganator/cv-worlds-worst-website-scratch`. */
 const image = z
   .string()
   .max(200)

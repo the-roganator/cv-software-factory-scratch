@@ -60,7 +60,7 @@ WORK="$STATE/work"
 REVIEW_APP_KEYCHAIN=review-gate-app-key
 SCRATCH_CLUSTER=software-factory-scratch
 SCRATCH_CONTEXT=k3d-$SCRATCH_CLUSTER
-REAL_CONTEXT=k3d-software-factory
+REAL_CONTEXT=k3d-software-factory-scratch
 
 say() { printf '\n== %s\n' "$*"; }
 die() { printf 'copies.sh: %s\n' "$*" >&2; exit 1; }
@@ -82,9 +82,9 @@ second_cluster() {
   [[ -f "$SKILL/app.env" ]] || die "no app.env: ./copies.sh app makes the scratch App first"
   # shellcheck source=../app.env
   source "$SKILL/app.env"
-  git grep -lzI -e k3d-software-factory -e 'CLUSTER := ' -e 'name: software-factory' -e cluster.lock -e localhost:8080 \
-    -e localhost:8443 -e 127.0.0.1:8 -e 6550 -e factory-github-app-key -e pushover- -e mrogan-software-factory \
-    -e Iv23liE1Dj3iYkwWX59z -e 5187559 -e 337765427 -e 5_187_559 -e 337_765_427 -e 1543 -e PRIVATE_DIR -e '^options:' -- . ':!pnpm-lock.yaml' |
+  git grep -lzI -e k3d-software-factory-scratch -e 'CLUSTER := ' -e 'name: software-factory' -e cluster.lock -e localhost:9080 \
+    -e localhost:9443 -e 127.0.0.1:8 -e 6550 -e scratch-factory-github-app-key -e pushover- -e the-roganator-scratch-factory \
+    -e Iv23liy57XMhlWYlOe5i -e 5774780 -e 357103795 -e 5_774_780 -e 357_103_795 -e 1543 -e PRIVATE_DIR -e '^options:' -- . ':!pnpm-lock.yaml' |
     SLUG=$SCRATCH_APP_SLUG APP_ID=$SCRATCH_APP_ID CLIENT_ID=$SCRATCH_APP_CLIENT_ID BOT_ID=$SCRATCH_APP_BOT_ID \
       xargs -0 perl -pi "$HERE/cluster.pl"
 }
