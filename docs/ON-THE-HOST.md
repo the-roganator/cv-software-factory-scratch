@@ -9,8 +9,8 @@ A worker that takes work (triage, the probes, the red-team harness, the dependen
 With the cluster up, forward its collector and Postgres; `pnpm dev` reads the event store instead of the samples when `PGHOST` is set:
 
 ```sh
-kubectl --context k3d-software-factory -n telemetry port-forward svc/otel-collector 4318 &
-kubectl --context k3d-software-factory -n factory port-forward svc/postgres 5432 &
+kubectl --context k3d-software-factory-scratch -n telemetry port-forward svc/otel-collector 4318 &
+kubectl --context k3d-software-factory-scratch -n factory port-forward svc/postgres 5432 &
 ```
 
 ## The workers and the gateway
@@ -18,36 +18,36 @@ kubectl --context k3d-software-factory -n factory port-forward svc/postgres 5432
 The workers can run on the host instead of in the cluster, against forwarded Prometheus, Loki, Tempo and Postgres, and a gateway that runs on the host too. The collector's address is the default (`localhost:4318`, forwarded as above), so the workers' own telemetry arrives as well:
 
 ```sh
-kubectl --context k3d-software-factory -n telemetry port-forward svc/prometheus-server 9090:80 &
-kubectl --context k3d-software-factory -n telemetry port-forward svc/loki 3100 &
-kubectl --context k3d-software-factory -n telemetry port-forward svc/tempo 3200 &
+kubectl --context k3d-software-factory-scratch -n telemetry port-forward svc/prometheus-server 9090:80 &
+kubectl --context k3d-software-factory-scratch -n telemetry port-forward svc/loki 3100 &
+kubectl --context k3d-software-factory-scratch -n telemetry port-forward svc/tempo 3200 &
 export PGHOST=127.0.0.1 PGDATABASE=factory
 # Each worker connects as its own role (policy/store-grants.ts), with the password from its Secret, in a subshell of its own.
 store_role() {
-  export PGUSER="factory_$1" PGPASSWORD="$(kubectl --context k3d-software-factory -n factory get secret "postgres-$1" -o jsonpath='{.data.password}' | base64 -d)"
+  export PGUSER="factory_$1" PGPASSWORD="$(kubectl --context k3d-software-factory-scratch -n factory get secret "postgres-$1" -o jsonpath='{.data.password}' | base64 -d)"
   [ -n "$PGPASSWORD" ] || { echo "no password for $1: run make up, which makes every role's" >&2; return 1; }
 }
 # Triage's token for judgements, the cluster's (make judgements-token), so the gateway and triage get the same value in
 # any terminal. Without it the gateway answers every judgement 401, and triage will not start.
-export JUDGEMENTS_TOKEN="$(kubectl --context k3d-software-factory -n factory get secret judgements-token -o jsonpath='{.data.token}' | base64 -d)"
+export JUDGEMENTS_TOKEN="$(kubectl --context k3d-software-factory-scratch -n factory get secret judgements-token -o jsonpath='{.data.token}' | base64 -d)"
 # The gateway, with the keys from the Keychain (leave one out to replay that provider only), on :8080. It reaches LM
 # Studio at 127.0.0.1:1234; ALL_LOCAL=true sends every agent there. Its cassettes hold whole prompts, reports and
 # tool output: keep them out of the repository (only eval cassettes, made from invented reports, are committed).
 (store_role gateway && GATEWAY_MODE=replay-record CASSETTES_DIR=/tmp/cassettes TYPESAFE_API_KEY="$(security find-generic-password -s typesafe-api-key -w)" \
   ANTHROPIC_API_KEY="$(security find-generic-password -s anthropic-api-key -w)" \
   node --import ./apps/factory/src/telemetry.ts apps/factory/src/cli.ts gateway) &
-(store_role triage && GATEWAY_URL=http://localhost:8080 ARTIFACTS_DIR=/tmp/artifacts node apps/factory/src/cli.ts triage)
-(store_role probes && APP_URL=http://website.localhost:8080 ARTIFACTS_DIR=/tmp/artifacts PORT=8090 node apps/factory/src/cli.ts probes run)
+(store_role triage && GATEWAY_URL=http://localhost:9080 ARTIFACTS_DIR=/tmp/artifacts node apps/factory/src/cli.ts triage)
+(store_role probes && APP_URL=http://website.localhost:9080 ARTIFACTS_DIR=/tmp/artifacts PORT=8090 node apps/factory/src/cli.ts probes run)
 ```
 
-Scale the cluster's copy of a worker to nothing first (`kubectl --context k3d-software-factory -n factory scale deployment/triage --replicas=0`, and `deployment/probes` for the probes, which sense and signal as the cluster's do), and back to one after, so two do not take or send the same signals. Add `PAGES_URL=http://localhost:8090` to triage to have it read the pages reports name, and `PROMETHEUS_URL=http://localhost:9090 LOKI_URL=http://localhost:3100 TEMPO_URL=http://localhost:3200` to have it look at what each sense reads before it trusts a signal.
+Scale the cluster's copy of a worker to nothing first (`kubectl --context k3d-software-factory-scratch -n factory scale deployment/triage --replicas=0`, and `deployment/probes` for the probes, which sense and signal as the cluster's do), and back to one after, so two do not take or send the same signals. Add `PAGES_URL=http://localhost:8090` to triage to have it read the pages reports name, and `PROMETHEUS_URL=http://localhost:9090 LOKI_URL=http://localhost:3100 TEMPO_URL=http://localhost:3200` to have it look at what each sense reads before it trusts a signal.
 
 ## The admin service
 
 The admin service runs on the host too, against the forwarded Postgres, for working on it. Its password is in `postgres-admin`, which `make up` makes and the migrate Job sets. It serves `/admin/` on its own port, so a browser reaches it only through the console's origin, which is the one a passkey and `Origin` are checked against. `make enrol` makes the code for the store it reads ([signing in](LOCAL-CLUSTER.md#signing-in-and-alerts-to-the-phone)):
 
 ```sh
-(store_role admin && ADMIN_ORIGIN=https://console.localhost:8443 GRAFANA_URL=http://grafana.localhost:8080 ARGOCD_URL=http://argocd.localhost:8080 \
+(store_role admin && ADMIN_ORIGIN=https://console.localhost:9443 GRAFANA_URL=http://grafana.localhost:9080 ARGOCD_URL=http://argocd.localhost:9080 \
   PORT=8093 node apps/factory/src/cli.ts admin)
 ```
 
@@ -58,7 +58,7 @@ For the console's sign-in pages in `pnpm dev`, start it with `ADMIN_ORIGIN=http:
 The GitHub worker acts as the factory's App, with its key from the Keychain; `GITHUB_DRY_RUN=true` records what it would do in the artifact store and touches nothing in GitHub:
 
 ```sh
-GITHUB_APP_CLIENT_ID=Iv23liE1Dj3iYkwWX59z GITHUB_APP_PRIVATE_KEY="$(security find-generic-password -s factory-github-app-key -w | base64 -d)" \
+GITHUB_APP_CLIENT_ID=Iv23liy57XMhlWYlOe5i GITHUB_APP_PRIVATE_KEY="$(security find-generic-password -s scratch-factory-github-app-key -w | base64 -d)" \
   GITHUB_DRY_RUN=true ARTIFACTS_DIR=/tmp/artifacts PORT=8091 node apps/factory/src/cli.ts github run
 ```
 
@@ -66,10 +66,10 @@ Never run one on the host without `GITHUB_DRY_RUN=true` while the cluster's runs
 
 The GitHub worker signs each refusal it answers (its guard's, and GitHub's 403s) so the line can record it: `make refusal-key` (and so `make up`) makes its Ed25519 key once, through stdin, the Secret `refusal-signing-key` in `factory`, which only the worker reads, and its public half, the ConfigMap `refusal-key`, which the line reads, and the console, to check each relayed refusal Guardrails shows. On the host, `REFUSAL_SIGNING_KEY` and `REFUSAL_PUBLIC_KEY` take them as PEM; without them the worker answers unsigned and the line records none.
 
-Its read of the scan's moves opens the state each repository's scan keeps ([the state](COMPONENTS/SECURITY-SCANNING.md#the-state)) with that repository's key, which `make scan-state-key` makes once, as the Secret `scan-state-key` in `factory`. On the host each is a setting named for its repository, `SCAN_STATE_KEY_CV_SOFTWARE_FACTORY` and `SCAN_STATE_KEY_CV_WORLDS_WORST_WEBSITE`, the key as the Secret holds it, 32 bytes in base64:
+Its read of the scan's moves opens the state each repository's scan keeps ([the state](COMPONENTS/SECURITY-SCANNING.md#the-state)) with that repository's key, which `make scan-state-key` makes once, as the Secret `scan-state-key` in `factory`. On the host each is a setting named for its repository, `SCAN_STATE_KEY_CV_SOFTWARE_FACTORY_SCRATCH` and `SCAN_STATE_KEY_CV_WORLDS_WORST_WEBSITE_SCRATCH`, the key as the Secret holds it, 32 bytes in base64:
 
 ```sh
-SCAN_STATE_KEY_CV_WORLDS_WORST_WEBSITE="$(kubectl --context k3d-software-factory -n factory get secret scan-state-key -o 'jsonpath={.data.cv-worlds-worst-website}' | base64 -d)"
+SCAN_STATE_KEY_CV_WORLDS_WORST_WEBSITE_SCRATCH="$(kubectl --context k3d-software-factory-scratch -n factory get secret scan-state-key -o 'jsonpath={.data.cv-worlds-worst-website-scratch}' | base64 -d)"
 ```
 
 Without one the worker starts, says which repository's moves it cannot read, and fails that read naming `make scan-state-key`; one that is set and is not a key stops it starting.
@@ -80,11 +80,11 @@ It reads Martin's autonomy level and auto-merge from the store, as its own role,
 
 ```sh
 GH_TOKEN="$(gh auth token)" AUTONOMY= \
-  SCAN_STATE_KEY="$(kubectl --context k3d-software-factory -n factory get secret scan-state-key -o 'jsonpath={.data.cv-software-factory}' | base64 -d)" \
-  mise exec -- node scripts/moves.ts --print --as-app the-roganator/cv-software-factory <number>
+  SCAN_STATE_KEY="$(kubectl --context k3d-software-factory-scratch -n factory get secret scan-state-key -o 'jsonpath={.data.cv-software-factory-scratch}' | base64 -d)" \
+  mise exec -- node scripts/moves.ts --print --as-app the-roganator/cv-software-factory-scratch <number>
 ```
 
-For one of the app's, the key is the Secret's `cv-worlds-worst-website`.
+For one of the app's, the key is the Secret's `cv-worlds-worst-website-scratch`.
 
 ## Scratch copies of the two repositories
 
@@ -104,25 +104,25 @@ The patching tests keep two such copies standing, with a cluster of their own th
 
 ## The red-team harness
 
-The red-team harness (`factory red-team`) makes each of spec 5.3's attacks Martin launches ([its page](COMPONENTS/RED-TEAM-HARNESS.md)). It connects as its own role, `factory_redteam` (`make up` makes `postgres-redteam`), and acts only on an `attack.launched` of Martin's. It makes the egress and image attacks' pods in `red-team`, a namespace of their own, so it needs the Kubernetes API (`kubectl proxy`, as the line's `soak-check` uses it); attack 1 posts a report through the app's front door (`APP_URL`, `INGRESS_URL`); attacks 2 and 3 ask the GitHub worker's attack door (`GITHUB_ATTACK_URL`, the worker's `ATTACK_PORT`). Scale the cluster's copy to nothing first (`kubectl --context k3d-software-factory -n factory scale deployment/red-team --replicas=0`), and back to one after, so two do not take the same launch:
+The red-team harness (`factory red-team`) makes each of spec 5.3's attacks Martin launches ([its page](COMPONENTS/RED-TEAM-HARNESS.md)). It connects as its own role, `factory_redteam` (`make up` makes `postgres-redteam`), and acts only on an `attack.launched` of Martin's. It makes the egress and image attacks' pods in `red-team`, a namespace of their own, so it needs the Kubernetes API (`kubectl proxy`, as the line's `soak-check` uses it); attack 1 posts a report through the app's front door (`APP_URL`, `INGRESS_URL`); attacks 2 and 3 ask the GitHub worker's attack door (`GITHUB_ATTACK_URL`, the worker's `ATTACK_PORT`). Scale the cluster's copy to nothing first (`kubectl --context k3d-software-factory-scratch -n factory scale deployment/red-team --replicas=0`), and back to one after, so two do not take the same launch:
 
 ```sh
-kubectl --context k3d-software-factory proxy --port=8001 &
-kubectl --context k3d-software-factory -n factory port-forward svc/github 8082:8082 &
+kubectl --context k3d-software-factory-scratch proxy --port=8001 &
+kubectl --context k3d-software-factory-scratch -n factory port-forward svc/github 8082:8082 &
 (store_role redteam && KUBE_API_URL=http://127.0.0.1:8001 ARTIFACTS_DIR=/tmp/artifacts \
-  APP_URL=http://website.localhost:8080 RUNNER_IMAGE="$(kubectl --context k3d-software-factory -n factory get deploy red-team -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name=="RUNNER_IMAGE")].value}')" \
+  APP_URL=http://website.localhost:9080 RUNNER_IMAGE="$(kubectl --context k3d-software-factory-scratch -n factory get deploy red-team -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name=="RUNNER_IMAGE")].value}')" \
   GITHUB_ATTACK_URL=http://localhost:8082 node apps/factory/src/cli.ts red-team)
 ```
 
 ## The dependency sense
 
-The dependency sense (`factory patching`, [its page](COMPONENTS/PATCHING.md#the-dependency-sense)) connects as its own role, `factory_patching` (`make up` makes `postgres-patching`), lists the cluster's pods through the Kubernetes API, and asks the GitHub worker's door for its one read, the day's moves (`GITHUB_URL`, the worker's `PATCHING_PORT`). `--once` makes one pass and says what it appended, or why not. Give it the Deployment's `PATCHING_NAMESPACES`: unset, it lists every namespace, `runners` and its job tokens included. Scale the cluster's copy to nothing first (`kubectl --context k3d-software-factory -n factory scale deployment/patching --replicas=0`), and back to one after:
+The dependency sense (`factory patching`, [its page](COMPONENTS/PATCHING.md#the-dependency-sense)) connects as its own role, `factory_patching` (`make up` makes `postgres-patching`), lists the cluster's pods through the Kubernetes API, and asks the GitHub worker's door for its one read, the day's moves (`GITHUB_URL`, the worker's `PATCHING_PORT`). `--once` makes one pass and says what it appended, or why not. Give it the Deployment's `PATCHING_NAMESPACES`: unset, it lists every namespace, `runners` and its job tokens included. Scale the cluster's copy to nothing first (`kubectl --context k3d-software-factory-scratch -n factory scale deployment/patching --replicas=0`), and back to one after:
 
 ```sh
-kubectl --context k3d-software-factory proxy --port=8001 &
-kubectl --context k3d-software-factory -n factory port-forward svc/github 8083:8083 &
+kubectl --context k3d-software-factory-scratch proxy --port=8001 &
+kubectl --context k3d-software-factory-scratch -n factory port-forward svc/github 8083:8083 &
 (store_role patching && KUBE_API_URL=http://127.0.0.1:8001 GITHUB_URL=http://localhost:8083 \
-  PATCHING_NAMESPACES="$(kubectl --context k3d-software-factory -n factory get deploy patching -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name=="PATCHING_NAMESPACES")].value}')" \
+  PATCHING_NAMESPACES="$(kubectl --context k3d-software-factory-scratch -n factory get deploy patching -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name=="PATCHING_NAMESPACES")].value}')" \
   node apps/factory/src/cli.ts patching --once)
 ```
 
@@ -131,8 +131,8 @@ kubectl --context k3d-software-factory -n factory port-forward svc/github 8083:8
 Runners need the cluster, with the line started: their agent pods reach the cluster's gateway and the line's handback, and nothing else. The smoke run asks the line, through a port-forward to its step API, to have a coder fix an off-by-one seeded in a scratch copy of the app; the GitHub worker records the commit it would have made, and nothing reaches GitHub. The coder works on Claude, through the cluster's gateway, and the run costs money; with `ALL_LOCAL=true` on that gateway and LM Studio running, it works on Qwen, for nothing:
 
 ```sh
-kubectl --context k3d-software-factory -n factory port-forward svc/line 8092:8080 & sleep 2
-curl -s localhost:8092/v1/smoke -H 'content-type: application/json' -d "{\"commit\":\"$(git ls-remote https://github.com/the-roganator/cv-worlds-worst-website.git main | cut -f1)\"}"
+kubectl --context k3d-software-factory-scratch -n factory port-forward svc/line 8092:8080 & sleep 2
+curl -s localhost:8092/v1/smoke -H 'content-type: application/json' -d "{\"commit\":\"$(git ls-remote https://github.com/the-roganator/cv-worlds-worst-website-scratch.git main | cut -f1)\"}"
 ```
 
 A runner's two steps also run as containers, for working on the runner itself: `docker build -f apps/runner/Dockerfile .`, then `runner prepare` and `runner agent` with the variables in `apps/runner/src/step.ts`.
@@ -157,7 +157,7 @@ make take-the-line ONLY=1004   # or NEXT=<how many>
 make new-work ON=1             # the line takes what was chosen; OFF=1 pauses it again
 ```
 
-The morning after, with Postgres forwarded as above and `kubectl --context k3d-software-factory proxy --port=8001` running, `(store_role line && KUBE_API_URL=http://127.0.0.1:8001 node apps/factory/src/cli.ts line soak-check --since <when it started>)` says whether a lease is stuck, a runner left behind, an event not valid, or a work item spent more than the highest cap on one in force since then (Martin's setting, within `FACTORY_PROFILE`'s policy), with the total spent, and how the work items went round (`--json` for all of it). Add `--no-spend` after a night on Qwen, which must spend nothing at all. `make close-work-item ONLY=<work item> REASON="…"` closes a work item nothing holds for him, by the same command-line role, as the console's Close does ([closing](COMPONENTS/ORCHESTRATOR.md#martin-closes-a-work-item)): a ticket a try's invented report opened, one he is done with, or one a take left on the line, whose pull request and issue the line then closes whatever it takes. `REASON` is refused on a work item a visitor's report opened.
+The morning after, with Postgres forwarded as above and `kubectl --context k3d-software-factory-scratch proxy --port=8001` running, `(store_role line && KUBE_API_URL=http://127.0.0.1:8001 node apps/factory/src/cli.ts line soak-check --since <when it started>)` says whether a lease is stuck, a runner left behind, an event not valid, or a work item spent more than the highest cap on one in force since then (Martin's setting, within `FACTORY_PROFILE`'s policy), with the total spent, and how the work items went round (`--json` for all of it). Add `--no-spend` after a night on Qwen, which must spend nothing at all. `make close-work-item ONLY=<work item> REASON="…"` closes a work item nothing holds for him, by the same command-line role, as the console's Close does ([closing](COMPONENTS/ORCHESTRATOR.md#martin-closes-a-work-item)): a ticket a try's invented report opened, one he is done with, or one a take left on the line, whose pull request and issue the line then closes whatever it takes. `REASON` is refused on a work item a visitor's report opened.
 
 After the merge the line carries a work item through Release and Verify, with settings on its deployment, each set by the deploy pull request that pins the image reading it. `RELEASE_ROLLOUT` (`website/website`) turns on its read-only watch of the app's releases, which needs `PROMETHEUS_URL` (`http://query.telemetry:9090`, the read-only proxy's Prometheus port) too; unset, it records no release, and a merged work item waits at Release. Verify asks the probes (`PROBES_URL`, their verify port: `http://probes:8081`), Prometheus, Loki (`LOKI_URL`, `http://query.telemetry:3100`) and Tempo (`TEMPO_URL`, `http://query.telemetry:3200`), which only the agreement check reads: without it, wrong metrics wait; a sense with no address leaves its work items waiting at Verify, and after a day holding for Martin. The probes serve Verify on `VERIFY_PORT` (8081, on the host too) and take pictures of a canary only with `CANARY_URL` (`http://website-canary.website`) on their deployment. In `dry-run` the line releases and verifies the dry run's merges itself, `LINE_DRY_RUN_RELEASE_SECONDS` apart (60), each event marked `dryRun`, so a soak goes round past the merge; a dry run's merge waits at Release for it and is never held. With Just one, the line still watches the app's releases, and records one that carries that work item or none; one that also carries another is left for the whole line.
 
@@ -176,18 +176,18 @@ One agent's step also runs on the host, for working on its prompt, with no clust
 The traffic generator (`factory traffic`) runs on the host against the cluster's Traefik, which k3d serves on :8080, so a canary's split applies to it as to the cluster's copy. `--walk` finds the pages from the front door, as the generator does when it starts, prints the round it would walk, and sends nothing more. `INGRESS_URL` names the ingress to connect to when `APP_URL`'s host does not resolve, and the host is still sent. With no `SHARE_KEY_FILE` it signs no id, so none of its requests is in a flag's share: the signing key stays in the cluster. Aimed at a port-forward of the app's Service, it would reach the stable version only, and a canary would see none of it:
 
 ```sh
-APP_URL=http://website.localhost:8080 node apps/factory/src/cli.ts traffic --walk
-APP_URL=http://website.localhost:8080 node apps/factory/src/cli.ts traffic
+APP_URL=http://website.localhost:9080 node apps/factory/src/cli.ts traffic --walk
+APP_URL=http://website.localhost:9080 node apps/factory/src/cli.ts traffic
 ```
 
-Beside the cluster's own generator, it would double the app's traffic and the requests a canary is judged on, so scale that one to nothing first (`kubectl --context k3d-software-factory -n factory scale deployment/traffic --replicas=0`), and back to one after.
+Beside the cluster's own generator, it would double the app's traffic and the requests a canary is judged on, so scale that one to nothing first (`kubectl --context k3d-software-factory-scratch -n factory scale deployment/traffic --replicas=0`), and back to one after.
 
 ## Feature flags
 
-Feature flags live in one `FeatureFlag`, `flags` in `flagd`, which flagd serves to the app ([feature flags](COMPONENTS/FEATURE-FLAGS.md)). Git holds it with no flags, and Argo CD makes it and leaves its flags alone. Martin stages a flag in the console's Flags panel, and the admin service (`POST /admin/flags/<flag>/stage`, on the console's origin) writes it in the stages' shapes, with a new `flag-set-revision` on each write; `GET /admin/flags/held` says whether the app holds it. Read it with `kubectl --context k3d-software-factory -n flagd get featureflag flags -o yaml`. A flag written there by hand in any other shape is dropped, and so turned off, at the admin service's next write. Each stage is seen as its audience sees it: Preview at `http://website.localhost:8080/?preview=<flag>`, which keeps the preview cookie in that browser for a day; Checks only with the mark, which Traefik removes, so through a port-forward of the app's Service, as the probes reach it, where every marked answer names the revision of the flag set the app holds:
+Feature flags live in one `FeatureFlag`, `flags` in `flagd`, which flagd serves to the app ([feature flags](COMPONENTS/FEATURE-FLAGS.md)). Git holds it with no flags, and Argo CD makes it and leaves its flags alone. Martin stages a flag in the console's Flags panel, and the admin service (`POST /admin/flags/<flag>/stage`, on the console's origin) writes it in the stages' shapes, with a new `flag-set-revision` on each write; `GET /admin/flags/held` says whether the app holds it. Read it with `kubectl --context k3d-software-factory-scratch -n flagd get featureflag flags -o yaml`. A flag written there by hand in any other shape is dropped, and so turned off, at the admin service's next write. Each stage is seen as its audience sees it: Preview at `http://website.localhost:9080/?preview=<flag>`, which keeps the preview cookie in that browser for a day; Checks only with the mark, which Traefik removes, so through a port-forward of the app's Service, as the probes reach it, where every marked answer names the revision of the flag set the app holds:
 
 ```sh
-kubectl --context k3d-software-factory -n website port-forward svc/website 8081:80 &
+kubectl --context k3d-software-factory-scratch -n website port-forward svc/website 8081:80 &
 curl -sI -H 'x-unmeasured: 1' localhost:8081/health | grep -i x-flags-revision
 ```
 

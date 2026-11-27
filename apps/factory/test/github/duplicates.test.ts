@@ -460,7 +460,7 @@ describe('closing Dependabot’s duplicate of what main has', () => {
   });
 
   it.each([
-    ['from a fork’s branch of that name', { from: 'dependabot/cv-software-factory' }, /not from a branch of/],
+    ['from a fork’s branch of that name', { from: 'dependabot/cv-software-factory-scratch' }, /not from a branch of/],
     ['into another repository', { into: 'someone/else' }, /not from a branch of/],
     ['from a branch that is not Dependabot’s', { ref: 'factory/pin/x' }, /not one of Dependabot's branches/],
     ['from a branch that only ends as its own do', { ref: 'x/dependabot/npm_and_yarn/y-1.0.0' }, /not one of/],

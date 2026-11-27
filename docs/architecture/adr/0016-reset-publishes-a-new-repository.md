@@ -4,7 +4,7 @@
 
 ### How a reset is done
 
-A reset publishes a new repository, with no history, under the app's name, `the-roganator/cv-worlds-worst-website`. Before it does, the repository it replaces is renamed, made private and moved out of the organisation to the owner's personal account, beside the private repository.
+A reset publishes a new repository, with no history, under the app's name, `the-roganator/cv-worlds-worst-website-scratch`. Before it does, the repository it replaces is renamed, made private and moved out of the organisation to the owner's personal account, beside the private repository.
 
 The new repository's first commit is built in the private repository, as the first one was (ADR 0006), from:
 
@@ -39,7 +39,7 @@ A seed may pin a dependency of the app at a version with a known vulnerability t
 ## Consequences
 
 - **Links to the old app's pull requests and issues stop working** for anyone but the owner. A link by number names the new repository's pull request of that number, if there is one. The milestone plans keep their references as written: "the app's #168" in a plan written before a reset means the old repository's.
-- **The new repository is set up again:** both Apps installed, `scripts/github-settings.ts` applied, its variables set, and the GHCR package `cv-worlds-worst-website` linked to it. Until then its pull requests have no required checks and the line cannot work on it.
+- **The new repository is set up again:** both Apps installed, `scripts/github-settings.ts` applied, its variables set, and the GHCR package `cv-worlds-worst-website-scratch` linked to it. Until then its pull requests have no required checks and the line cannot work on it.
 - **An image the old repository signed still verifies.** The signer is named by repository name, and the images and their signatures stay in the organisation's GHCR package, which a repository's move does not take with it. Once moved, anything the old repository signs names the owner's account, which no policy admits. Until the first deploy pin of the new repository, the cluster may run the old app's last image.
 - **The first deploy after a reset waits for the owner.** An exact pin needs the new image's commit to descend from the old pin's (ADR 0014), and the new first commit descends from nothing in the old repository. A pin back to an old image is no exact pin either.
 - **The local cluster is rebuilt with the new repository,** so the event store, the scoreboard's key and the app's history all start again together. A store that kept the old app's tickets would count them against the new key.

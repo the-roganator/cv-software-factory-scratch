@@ -103,10 +103,10 @@ export default new Item('1314', '2026-10-06T09:00:00+01:00')
     `The build of ${commitFor('1314/merge').slice(0, 7)} that carries it was never signed: sign and attest did not succeed, so no deploy pull request carries it`,
     {
       commit: commitFor('1314/merge'),
-      image: 'the-roganator/cv-worlds-worst-website',
+      image: 'the-roganator/cv-worlds-worst-website-scratch',
       digest: digestFor('1314/merge'),
       signature: 'unsigned',
-      reason: `the-roganator/cv-worlds-worst-website@${digestFor('1314/merge')} has no signature`,
+      reason: `the-roganator/cv-worlds-worst-website-scratch@${digestFor('1314/merge')} has no signature`,
       job: { run: 18_812_345_678, id: 53_412_345_678, name: 'sign and attest' },
     },
   )

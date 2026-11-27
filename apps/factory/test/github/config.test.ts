@@ -19,23 +19,23 @@ describe('the GitHub worker’s settings', () => {
 
   it('take each repository’s key for its scan’s state from a setting of its own, and only those given', () => {
     expect(REPOSITORIES.map(stateKeyName)).toEqual([
-      'SCAN_STATE_KEY_CV_SOFTWARE_FACTORY',
-      'SCAN_STATE_KEY_CV_WORLDS_WORST_WEBSITE',
+      'SCAN_STATE_KEY_CV_SOFTWARE_FACTORY_SCRATCH',
+      'SCAN_STATE_KEY_CV_WORLDS_WORST_WEBSITE_SCRATCH',
     ]);
     expect(stateKeyName('someone/a.b-c')).toBe('SCAN_STATE_KEY_A_B_C');
     expect(configFromEnv({}).stateKeys).toEqual(new Map());
     const [factory, app] = [newKey(), newKey()];
     const both = configFromEnv({
-      SCAN_STATE_KEY_CV_SOFTWARE_FACTORY: factory,
-      SCAN_STATE_KEY_CV_WORLDS_WORST_WEBSITE: `${app}\n`,
+      SCAN_STATE_KEY_CV_SOFTWARE_FACTORY_SCRATCH: factory,
+      SCAN_STATE_KEY_CV_WORLDS_WORST_WEBSITE_SCRATCH: `${app}\n`,
     }).stateKeys;
     expect([...both.keys()]).toEqual(REPOSITORIES);
     expect(both.get(REPOSITORIES[0] ?? '')?.toString('base64')).toBe(factory);
     expect(both.get(REPOSITORIES[1] ?? '')?.toString('base64')).toBe(app);
     // One alone, and one left empty as an optional Secret's is: only the one given.
     const one = configFromEnv({
-      SCAN_STATE_KEY_CV_SOFTWARE_FACTORY: factory,
-      SCAN_STATE_KEY_CV_WORLDS_WORST_WEBSITE: '',
+      SCAN_STATE_KEY_CV_SOFTWARE_FACTORY_SCRATCH: factory,
+      SCAN_STATE_KEY_CV_WORLDS_WORST_WEBSITE_SCRATCH: '',
     });
     expect([...one.stateKeys.keys()]).toEqual([REPOSITORIES[0]]);
     // Two repositories that would share one setting are refused, whoever owns them.
@@ -45,7 +45,7 @@ describe('the GitHub worker’s settings', () => {
     // A repository it does not act on has no key read.
     const narrowed = configFromEnv({
       GITHUB_REPOSITORIES: 'someone/else',
-      SCAN_STATE_KEY_CV_SOFTWARE_FACTORY: factory,
+      SCAN_STATE_KEY_CV_SOFTWARE_FACTORY_SCRATCH: factory,
     });
     expect(narrowed.stateKeys).toEqual(new Map());
     expect(
@@ -57,12 +57,12 @@ describe('the GitHub worker’s settings', () => {
     for (const bad of ['c2VjcmV0', Buffer.alloc(16, 1).toString('base64'), Buffer.alloc(33, 1).toString('base64')]) {
       let error: Error | undefined;
       try {
-        configFromEnv({ SCAN_STATE_KEY_CV_WORLDS_WORST_WEBSITE: bad });
+        configFromEnv({ SCAN_STATE_KEY_CV_WORLDS_WORST_WEBSITE_SCRATCH: bad });
       } catch (e) {
         error = e as Error;
       }
       expect(error?.message).toBe(
-        'SCAN_STATE_KEY_CV_WORLDS_WORST_WEBSITE is not a key for a scan’s state: it must be 32 bytes in base64.',
+        'SCAN_STATE_KEY_CV_WORLDS_WORST_WEBSITE_SCRATCH is not a key for a scan’s state: it must be 32 bytes in base64.',
       );
       expect(error?.message).not.toContain(bad);
     }
