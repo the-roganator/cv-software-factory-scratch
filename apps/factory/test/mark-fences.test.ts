@@ -144,7 +144,7 @@ describe('Traefik', () => {
   // is refused by Traefik while `providers.kubernetescrd.allowCrossNamespace` is off, which also refuses a
   // `namespace-name@kubernetescrd` reference. An ExternalName Service, which could name another namespace's Service by
   // its DNS name, is refused while `allowExternalNameServices` is off, in both Kubernetes providers. Both are off by
-  // default at Traefik 3.7, and k3s's bundled chart (traefik 41.6.101 in k3s v1.37.2) sets neither, so what holds them
+  // default at Traefik 3.7, and k3s's bundled chart (traefik 41.4.2 in k3s v1.37.1) sets neither, so what holds them
   // is that nothing changes the chart's values and that the providers' arguments are these. These are references to
   // objects; an address is not one (a forwardAuth's URL could name the app's Service), and only this repository makes
   // Middlewares outside `website`.
@@ -159,7 +159,7 @@ describe('Traefik', () => {
     // cluster and holds it to this record (`judgeRecord`), so a k3s that brings another Traefik fails there until the
     // record is taken again.
     expect(k3s).toMatch(/^v\d+\.\d+\.\d+\+k3s\d+$/);
-    expect(traefik.image).toBe('rancher/mirrored-library-traefik:3.7.15');
+    expect(traefik.image).toBe('rancher/mirrored-library-traefik:3.7.13');
     expect(traefik.providers).toEqual([
       '--providers.kubernetescrd',
       '--providers.kubernetescrd.allowEmptyServices=true',
