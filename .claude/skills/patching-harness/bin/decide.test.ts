@@ -25,7 +25,6 @@ import {
   holdDecided,
   holdFault,
   isRoutine,
-  issueFault,
   issueOfMove,
   type LokiStream,
   leftAloneFault,
@@ -53,7 +52,6 @@ import {
   probeQuery,
   queuedFault,
   queueWords,
-  REFUSAL_KINDS,
   restartVerdict,
   revertedVerdict,
   rolloutProgressing,
@@ -678,54 +676,7 @@ describe('a pod still starting, before the cluster is judged clean', () => {
   });
 });
 
-describe('an issue that must say why', () => {
-  const app = 'scratch[bot]';
-  const wants = { names: ['lefthook', '2.2.2'], says: [/weaker provenance/], never: [/log says which/] };
-  const issue = (body: string, author = app) => ({ number: 891, author, title: 'Move a package', body });
-
-  it("passes when the App's issue names the package and release in code and says why", () => {
-    const body = 'pnpm refused `lefthook` at `2.2.2`: it has a weaker provenance than the release before.';
-    expect(issueFault([issue(body)], app, wants)).toEqual({ number: 891 });
-  });
-
-  it("finds no issue when none names both in code, or the one that does is not the App's", () => {
-    expect(issueFault([issue('lefthook 2.2.2, a weaker provenance')], app, wants).fault).toContain('no issue');
-    const body = '`lefthook` `2.2.2` weaker provenance';
-    expect(issueFault([issue(body, 'mrogan')], app, wants).fault).toContain('no issue');
-    expect(issueFault([], app, wants).number).toBeUndefined();
-  });
-
-  it('fails one that does not say why, or that sends the reader to a log', () => {
-    expect(issueFault([issue('`lefthook` `2.2.2` was refused')], app, wants).fault).toContain('does not say');
-    const body = '`lefthook` `2.2.2`: a weaker provenance, or an install script. The worker’s log says which.';
-    expect(issueFault([issue(body)], app, wants)).toEqual({ number: 891, fault: 'issue #891 says log says which' });
-  });
-
-  it("gives the kind of the worker's reason, whichever of them the issue has", () => {
-    const refused = { names: ['lefthook'], says: [/`\d+\.\d+\.\d+`/], never: [/log says which/], kinds: REFUSAL_KINDS };
-    const young =
-      'The pin step could not make `lefthook` `2.2.2`: the release is younger than the minimum age this repository gives a release.';
-    expect(issueFault([issue(young)], app, refused)).toEqual({ number: 891, kind: 'young' });
-    const provenance = '`lefthook` `2.2.2`: published with weaker provenance than the release before it.';
-    expect(issueFault([issue(provenance)], app, refused)).toEqual({ number: 891, kind: 'provenance' });
-    for (const [kind, words] of [
-      ['script', 'the release has an install script this repository does not allow'],
-      ['override', 'it goes with an override for that copy'],
-      ['resolved', 'it asked pnpm for the release the scan listed, and pnpm resolved a newer one, `2.2.4`'],
-      ['lock', 'mise could not lock the release'],
-    ])
-      expect(issueFault([issue(`\`lefthook\` \`2.2.3\`: ${words}.`)], app, refused).kind).toBe(kind);
-  });
-
-  it('fails the catch-all, which gives no reason, and an issue that names no release in code', () => {
-    const refused = { names: ['lefthook'], says: [/`\d+\.\d+\.\d+`/], never: [/log says which/], kinds: REFUSAL_KINDS };
-    const other =
-      'The pin step could not make `lefthook` `2.2.2` on the commit it read. The watch makes it once a scan can.';
-    expect(issueFault([issue(other)], app, refused).fault).toContain('gives none of the reasons');
-    const unnamed = '`lefthook`: the release is younger than the minimum age.';
-    expect(issueFault([issue(unnamed)], app, refused).fault).toContain('does not say');
-  });
-
+describe("an issue of the pin watch's", () => {
   it("knows the pin watch's title for a move, to a target or off a line no longer built", () => {
     const base = 'mcr.microsoft.com/devcontainers/base';
     expect(issueOfMove(`Move ${base} off a line no longer built`, base)).toBe(true);
@@ -1777,7 +1728,7 @@ describe("the sense's day", () => {
         { tests: ['4a'], number: 41, state: 'open', rule: 'major', hold: 'level' as const },
         { tests: ['6', '9'], number: 42, state: 'open', rule: 'held' },
         { tests: ['1'], number: 43, state: 'merged', mergedAt: '2026-11-28T09:58:10Z' },
-        { tests: ['23'], number: 44, issue: true },
+        { tests: ['24'], number: 44, issue: true },
       ],
     };
     expect(dayLines(day)).toEqual({
@@ -1787,7 +1738,7 @@ describe("the sense's day", () => {
         '  #41 4a: open, rule `major`, hold `level`: as GitHub',
         '  #42 6 9: open, rule `held`, hold `held`, withheld from the public: as GitHub',
         '  #43 1: merged 09:58:10Z, read 181 s later: as GitHub',
-        '  issue #44 23: open, withheld from the public',
+        '  issue #44 24: open, withheld from the public',
         "  the public's day: 4 rows, 2 withheld, each as a visitor may read it",
       ],
     });

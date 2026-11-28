@@ -70,7 +70,6 @@ import {
   holdBroken,
   holdDecided,
   isRoutine,
-  issueFault,
   issueOfMove,
   type KeptDay,
   LOKI_PAGE,
@@ -98,7 +97,6 @@ import {
   probeQuery,
   queuedFault,
   queueWords,
-  REFUSAL_KINDS,
   restartVerdict,
   revertedVerdict,
   rolloutProgressing,
@@ -624,13 +622,6 @@ interface Seen {
    * the test stays held unless the hold is broken (decide.ts's `holdBroken`), whatever a later head still waits for.
    */
   heldAt?: { head: string; at: string };
-  /** For a test with `keeps`: each line, as `removed` reads it; 'moved' is the fault. */
-  kept?: string[];
-  /**
-   * For a test with `refused`: the App's issue for the move the pin step refused, the kind of reason it gives, what it
-   * lacks, and its text as read, which a reset deletes with the issue.
-   */
-  refusal?: { number?: number; kind?: string; fault?: string; body?: string };
   /** For a test with `says`: whether each issue found is the App's and says it. */
   issueSays?: boolean;
   /** For a test with `duplicate`: Dependabot's pull request, and those of its that main lacks the lines of. */
@@ -1508,19 +1499,6 @@ function observe(state: State, tests: Test[], final = false) {
     const stuck = one?.state === 'open' && one.red.length > 0 && one.pending.length === 0 && !test.mustNot;
     if (one && (test.checksRun || test.queueRuns || stuck)) seen.timeline = timelineOf(test.repo, one.number);
     if (one && test.removes) seen.removed = removedOf(test.repo, one.number, test.removes.file, test.removes.lines);
-    if (one && test.keeps) seen.kept = removedOf(test.repo, one.number, test.keeps.file, test.keeps.lines);
-    if (test.refused) {
-      const all = issues().map((i) => ({
-        number: i.number,
-        author: i.user?.login ?? '',
-        title: i.title,
-        body: i.body ?? '',
-      }));
-      const read = issueFault(all, APP_BOT, { ...test.refused, kinds: REFUSAL_KINDS });
-      const body = all.find((i) => i.number === read.number)?.body;
-      // One read before stays read: the issue is closed once the move is made, and deleted at the next reset.
-      if (read.number !== undefined || !seen.refusal?.number) seen.refusal = { ...read, ...(body ? { body } : {}) };
-    }
     if (test.beside) {
       const title = test.beside;
       const [newest] = listed
@@ -1838,13 +1816,6 @@ function recoveryFault(state: State, test: Test, seen: Seen, pull: Pull): string
     if (left.length)
       return `${tag} leaves ${left.map((l) => l.trim()).join(', ')} in ${test.removes.file} (${seen.removed?.join(', ') ?? 'not read'})`;
   }
-  if (test.keeps) {
-    const gone = test.keeps.lines.filter((_, i) => !['kept', 'not in the diff'].includes(seen.kept?.[i] ?? ''));
-    if (gone.length)
-      return `${tag} does not leave ${gone.map((l) => l.trim()).join(', ')} in ${test.keeps.file} (${seen.kept?.join(', ') ?? 'not read'})`;
-  }
-  if (test.refused && (!seen.refusal || seen.refusal.fault))
-    return `${tag} merged without it, but ${seen.refusal?.fault ?? 'its issue was not looked for'}`;
   return undefined;
 }
 
@@ -1856,9 +1827,6 @@ function recoveryWords(test: Test, seen: Seen): string {
     test.queueRuns && tl ? `queued ${tl.adds.length} times` : '',
     test.removes ? `both copies moved` : '',
     test.beside ? besideWords(seen.besideOf, APP_BOT, seen.pulls[0]?.mergedAt) : '',
-    test.refused && seen.refusal?.number
-      ? `issue #${seen.refusal.number} says why the refused one waits (${seen.refusal.kind})`
-      : '',
   ].filter(Boolean);
   return words.length ? `, ${words.join(', ')}` : '';
 }

@@ -464,66 +464,6 @@ export function withoutDependabot(
 
 // ── An issue that must say why ──────────────────────────────────────────────────────────────────────────────────────
 
-export interface IssueFacts {
-  number: number;
-  author: string;
-  title: string;
-  body: string;
-}
-/**
- * What an issue must show: words in code (a package), words it says, words it never does, and, where it must give one
- * of several reasons, each by its kind (`kinds`): the issue gives the first whose words it has.
- */
-export interface IssueWants {
-  names: string[];
-  says: RegExp[];
-  never?: RegExp[];
-  kinds?: Record<string, RegExp>;
-}
-/**
- * Why the pin step refused a move, as the worker's issue says each kind (apps/factory/src/github/pins.ts's `REFUSED`),
- * but its catch-all, which says no reason: a release too young, one with weaker provenance, an install script not
- * allowed, a copy only an override would move, a routine update pnpm resolved to a newer release than the scan
- * listed, a release mise could not lock.
- */
-export const REFUSAL_KINDS: Record<string, RegExp> = {
-  young: /younger than the minimum age/,
-  provenance: /weaker provenance/,
-  script: /an install script/,
-  override: /an override/,
-  resolved: /pnpm resolved a newer one/,
-  lock: /mise could not lock/,
-};
-/**
- * The App's issue that names every one of `names` in code, and why it falls short of what it must say, if it does.
- * With no such issue, the fault says so.
- */
-export function issueFault(
-  issues: readonly IssueFacts[],
-  app: string,
-  wants: IssueWants,
-): { number?: number; kind?: string; fault?: string } {
-  const named = wants.names.map((name) => `\`${name}\``).join(' and ');
-  const issue = issues.find((i) => i.author === app && wants.names.every((name) => i.body.includes(`\`${name}\``)));
-  if (!issue) return { fault: `no issue of the App's names ${named}` };
-  const lacks = wants.says.filter((words) => !words.test(issue.body));
-  if (lacks.length)
-    return {
-      number: issue.number,
-      fault: `issue #${issue.number} does not say ${lacks.map((w) => w.source).join(', ')}`,
-    };
-  const has = (wants.never ?? []).filter((words) => words.test(issue.body));
-  if (has.length)
-    return { number: issue.number, fault: `issue #${issue.number} says ${has.map((w) => w.source).join(', ')}` };
-  if (!wants.kinds) return { number: issue.number };
-  const kind = Object.entries(wants.kinds).find(([, words]) => words.test(issue.body))?.[0];
-  return kind
-    ? { number: issue.number, kind }
-    : {
-        number: issue.number,
-        fault: `issue #${issue.number} gives none of the reasons it may (${Object.keys(wants.kinds).join(', ')})`,
-      };
-}
 /** Whether an issue's title is the pin watch's for a move of this name: to a target, or off a line no longer built. */
 export const issueOfMove = (title: string, name: string) =>
   title.startsWith(`Move ${name} to `) || title.startsWith(`Move ${name} off `);

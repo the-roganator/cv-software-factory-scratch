@@ -68,14 +68,6 @@ export interface Test {
   queueRuns?: number;
   /** Lines the pull request's diff of a file must take out: each copy of a package it moves. */
   removes?: { file: string; lines: string[] };
-  /** Lines the pull request's diff of a file must leave as they are: a copy of a package it may not move. */
-  keeps?: { file: string; lines: string[] };
-  /**
-   * A move the pin step refused, which waits as an issue of the App's beside the pull request that merges without it:
-   * what the issue names in code (its package), what it says (a release in code), and what it never does. It must give
-   * one of the worker's reasons for a refusal, whichever holds that day (decide.ts's `REFUSAL_KINDS`), never none.
-   */
-  refused?: { names: string[]; says: RegExp[]; never: RegExp[] };
   /** For a test that ends out of tries: how long a run watches at least, from the scan, to see nothing comes after. */
   watchMin?: number;
   /**
@@ -507,24 +499,6 @@ export const TESTS: Test[] = [
     pr: { by: 'dependabot', title: /bump postgres in \/deploy\/base\/postgres/i },
     duplicate: { of: '1', leaves: /"playwright" group/i },
     deployed: { kind: 'none' },
-  },
-  {
-    // lefthook, 2.2.1 on every baseline. Its one release pnpm refuses is 2.2.2, published without the provenance its
-    // earlier releases had, and the scan lists a routine update to the newest release that has waited its days, which
-    // is a later one, published with it: the pin step makes that move, in the pull request test 15 stands on, and
-    // nothing is refused. So the test has nothing to stand on while lefthook's newest waited release is one pnpm takes.
-    id: '23',
-    title: 'a routine update pnpm refuses (lefthook)',
-    repo: FACTORY,
-    campaign: 'factory',
-    moves: [FACTORY_DEV_LOCKFILE],
-    routine: true,
-    pr: { by: 'lockfile' },
-    keeps: { file: 'pnpm-lock.yaml', lines: ['  lefthook@2.2.1:'] },
-    refused: { names: ['lefthook'], says: [/`\d+\.\d+\.\d+`/], never: [/log says which/] },
-    deployed: { kind: 'none' },
-    notRun:
-      "the scan lists lefthook's routine update to a release pnpm takes, so nothing is refused; the refusal and its issue are the pin step's and the pin watch's unit tests' (apps/runner/test/pins-exact.test.ts, apps/factory/test/github/pin-made.test.ts)",
   },
   {
     // The devcontainer's base image on a line its publisher no longer builds: the scan lists it with no lane, and the

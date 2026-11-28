@@ -77,7 +77,6 @@ Accepted by Martin on 25 November 2026.
 |---|---|---|
 | 21 | App: a move whose target moves on after its pull request opened | the same pull request and issue take the new target; it merges and deploys, nobody touching it |
 | 22 | Factory: Dependabot's pull request for a pin the App moved | be closed by the worker, with a comment naming the merge, once `main` has every version it moves; one `main` has not is left alone |
-| 23 | Factory: a routine update pnpm refuses (lefthook 2.2.2) | be an issue that says why; the day's other routine updates merge without it |
 | 24 | App: a move nobody can make (the devcontainer's base) | be an issue in the app's repository, and no pull request |
 | W1a | Factory: a move with a required check that fails once (prometheus's, as 2) | have its checks run again by the worker, once, and then merge and deploy, nobody touching it |
 | W1b | Factory: a move with a required check that fails every time (the otel-collector's, as 3) | have its checks run three times and no more, never merge, and be said once to be out of runs |
@@ -92,9 +91,7 @@ Accepted by Martin on 25 November 2026.
 | 28 | Factory: an image's fix first seen by the scan today (Postgres's, as 1) | not be listed that day, the scan's `waiting` naming the pin with why `content`; the scan lists it once it has known the content a day |
 
 21 is proven by the line's unit tests alone: no real package gives a second target without advisories of its own, so a
-live run ends at the scan's gates, short of the merge. 23's issue gives whichever reason holds that day: weaker provenance
-for 2.2.2, a release younger than the minimum age for a day after a later one is published, or a newer release pnpm
-resolved past the one the scan listed, which has not waited its days. 22 is Dependabot's pull request for Postgres's image beside
+live run ends at the scan's gates, short of the merge. 22 is Dependabot's pull request for Postgres's image beside
 test 1, and the one left alone its pull request for Playwright on a base from before the baseline, some two hundred
 files `main` never has every line of. Dependabot may close its own pull request before the worker's pass does, or move
 to another line than the App did: the run then says which and gives no verdict, as that shows nothing of the worker.
