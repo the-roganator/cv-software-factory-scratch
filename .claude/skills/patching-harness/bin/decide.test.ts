@@ -9,7 +9,9 @@ import {
   branchFits,
   certainFail,
   changesVerdict,
+  type DayRow,
   type DuplicateFacts,
+  dayLines,
   dependabotMissing,
   duplicateVerdict,
   extraSpoils,
@@ -18,6 +20,7 @@ import {
   type HoldFacts,
   holdBroken,
   holdDecided,
+  holdFault,
   isRoutine,
   issueFault,
   issueOfMove,
@@ -54,11 +57,13 @@ import {
   rolloutProgressing,
   routineBranch,
   routineMajorBranch,
+  rowFault,
   type ScanRun,
   saysNotPulled,
   seenToTheGates,
   settleMs,
   shownAs,
+  spentFault,
   staleTarget,
   startingPods,
   stillListed,
@@ -73,6 +78,7 @@ import {
   waitsReading,
   watcherRode,
   watchRead,
+  withheldFault,
   withoutDependabot,
   withSetting,
   workflowPins,
@@ -1606,5 +1612,118 @@ describe('the line under an app’s test, before the scan the run stands on', ()
     expect(lineTooEarly('line.started')).toMatch(/running before the scan the run stands on is in/);
     expect(lineTooEarly('line.stopped')).toBeUndefined();
     expect(lineTooEarly(undefined)).toBeUndefined();
+  });
+});
+
+describe("the sense's day", () => {
+  const row = (over: Partial<DayRow> = {}): DayRow => ({
+    kind: 'pin',
+    number: 41,
+    moves: [{ name: 'tempo', lockfile: false }],
+    opened: '2026-11-28T08:59:23.180Z',
+    state: 'open',
+    ...over,
+  });
+  const passed = { state: 'passed', try: 1, of: 3, failed: [] };
+  const locked = (over: Partial<DayRow> = {}) =>
+    row({ moves: [{ name: 'a package in `pnpm-lock.yaml`', lockfile: true, package: 'left-pad' }], ...over });
+  const withheld = (over: Partial<DayRow> = {}): DayRow => ({
+    kind: 'pin',
+    moves: [{ name: 'a package in `pnpm-lock.yaml`', lockfile: true }],
+    opened: '2026-11-28T00:00:00Z',
+    state: 'open',
+    withheld: true,
+    ...over,
+  });
+
+  it('reads a row as GitHub has the pull request', () => {
+    expect(rowFault(undefined, { state: 'open' })).toBe('not in the day');
+    expect(rowFault(row(), { state: 'merged' })).toBe('open in the day, merged on GitHub');
+    const merged = row({ state: 'merged', settled: '2026-11-28T09:12:40.000Z' });
+    expect(rowFault(merged, { state: 'merged', mergedAt: '2026-11-28T09:12:40Z' })).toBeUndefined();
+    expect(rowFault(merged, { state: 'merged', mergedAt: '2026-11-28T09:12:41Z' })).toMatch(/09:12:41Z on GitHub/);
+    // A day read before the gate judged: the worker still waits for the verdict GitHub already has.
+    expect(rowFault(row({ hold: 'verdict' }), { state: 'open', rule: 'major' })).toMatch(/hold `verdict`.*`major`/);
+    expect(rowFault(row({ rule: 'major' }), { state: 'open', rule: 'major' })).toBeUndefined();
+    expect(rowFault(row({ rule: 'move' }), { state: 'open' })).toBeUndefined();
+  });
+
+  it('holds a major for the level and a move for the stop only with its checks through', () => {
+    expect(holdFault(row({ hold: 'level', checks: passed }), 'level')).toBeUndefined();
+    expect(holdFault(row({ hold: 'level', checks: passed }), 'stopped')).toBe('hold `level` in the day, not `stopped`');
+    expect(holdFault(row({ hold: 'stopped', checks: { ...passed, state: 'running' } }), 'stopped')).toMatch(/running/);
+    expect(holdFault(row(), 'level')).toMatch(/hold none/);
+  });
+
+  it('says checks are out of runs with the check, the try and the run GitHub has', () => {
+    const failed = [{ name: 'title', run: 77 }];
+    const spent = row({ hold: 'checks-spent', checks: { state: 'failed', try: 3, of: 3, failed } });
+    const github = { red: ['title'], run: 3, failed: [...failed, { name: 'title', run: 70 }] };
+    expect(spentFault(spent, github)).toBeUndefined();
+    expect(spentFault(row({ hold: 'checks' }), github)).toMatch(/not `checks-spent`/);
+    expect(spentFault({ ...spent, checks: { state: 'failed', try: 2, of: 3, failed } }, github)).toMatch(/try 2 of 3/);
+    expect(spentFault(spent, { ...github, run: 2 })).toMatch(/run 2 on GitHub/);
+    expect(spentFault(spent, { ...github, red: ['lint'] })).toMatch(/names title, where GitHub has lint red/);
+    expect(spentFault(spent, { ...github, failed: [{ name: 'title', run: 70 }] })).toMatch(/run 77 is none/);
+  });
+
+  it("withholds a lockfile's pull request from the public until it merges", () => {
+    expect(withheldFault(row(), row())).toBeUndefined();
+    expect(withheldFault(row(), undefined)).toMatch(/no row/);
+    expect(withheldFault(row(), withheld())).toMatch(/public whole/);
+    const held = locked({ rule: 'held', hold: 'held', checks: passed });
+    expect(withheldFault(held, withheld())).toBeUndefined();
+    expect(withheldFault(held, held)).toBe("the public has a move's package");
+    expect(withheldFault(held, withheld({ number: 41 }))).toBe('the public has its number');
+    expect(withheldFault(held, withheld({ opened: held.opened }))).toBe('the public has its times to the second');
+    expect(withheldFault(held, withheld({ hold: 'held' }))).toBe('the public says what it waits for');
+    // Open with no hold, it keeps its checks, but not which failed.
+    const running = { state: 'failed', try: 1, of: 3, failed: [{ name: 'title', run: 7 }] };
+    expect(
+      withheldFault(locked({ checks: running }), withheld({ checks: { ...running, failed: [] } })),
+    ).toBeUndefined();
+    expect(withheldFault(locked({ checks: running }), withheld({ checks: running }))).toMatch(/failed checks/);
+    expect(withheldFault(locked({ kind: 'issue', issue: 'refused' }), withheld({ kind: 'issue' }))).toBeUndefined();
+    const merged = locked({ state: 'merged', settled: '2026-11-28T09:12:40Z' });
+    expect(withheldFault(merged, { ...merged, moves: withheld().moves })).toBeUndefined();
+    expect(withheldFault(merged, withheld({ state: 'merged' }))).toMatch(/public whole/);
+  });
+
+  it('judges a kept day in a line a pull request, and the public day whole', () => {
+    const rows = [
+      row({ rule: 'major', hold: 'level', checks: passed }),
+      locked({ number: 42, rule: 'held', hold: 'held', checks: passed }),
+      row({ number: 43, state: 'merged', settled: '2026-11-28T09:58:10Z' }),
+      locked({ number: 44, kind: 'issue', issue: 'refused' }),
+    ];
+    const day = {
+      label: 'end',
+      seq: 9,
+      read: '2026-11-28T10:01:10.650Z',
+      rows,
+      public: [rows[0] as DayRow, withheld(), rows[2] as DayRow, withheld({ kind: 'issue' })],
+      asks: [
+        { tests: ['4a'], number: 41, state: 'open', rule: 'major', hold: 'level' as const },
+        { tests: ['6', '9'], number: 42, state: 'open', rule: 'held' },
+        { tests: ['1'], number: 43, state: 'merged', mergedAt: '2026-11-28T09:58:10Z' },
+        { tests: ['23'], number: 44, issue: true },
+      ],
+    };
+    expect(dayLines(day)).toEqual({
+      faults: 0,
+      lines: [
+        "the sense's day, end (seq 9, read 10:01:10Z):",
+        '  #41 4a: open, rule `major`, hold `level`: as GitHub',
+        '  #42 6 9: open, rule `held`, hold `held`, withheld from the public: as GitHub',
+        '  #43 1: merged 09:58:10Z, read 181 s later: as GitHub',
+        '  issue #44 23: open, withheld from the public',
+        "  the public's day: 4 rows, 2 withheld, each as a visitor may read it",
+      ],
+    });
+    const stale = dayLines({ ...day, rows: [row({ hold: 'verdict' }), ...rows.slice(1)], public: rows });
+    expect(stale.faults).toBe(4);
+    expect(stale.lines[1]).toMatch(/#41 4a: FAULT rule none and hold `verdict`/);
+    expect(stale.lines.at(-1)).toBe("  the public's day: FAULT row 2, #42: the public has a move's package");
+    expect(stale.lines.join('\n')).not.toContain('left-pad');
   });
 });

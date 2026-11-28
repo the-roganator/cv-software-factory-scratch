@@ -324,6 +324,9 @@ said_since=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 k -n factory rollout restart deploy/github >/dev/null && k -n factory rollout status deploy/github --timeout=300s >/dev/null ||
   broke "D: the worker's restart at Guarded; 26 below is no verdict"
 phase "26 a stopped line queues no move, Guarded" stopped 30 300
+# And what Martin is told of them: the dependency sense's day, read now, holds each move `stopped` and each major
+# `level`, as GitHub and the public's view have them (`harness.ts days`).
+(cd "$H" && mise exec -- node harness.ts days --stopped "$since" --restart) 2>&1 | cut -c1-300
 # Supervised, and then the line running: the worker says of each move that it waits for the level, in new words.
 said_since=
 level supervised show
