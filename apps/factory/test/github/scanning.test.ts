@@ -167,7 +167,7 @@ describe('the scan’s moves', () => {
     });
     expect(lockfile?.findings.map((f) => f.advisory)).toEqual(['GHSA-0000-0000-0001', 'GHSA-0000-0000-0002']);
     // The finding with no fix is in no move.
-    expect(JSON.stringify(moves)).not.toMatch(/CVE-2099-0003|otherlib/);
+    expect(JSON.stringify(moves.moves)).not.toMatch(/CVE-2099-0003|otherlib/);
   });
 
   it('return only what a finding’s shape holds: nothing else a state says of it', async () => {
@@ -634,6 +634,23 @@ describe('the scan’s moves', () => {
     const { to: _, until: __, ...entry } = refused.moves.waiting[0];
     refused.moves.waiting[0] = { ...entry, why: 'no-better' };
     expect((await read(refused)).waiting?.[0]).toMatchObject({ why: 'no-better', findings: [{ package: 'libwaits' }] });
+  });
+
+  it('name each finding with no fix today apart, and none that has a move, a pin that waits, or a fix excepted', async () => {
+    const other = { advisory: 'CVE-2099-0003', package: 'otherlib', severity: 'MEDIUM' };
+    expect((await read()).unfixed).toEqual([other]);
+    // One whose fix is no move today waits at its pin, and is said there.
+    const day = waitingDay();
+    const said = await read(day);
+    expect(said.waiting?.[0]?.findings).toEqual([
+      { advisory: 'CVE-2099-40001', package: 'libwaits', severity: 'HIGH' },
+    ]);
+    expect(said.unfixed).toEqual([other]);
+    // One Martin excepted keeps its fix and has no move: the scan has a fix for it.
+    const excepted = withFinding('CVE-2099-0003', (finding) =>
+      Object.assign(finding, { fix: { target: 'version 1.0.1', day: '2026-11-05T06:00:00Z' } }),
+    );
+    expect(await read({ state: excepted })).not.toHaveProperty('unfixed');
   });
 
   it('fail on a list of what waits that the sealed state does not bear out, or that is not its shape', async () => {

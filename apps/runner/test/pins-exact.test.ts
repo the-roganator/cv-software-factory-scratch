@@ -50,6 +50,8 @@ const RELEASES: Record<string, Record<string, { needs?: Record<string, string>; 
   'demo-parent': { '1.0.0': { needs: { 'demo-pkg': '^1.0.0' }, days: 40 } },
   // A parent that pins the package exactly, where it was: no release of the package moves its copy.
   'demo-holder': { '1.0.0': { needs: { 'demo-pkg': '1.0.0' }, days: 40 } },
+  // A parent that pins the package exactly at the scan's target: it brings that copy beside the manifest's.
+  'demo-ahead': { '1.0.0': { needs: { 'demo-pkg': '1.0.1' }, days: 40 } },
 };
 
 /** A package's tarball: its manifest alone, as `npm pack` lays one out. */
@@ -124,14 +126,14 @@ let caches = 0;
 const manifest = (name: string, dependencies: Record<string, string>) =>
   `${JSON.stringify({ name, version: '1.0.0', private: true, dependencies }, null, 2)}\n`;
 
-/** A checkout, installed and committed while the registry had only its releases of a month ago and more. */
-async function checkout(files: Record<string, string>): Promise<string> {
+/** A checkout, installed and committed while the registry had only its releases of so many days ago and more. */
+async function checkout(files: Record<string, string>, days = 30): Promise<string> {
   const dir = mkdtempSync(join(WORK, 'checkout-'));
   for (const [path, text] of Object.entries(files)) {
     mkdirSync(dirname(join(dir, path)), { recursive: true });
     writeFileSync(join(dir, path), text);
   }
-  since = 30;
+  since = days;
   await realPnpm(`cache-${++caches}`)(dir, ['install', '--lockfile-only']);
   since = 0;
   const git = (...args: string[]) =>
@@ -249,6 +251,31 @@ describe('a routine update of a package, made by pnpm itself', { timeout: 120_00
     expect(kept).toHaveLength(1);
     expect(kept[0]).toMatch(/^1\.0\./);
     expect(lockedIn(dir)).not.toContain('2.0.1');
+  });
+
+  it('moves the manifest’s copy of a package a parent already brings at the target: the scan lists it from that copy', async () => {
+    const dir = await checkout({ 'package.json': manifest('shop', { 'demo-pkg': '^1.0.0' }) });
+    // Another move brings the parent, as the registry is today: its copy beside the manifest's, which stays.
+    writeFileSync(join(dir, 'package.json'), manifest('shop', { 'demo-ahead': '^1.0.0', 'demo-pkg': '^1.0.0' }));
+    await realPnpm(`cache-${++caches}`)(dir, ['install', '--lockfile-only']);
+    expect(importedVersions(read(dir, 'pnpm-lock.yaml'), 'demo-pkg').map((each) => each.version)).toEqual(['1.0.0']);
+    expect(lockedIn(dir)).toEqual(['1.0.0', '1.0.1']);
+    await movePackage(dir, update('1.0.1'), pnpm());
+    expect(lockedIn(dir)).toEqual(['1.0.1']);
+    expect(rangeIn(dir)).toBe('^1.0.1');
+  });
+
+  it('moves the manifest’s copy of a package a parent brings on an older major, and leaves the parent’s', async () => {
+    // As the registry was five days ago: 2.0.0 for the manifest, and 1.0.1 for the parent's `^1.0.0`.
+    const dir = await checkout(
+      { 'package.json': manifest('shop', { 'demo-parent': '^1.0.0', 'demo-pkg': '^2.0.0' }) },
+      5,
+    );
+    expect(lockedIn(dir)).toEqual(['1.0.1', '2.0.0']);
+    await movePackage(dir, { ...update('2.0.1'), from: '2.0.0' }, pnpm());
+    expect(importedVersions(read(dir, 'pnpm-lock.yaml'), 'demo-pkg').map((each) => each.version)).toEqual(['2.0.1']);
+    expect(lockedIn(dir)).toEqual(['1.0.1', '2.0.1']);
+    expect(rangeIn(dir)).toBe('^2.0.1');
   });
 
   it('still holds a fix for an override where a parent keeps a copy at the version its advisory names', async () => {
