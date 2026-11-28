@@ -17,7 +17,6 @@ import {
   dependabotMissing,
   duplicateVerdict,
   eitherVerdict,
-  extraSpoils,
   type FullMove,
   factoryBusy,
   forgeFault,
@@ -31,7 +30,6 @@ import {
   type LokiStream,
   leftAloneFault,
   lineTooEarly,
-  lockfileKey,
   lokiPage,
   majorNext,
   majorNextFault,
@@ -39,7 +37,6 @@ import {
   movedUnder,
   moveFits,
   NO_VERDICT,
-  newerFault,
   notListed,
   PIN_PASS_LIMIT_MS,
   PIN_PASS_MS,
@@ -64,7 +61,6 @@ import {
   rowFault,
   type ScanRun,
   saysNotPulled,
-  seenToTheGates,
   settleMs,
   shownAs,
   spentFault,
@@ -576,34 +572,22 @@ describe('a move that must not merge, and the merge queue', () => {
 
 describe("the pull requests of Dependabot's a run needs open as it starts", () => {
   const needs = [
-    { test: '11', title: /bump node from/i },
-    { test: '12', title: /anchore\/syft/i },
+    { test: '22', title: /bump postgres in/i },
+    { test: '22', title: /"playwright" group/i, asIs: true },
   ];
-
-  const BASELINE = '2026-11-25T10:00:00Z';
-  const pull = (number: number, title: string, headAt = '2026-11-25T10:04:00Z', conflicting?: boolean) => ({
+  const pull = (number: number, title: string, conflicting: boolean | undefined = false) => ({
     number,
     title,
-    headAt,
-    conflicting: conflicting ?? false,
+    conflicting,
   });
-  const node = 'chore(deps): bump node from 24.22.0 to 24.22.3';
-  const syft = 'chore(deps): Bump anchore/syft from v1.54.0';
+  const postgres = 'chore(deps): bump postgres in /deploy/base/postgres';
+  const playwright = 'chore(deps): bump the "playwright" group';
 
-  it('lacks none when each has an open one of its title, made since the baseline and without a conflict', () => {
-    expect(dependabotMissing(needs, [pull(4, node), pull(7, syft)], BASELINE)).toEqual([]);
-    expect(dependabotMissing([], [], BASELINE)).toEqual([]);
+  it('lacks none when each has an open one of its title, without a conflict', () => {
+    expect(dependabotMissing(needs, [pull(4, postgres), pull(7, playwright)])).toEqual([]);
+    expect(dependabotMissing([], [])).toEqual([]);
     // One needed as it is counts on any base, conflicting or not, so long as it is open.
-    const asIs = [{ test: '22', title: /anchore\/syft/i, asIs: true }];
-    expect(dependabotMissing(asIs, [pull(7, syft, '2026-11-15T08:00:00Z', true)], BASELINE)).toEqual([]);
-    expect(dependabotMissing(asIs, [], BASELINE)[0]).toContain('none is');
-    // One Dependabot opened itself counts at any age, unless it conflicts or GitHub has not said.
-    const anyAge = [{ test: '22', title: /anchore\/syft/i, anyAge: true }];
-    expect(dependabotMissing(anyAge, [pull(7, syft, '2026-11-15T08:00:00Z', false)], BASELINE)).toEqual([]);
-    expect(dependabotMissing(anyAge, [pull(7, syft, '2026-11-15T08:00:00Z', true)], BASELINE)[0]).toContain(
-      'conflicts with main',
-    );
-    expect(dependabotMissing(anyAge, [], BASELINE)[0]).toContain('none is');
+    expect(dependabotMissing(needs, [pull(4, postgres), pull(7, playwright, true)])).toEqual([]);
   });
 
   it('drops a test that lacks one while others are left to judge, and stops the run when none is', () => {
@@ -616,43 +600,21 @@ describe("the pull requests of Dependabot's a run needs open as it starts", () =
   });
 
   it('names each test whose pull request is not open', () => {
-    const missing = dependabotMissing(needs, [pull(4, node)], BASELINE);
+    const missing = dependabotMissing(needs, [pull(4, postgres)]);
     expect(missing).toHaveLength(1);
-    expect(missing[0]).toContain('test 12');
+    expect(missing[0]).toContain('playwright');
     expect(missing[0]).toContain('open, and none is');
-    expect(dependabotMissing(needs, [], BASELINE)).toHaveLength(2);
+    expect(dependabotMissing(needs, [])).toHaveLength(2);
   });
 
-  it('lacks one opened again whose branch Dependabot has not made again on the baseline, or that conflicts', () => {
-    // Reopened: its head is the one it was closed with, from before the baseline.
-    const stale = dependabotMissing(needs, [pull(4, node), pull(7, syft, '2026-11-24T08:00:00Z')], BASELINE);
-    expect(stale).toEqual([expect.stringContaining("test 12 needs Dependabot's pull request")]);
-    expect(stale[0]).toContain("#7's head is from before it");
-    const conflicting = dependabotMissing(needs, [pull(4, node), pull(7, syft, undefined, true)], BASELINE);
-    expect(conflicting[0]).toContain('#7 conflicts with main');
+  it('lacks one that conflicts, or whose conflict GitHub has not worked out', () => {
+    const conflicting = dependabotMissing(needs, [pull(4, postgres, true), pull(7, playwright)]);
+    expect(conflicting).toEqual([expect.stringContaining('#4 conflicts with main')]);
     // GitHub works a conflict out after a push: until it has, the pull request is not yet the one the test needs.
-    const unknown = [pull(4, node), { ...pull(7, syft), conflicting: undefined }];
-    expect(dependabotMissing(needs, unknown, BASELINE)[0]).toContain('has not said whether #7 has one');
+    const unknown = [{ ...pull(4, postgres), conflicting: undefined }, pull(7, playwright)];
+    expect(dependabotMissing(needs, unknown)[0]).toContain('has not said whether #4 has one');
     // One of the title that is ready is enough, whatever another of it is.
-    const two = [pull(4, node), pull(7, syft, '2026-11-24T08:00:00Z'), pull(9, syft)];
-    expect(dependabotMissing(needs, two, BASELINE)).toEqual([]);
-  });
-});
-
-describe('a staged extra no test of the run asks for', () => {
-  it("leaves a factory run alone when it serves the app's tests only", () => {
-    expect(extraSpoils('factory', ['app'])).toBe(false);
-  });
-
-  it('spoils a factory run when a factory test asks for it, or none does', () => {
-    expect(extraSpoils('factory', ['factory'])).toBe(true);
-    expect(extraSpoils('factory', ['app', 'factory'])).toBe(true);
-    expect(extraSpoils('factory', [])).toBe(true);
-  });
-
-  it('spoils an app run, whoever it serves', () => {
-    expect(extraSpoils('app', ['app'])).toBe(true);
-    expect(extraSpoils('app', ['factory'])).toBe(true);
+    expect(dependabotMissing(needs, [pull(4, postgres, true), pull(9, postgres), pull(7, playwright)])).toEqual([]);
   });
 });
 
@@ -903,79 +865,6 @@ describe('a ticket that must close with no change of its own', () => {
     expect(ticketFault({ ...ticket, issue: open }, wants, app)).toContain('is open');
     const byMartin = { number: 44, state: 'closed', reason: 'completed', by: 'mrogan' };
     expect(ticketFault({ ...ticket, issue: byMartin }, wants, app)).toContain('by mrogan');
-  });
-});
-
-describe('a target that moves on after the pull request opened', () => {
-  const name = 'follow-redirects';
-  const facts = {
-    number: 430,
-    name,
-    first: '1.15.6',
-    later: '1.16.0',
-    issueAtOpen: 'Move `follow-redirects` to `1.15.6` or later.',
-    issueNow: 'Move `follow-redirects` to `1.16.0` or later.',
-    headAtOpen: 'a'.repeat(40),
-    headNow: 'b'.repeat(40),
-    toldAt: '2026-11-25T10:10:00Z',
-    mergedAt: '2026-11-25T10:30:00Z',
-    adds: [lockfileKey(name, '1.16.0')],
-  };
-
-  it('passes when the same pull request and its issue took the later target', () => {
-    expect(newerFault(facts)).toBeUndefined();
-  });
-
-  it('gives no verdict when the first scan did not name the first target', () => {
-    expect(newerFault({ ...facts, issueAtOpen: 'Move `follow-redirects` to `1.16.0` or later.' })).toContain(
-      'no verdict',
-    );
-    expect(newerFault({ ...facts, issueAtOpen: undefined })).toContain('not read');
-  });
-
-  it('gives no verdict when it merged before the later scan reached the line, and fails when none did', () => {
-    expect(newerFault({ ...facts, mergedAt: '2026-11-25T10:05:00Z' })).toContain('no verdict');
-    expect(newerFault({ ...facts, toldAt: undefined })).toContain('never reached the line');
-  });
-
-  it('fails a head that never moved, or a diff at the first target', () => {
-    expect(newerFault({ ...facts, headNow: facts.headAtOpen })).toContain('its head before the target moved');
-    expect(newerFault({ ...facts, adds: [lockfileKey(name, '1.15.6')] })).toContain('does not move');
-    const both = [lockfileKey(name, '1.15.6'), lockfileKey(name, '1.16.0')];
-    expect(newerFault({ ...facts, adds: both })).toContain('still moves a copy');
-    expect(newerFault({ ...facts, adds: [] })).toContain('no copy of it');
-  });
-
-  it('is seen as far as the gates when all but the merge holds and only the scan gates are red', () => {
-    const gates = ['gates / dependency review', 'gates / lockfile scan'];
-    const open = { ...facts, mergedAt: undefined, state: 'open', red: gates, pending: [], touched: [], gates };
-    expect(seenToTheGates(open)).toBe(
-      "the same pull request and issue took the new target; not merged: the scan gates refuse 1.16.0 for advisories of its own, the staging's",
-    );
-    expect(seenToTheGates({ ...open, red: ['gates / lockfile scan'] })).toBeDefined();
-    // Anything else is a failure's to say: another check red, none red, something pending, a touch, a merge.
-    expect(seenToTheGates({ ...open, red: [...gates, 'lint, types, tests'] })).toBeUndefined();
-    expect(seenToTheGates({ ...open, red: [] })).toBeUndefined();
-    expect(seenToTheGates({ ...open, pending: ['image builds'] })).toBeUndefined();
-    expect(seenToTheGates({ ...open, touched: ['labeled by mrogan'] })).toBeUndefined();
-    expect(seenToTheGates({ ...open, state: 'closed' })).toBeUndefined();
-    expect(seenToTheGates({ ...open, mergedAt: '2026-11-25T10:30:00Z' })).toBeUndefined();
-    // Nor when the pull request or the issue did not take the new target.
-    expect(seenToTheGates({ ...open, headNow: open.headAtOpen })).toBeUndefined();
-    expect(seenToTheGates({ ...open, adds: [lockfileKey(name, '1.15.6')] })).toBeUndefined();
-    expect(seenToTheGates({ ...open, issueNow: open.issueAtOpen })).toBeUndefined();
-    expect(seenToTheGates({ ...open, toldAt: undefined })).toBeUndefined();
-  });
-
-  it('fails an issue that does not name the later target, or still names the first', () => {
-    expect(newerFault({ ...facts, issueNow: facts.issueAtOpen })).toContain('does not name 1.16.0');
-    const both = 'Move `follow-redirects` to `1.16.0` or later (it was to `1.15.6` or later).';
-    expect(newerFault({ ...facts, issueNow: both })).toContain('still names 1.15.6');
-    expect(newerFault({ ...facts, issueNow: 'Move follow-redirects to 1.16.0 or later.' })).toBeUndefined();
-    expect(newerFault({ ...facts, issueNow: 'Move it to 11.16.0 or later.' })).toContain('does not name 1.16.0');
-    // The advisories it lists, each with the release that fixes it, name no target.
-    const listed = 'Move `follow-redirects` from `1.14.8` to `1.16.0` or later.\n- `CVE-2024-28849`: fixed in `1.15.6`';
-    expect(newerFault({ ...facts, issueNow: listed })).toBeUndefined();
   });
 });
 

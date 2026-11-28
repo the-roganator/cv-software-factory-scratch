@@ -66,12 +66,6 @@ export interface Test {
   checksRun?: { runs: number; spent?: boolean };
   /** How many times the line adds its pull request to the merge queue, each removal but the last for failed checks. */
   queueRuns?: number;
-  /**
-   * A second ticket, for another move the first's pull request makes too. The harness takes it once the first
-   * has merged and before its deploy, then gives the line back the first: it must close with this outcome and its
-   * reason, with no pull request of its own, no hold and no failed step. No test of the catalogue has one.
-   */
-  then?: { dependency: string; closes: 'no-change'; reason: RegExp };
   /** Lines the pull request's diff of a file must take out: each copy of a package it moves. */
   removes?: { file: string; lines: string[] };
   /** Lines the pull request's diff of a file must leave as they are: a copy of a package it may not move. */
@@ -148,16 +142,6 @@ export interface Test {
    * step, and its issue as completed.
    */
   made?: { closes: 'no-change'; reason: RegExp };
-  /**
-   * Its target moves on once its pull request is open: the first scan names `first` for `package`, as the factory
-   * copy's main excepts the advisories later releases fix (staged/factory-<staged>/); the run lifts those of
-   * `lifts`, which `later` fixes, and no other (`./copies.sh lift-exception`), and scans again, and the same pull
-   * request and issue must take `later`. `gates` names the required checks that refuse `later` for advisories of
-   * its own, where the staging's later target has them: red on those alone, with the issue and the pull request at
-   * `later`, the test is seen as far as the gates, which is neither a pass nor a failure. No test of the catalogue
-   * has one: test 21 is the line's unit tests' (apps/factory/test/line/machine.test.ts).
-   */
-  newer?: { package: string; first: string; later: string; lifts: string[]; gates?: string[] };
   /** The store restarted under a report left through the app's widget: no scan, no reset, a step of its own. */
   restart?: boolean;
   /** A forgery's: the scan's moves it copies, by name, which the scan it is forged from must list. */

@@ -260,15 +260,6 @@ export function pinWatchLacks(told: string, needed: readonly string[]): string[]
   return needed.filter((name) => !names.includes(name));
 }
 
-/**
- * Whether a baseline's staged extra that no test of a run asks for spoils the run. It does, as it changes what the
- * others do, but for a factory run on a set-up that serves the app's tests alone (`serves`: the campaigns of the tests
- * that ask for it): test 21's is a package in the app and an exception scoped to the app, which no factory test's
- * scan, pull request or gate reads. An app run is spoiled by any, as the app's checks are the factory copy's code.
- */
-export const extraSpoils = (campaign: 'factory' | 'app', serves: readonly string[]) =>
-  !(campaign === 'factory' && serves.length > 0 && serves.every((served) => served === 'app'));
-
 // ── The worker's word that it cannot read the scan ──────────────────────────────────────────────────────────────────
 
 /** How the GitHub worker begins its error when a scan's artifact does not read (apps/factory/src/github/scanning.ts). */
@@ -426,35 +417,27 @@ export function queuedFault(pulls: readonly Pick<HoldFacts, 'number' | 'queuedBy
 export interface DependabotOpen {
   number: number;
   title: string;
-  /** When its head commit was made. */
-  headAt: string;
   /** Whether it conflicts with `main`; undefined while GitHub has not worked it out. */
   conflicting: boolean | undefined;
 }
 
 /**
  * The pull requests of Dependabot's a run's tests need as it starts, and do not have: each as its test and the title
- * it must match. One counts once it is open, its head was made since `main` was last put at the baseline
- * (`baselineAt`) and it does not conflict with `main`: one a reset opened again stands on a `main` from before the
- * baseline until Dependabot has made it again. A test judged on such a pull request proves nothing without it. One
- * needed as it is (`asIs`: a pull request the worker must leave alone, on whatever base it has) counts once it is open.
- * One Dependabot opened itself and no reset closes (`anyAge`: a patch of one line against `main`) counts at any age,
- * so long as it does not conflict.
+ * it must match. One counts once it is open and does not conflict with `main`: a test judged on such a pull request
+ * proves nothing without it, and a reset keeps none that is not made on the baseline as `main` has it. One needed as
+ * it is (`asIs`: a pull request the worker must leave alone, on whatever base it has) counts once it is open.
  */
 export function dependabotMissing(
-  needs: readonly { test: string; title: RegExp; asIs?: boolean; anyAge?: boolean }[],
+  needs: readonly { test: string; title: RegExp; asIs?: boolean }[],
   open: readonly DependabotOpen[],
-  baselineAt: string,
 ): string[] {
   return needs.flatMap((need) => {
     const titled = open.filter((pull) => need.title.test(pull.title));
-    const since = (pull: DependabotOpen) => need.anyAge || Date.parse(pull.headAt) > Date.parse(baselineAt);
     if (need.asIs && titled.length) return [];
-    if (titled.some((pull) => since(pull) && pull.conflicting === false)) return [];
+    if (titled.some((pull) => pull.conflicting === false)) return [];
     const needs = `test ${need.test} needs Dependabot's pull request titled ${need.title.source}`;
     const [first] = titled;
     if (!first) return [`${needs} open, and none is`];
-    if (!since(first)) return [`${needs} made again on the baseline, and #${first.number}'s head is from before it`];
     return [
       first.conflicting
         ? `${needs} without a conflict, and #${first.number} conflicts with main`
@@ -687,7 +670,7 @@ export interface TicketFacts {
   issue?: { number: number; state?: string; reason?: string; by?: string } | undefined;
 }
 /**
- * Why a ticket for a move `main` already has did not end as it must (W3's second, W3b's own): taken, never held,
+ * Why a ticket for a move `main` already has did not end as it must (W3b's): taken, never held,
  * closed with the outcome and the reason asked, no step failed, and its issue closed as completed by the App.
  */
 export function ticketFault(
@@ -707,77 +690,6 @@ export function ticketFault(
   if (issue.state !== 'closed' || issue.reason !== 'completed' || issue.by !== app)
     return `${tag}'s issue #${issue.number} is ${issue.state} (${issue.reason ?? 'no reason'}, by ${issue.by ?? 'nobody'}), not closed as completed by the App`;
   return undefined;
-}
-
-// ── A target that moves on after the pull request opened ────────────────────────────────────────────────────────────
-
-/** A pinned copy of a package in pnpm's lockfile, as its `packages:` key line: two spaces, `<name>@<version>:`. */
-export const lockfileKey = (name: string, version: string) => `  ${name}@${version}:`;
-/**
- * Why a move whose target the scan raised after its pull request opened (test 21) did not take the new target into
- * the same pull request and issue, or nothing when it did. `first` is the target the first scan named and `later` the
- * next one's. A first issue that never named `first` is the set-up's fault (the staged exception was not in force), and
- * a pull request that merged before the later scan reached the line shows nothing either way.
- */
-export function newerFault(o: {
-  number: number;
-  first: string;
-  later: string;
-  /** The issue's body when the pull request opened, and now. */
-  issueAtOpen: string | undefined;
-  issueNow: string | undefined;
-  /** The pull request's head when the later scan was given to the line, and now. */
-  headAtOpen: string | undefined;
-  headNow: string;
-  mergedAt?: string | undefined;
-  /** When the later scan's target reached the line: the sense restarted on it. */
-  toldAt: string | undefined;
-  /** The lockfile's key lines the pull request's diff adds. */
-  adds: string[];
-  name: string;
-}): string | undefined {
-  const tag = `#${o.number}`;
-  // A version as the move's target, which the line writes as a floor, in code or not: "`1.15.6` or later". The issue
-  // also lists each advisory with the release that fixes it, the earlier targets among them, which are no target.
-  const names = (text: string, version: string) =>
-    new RegExp(`(?<![\\d.])${version.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\`? or later`).test(text);
-  if (o.issueAtOpen === undefined) return `${tag}: its issue was not read when it opened`;
-  if (!names(o.issueAtOpen, o.first))
-    return `no verdict: the issue did not name ${o.first} when ${tag} opened, so the first scan's target was not the staged one (is the exception in force?)`;
-  if (!o.toldAt) return `${tag}: the later scan never reached the line`;
-  if (o.mergedAt && o.mergedAt < o.toldAt)
-    return `no verdict: ${tag} merged at ${o.first} before the later scan reached the line`;
-  if (o.headNow === o.headAtOpen)
-    return `${tag} is still at ${o.headNow.slice(0, 7)}, its head before the target moved`;
-  if (!o.adds.includes(lockfileKey(o.name, o.later)))
-    return `${tag} does not move ${o.name} to ${o.later} (it adds ${o.adds.map((l) => l.trim()).join(', ') || 'no copy of it'})`;
-  if (o.adds.includes(lockfileKey(o.name, o.first))) return `${tag} still moves a copy of ${o.name} to ${o.first}`;
-  if (o.issueNow === undefined) return `${tag}: its issue was not read at the end`;
-  if (!names(o.issueNow, o.later)) return `${tag}'s issue does not name ${o.later}`;
-  if (names(o.issueNow, o.first)) return `${tag}'s issue still names ${o.first}`;
-  return undefined;
-}
-
-/**
- * What a move whose target moved on shows when its later target has advisories of its own (test 21's staging): the
- * words of a line that is neither a pass nor a failure, or nothing when it is not that. It is that when everything
- * `newerFault` asks short of the merge holds (the first issue named the first target, the later scan reached the line,
- * the same pull request has a new head whose lockfile has the later target alone, and the issue names it alone), and
- * the pull request is open, untouched, with nothing pending, and red on the scan's gates alone (`gates`).
- */
-export function seenToTheGates(
-  o: Parameters<typeof newerFault>[0] & {
-    state: string;
-    red: string[];
-    pending: string[];
-    touched: string[];
-    gates: readonly string[];
-  },
-): string | undefined {
-  if (o.state !== 'open' || o.mergedAt || o.pending.length || o.touched.length) return undefined;
-  if (!o.red.length || !o.red.every((check) => o.gates.includes(check))) return undefined;
-  if (newerFault(o)) return undefined;
-  return `the same pull request and issue took the new target; not merged: the scan gates refuse ${o.later} for advisories of its own, the staging's`;
 }
 
 // ── The store restarting under a report ─────────────────────────────────────────────────────────────────────────────

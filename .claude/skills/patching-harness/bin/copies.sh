@@ -28,8 +28,6 @@
 #                            and test 22 on the factory copy; the harness calls it)
 #   ./copies.sh move-on-main <file> <image> <tag> <tag@digest>  an image's move put on the app copy's main, as another
 #                            change would have made it (W3b; the harness calls it)
-#   ./copies.sh lift-exception <package> <advisory>…  the factory copy's exceptions of those advisories for a package
-#                            taken off its main, its others left (test 21; the harness calls it)
 #   ./copies.sh revert-move <merge>  a merged move's pins put back on the factory copy's main, as Martin reverting its
 #                            merge commit (test 27; the harness calls it)
 #   ./copies.sh pin-watch    the moves the scratch pin watch takes, from batch.env, written where the worker reads them
@@ -829,31 +827,9 @@ move_on_main() { # <file> <image> <tag> <tag@digest>
     perl -pi -e 's{\Q$ENV{IMAGE}\E:\Q$ENV{FROM}\E(\@sha256:[0-9a-f]{64})?(?!\S)}{$ENV{IMAGE}:$ENV{TO}}' "$file"
 }
 
-# Test 21: of the exceptions its baseline stages (staged/factory-21/), those of the advisories named are taken off the
-# factory copy's main, and the package's others left, so the app's next scan, which takes its exceptions from there,
-# names the further target. `[skip ci]` in the subject: a push that
-# changes policy/ would otherwise build the factory's images, and their deploy pin would roll the factory mid-test.
-lift_exception() { # <package> <advisory>…
-  local package=${1:?the package the exceptions name} advisory; shift
-  [[ $# -gt 0 ]] || die "lift-exception: name the advisories to lift for $package"
-  for advisory in "$@"; do
-    [[ $advisory =~ ^[A-Za-z0-9-]+$ ]] || die "lift-exception: $advisory is no advisory's id"
-  done
-  # An entry's fields are in the policy's order: the advisory, then the package.
-  # shellcheck disable=SC2016
-  PACKAGE=$package ADVISORIES=$(IFS='|'; echo "$*") commit_on_main "$FACTORY_COPY" "$WORK/factory" \
-    "chore(scratch): lift $# of the exceptions for $package [skip ci]" \
-    perl -0pi -e 's/  \{\n(?:    [^\n]*\n)*?    advisory: \x27(?:$ENV{ADVISORIES})\x27,\n    package: \x27\Q$ENV{PACKAGE}\E\x27,\n(?:    [^\n]*\n)*?  \},\n//g' policy/vulnerabilities.ts
-  for advisory in "$@"; do
-    if grep -qF "advisory: '$advisory'" "$WORK/factory/policy/vulnerabilities.ts"; then
-      die "the exception of $advisory is still in the factory copy's policy"
-    fi
-  done
-}
-
 # Test 27: a merged move's pins put back on the factory copy's main, as Martin reverting its merge: `git revert` of
-# the merge's one commit, signed, pushed with the ruleset off for the push alone. `[skip ci]` in the subject, as
-# lift_exception: no build and no deploy pin follow it, and the run dispatches the scan that reads it.
+# the merge's one commit, signed, pushed with the ruleset off for the push alone. `[skip ci]` in the subject, so no
+# build and no deploy pin follow it, which would roll the factory mid-test; the run dispatches the scan that reads it.
 revert_move() { # <merge commit>
   local merge=${1:?the merge commit of the move to put back} dir="$WORK/factory" pushed=0
   [[ $merge =~ ^[0-9a-f]{7,40}$ ]] || die "revert-move: $merge is no commit"
@@ -1036,7 +1012,6 @@ case "${1:-}" in
       *) die "reopen-dependabot takes factory or app, not $2" ;;
     esac ;;
   move-on-main) shift; move_on_main "$@" ;;
-  lift-exception) shift; lift_exception "$@" ;;
   revert-move) revert_move "${2:-}" ;;
   pin-watch) pin_watch ;;
   *) sed -n '2,44p' "$0"; exit 2 ;;

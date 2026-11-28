@@ -65,7 +65,6 @@ import {
   dependabotMissing,
   duplicateVerdict,
   eitherVerdict,
-  extraSpoils,
   factoryBusy,
   forgeFault,
   holdBroken,
@@ -85,7 +84,6 @@ import {
   majorNotFirst,
   moveFits,
   N10_RULESETS,
-  newerFault,
   notListed,
   PIN_PASS_LIMIT_MS,
   type PodLine,
@@ -107,7 +105,6 @@ import {
   rulesetsFault,
   type StorePod,
   saysNotPulled,
-  seenToTheGates,
   settleMs,
   shownAs,
   startingPods,
@@ -325,7 +322,6 @@ function preflight(state: State, appJustReset: boolean) {
   }
   // A test's own set-up beyond the shared baseline (`staged/<side>-<name>/`, a Test's `staged`): on the baseline exactly
   // when one of the run's tests asks for it, as it changes what the others do. Read from what `build` committed.
-  // A set-up may have a folder for each side (test 21: the app's package, the factory's exception for it).
   const asked = new Set(
     TESTS.filter((t) => inRun(state, t) && t.staged).flatMap((t) => [`app-${t.staged}`, `factory-${t.staged}`]),
   );
@@ -336,11 +332,7 @@ function preflight(state: State, appJustReset: boolean) {
       const on =
         patches.length > 0 &&
         patches.every((f) => built.includes(`chore(scratch): staged, ${f.replace(/\.patch$/, '')}`));
-      // One that serves the app's tests alone leaves a factory run as it was (decide.ts's `extraSpoils`).
-      const serves = TESTS.filter((t) => t.staged === folder.slice(side.length + 1)).map((t) => t.campaign);
-      if (on && !asked.has(folder) && !extraSpoils(state.campaign, serves))
-        say(state, `pre-flight: the ${side} baseline carries staged/${folder}/, for the app's tests alone`);
-      if (on && !asked.has(folder) && extraSpoils(state.campaign, serves))
+      if (on && !asked.has(folder))
         wrong.push(
           `the ${side} baseline carries staged/${folder}/, which no test of this run asks for: build one without it`,
         );
@@ -375,30 +367,25 @@ function preflight(state: State, appJustReset: boolean) {
   // test would pass or fail on nothing: it is dropped from the run with no verdict, and the run stops only when no
   // test is left (decide.ts's `withoutDependabot`). Test 20's is summoned later, by the run.
   const kept = TESTS.filter((t) => inRun(state, t)).flatMap((t) => [
-    ...(t.pr.by === 'dependabot' && !t.summons
-      ? [{ test: t.id, title: t.pr.title, anyAge: Boolean(t.duplicate) }]
-      : []),
+    ...(t.pr.by === 'dependabot' && !t.summons ? [{ test: t.id, title: t.pr.title }] : []),
     ...(t.duplicate ? [{ test: t.id, title: t.duplicate.leaves, asIs: true }] : []),
   ]);
   if (kept.length) {
     const repo = state.campaign === 'app' ? APP : FACTORY;
-    const baselineAt = baselinePushedAt(repo);
     const lacking = () => {
       const open = api<any[]>(repo, 'pulls?state=open&per_page=100')
         .filter((p) => p.user.login === 'dependabot[bot]' && kept.some((need) => need.title.test(p.title)))
         .map((p) => {
           // The list says nothing of a conflict: the pull request's own read does, once GitHub has worked it out.
           const { mergeable } = api<{ mergeable: boolean | null }>(repo, `pulls/${p.number}`);
-          const head = api<any>(repo, `commits/${p.head.sha}`);
           return {
             number: p.number as number,
             title: p.title as string,
-            headAt: head.commit.committer.date as string,
             conflicting: mergeable === null ? undefined : !mergeable,
           };
         });
       return kept.flatMap((need) =>
-        dependabotMissing([need], open, baselineAt).map((why) => ({ test: need.test, why, summoned: need.anyAge })),
+        dependabotMissing([need], open).map((why) => ({ test: need.test, why, summoned: !need.asIs })),
       );
     };
     let missing = lacking();
@@ -673,36 +660,8 @@ interface State {
     enqueued?: string[];
     dequeued?: { reason: string; commit: string; failed: string }[];
   };
-  /**
-   * A test's second ticket (`then`): taken once the first merged, given back to the first once it ends. What
-   * the store says of it, and its issue as GitHub has it.
-   */
-  then?: {
-    workItem: string;
-    takenAt?: string;
-    backAt?: string;
-    closed?: { outcome: string; reason: string };
-    held?: string | undefined;
-    failures?: number;
-    events: string[];
-    issue?: { number: number; state?: string; reason?: string; by?: string };
-  };
   /** W3b: when the run put the move on main, and the ticket the line then took. */
   made?: { at: string; said: string; ticket: TicketFacts };
-  /**
-   * Test 21: the pull request's head and its issue's text when it opened, the lift of the exception, the scan
-   * dispatched after it, when the sense was restarted on that scan, and the issue and the lockfile's lines since.
-   */
-  later?: {
-    issue?: number | undefined;
-    headAtOpen?: string;
-    issueAtOpen?: string | undefined;
-    liftedAt?: string;
-    scan?: number;
-    toldAt?: string;
-    issueNow?: string | undefined;
-    adds?: string[];
-  };
   /** W5: the report, the store's restart, and what came of them. */
   restart?: {
     at: string;
@@ -858,23 +817,6 @@ function newestMoves(repo: string): Move[] | undefined {
 /** `harness.ts waits`'s exit status for a phase with no verdict, which confirm.sh's `phase` marks so. */
 const WAITS_NO_VERDICT = 3;
 /** `main`'s commit now: the sha alone, as the commit's own page lists its files, hundreds for a baseline. */
-/**
- * When a copy's `main` was last put at its baseline: the newest move of `main` to the baseline's commit, as GitHub's
- * activity has it, which a reset's push is; where the activity no longer reaches it, when the baseline's commit was
- * made, which is before any push of it.
- */
-function baselinePushedAt(repo: string): string {
-  repoOk(repo);
-  const baseline = JSON.parse(sh('gh', ['api', `repos/${repo}/commits/baseline`])) as {
-    sha: string;
-    commit: { committer: { date: string } };
-  };
-  const moves = JSON.parse(sh('gh', ['api', `repos/${repo}/activity?ref=refs/heads/main&per_page=100`])) as {
-    after: string;
-    timestamp: string;
-  }[];
-  return moves.find((move) => move.after === baseline.sha)?.timestamp ?? baseline.commit.committer.date;
-}
 function mainOf(repo: string): string {
   repoOk(repo);
   return sh('gh', ['api', `repos/${repo}/commits/main`, '--jq', '.sha']).trim();
@@ -1880,7 +1822,7 @@ function recoveryFault(state: State, test: Test, seen: Seen, pull: Pull): string
       return `${tag}: the store has the line add it ${heads.length} times, at ${[...new Set(heads)].map((h) => h.slice(0, 7)).join(', ')}, not ${runs} at one head`;
     if (tl.spentQueue.length) return `${tag} merged, yet it was said out of tries in the queue`;
   }
-  // The gate's rule for it (X2: a major that clears a Trivy Critical passes as `move`), and the files it may write (X4).
+  // The gate's rule for it (X2: a major that clears a Trivy Critical passes as `move`), and the files it may write (17, 20).
   if (test.rule && pull.rule !== test.rule)
     return `${tag} passed by the gate as ${pull.rule ?? 'nothing'}, not ${test.rule}`;
   if (test.files) {
@@ -1899,48 +1841,19 @@ function recoveryFault(state: State, test: Test, seen: Seen, pull: Pull): string
   }
   if (test.refused && (!seen.refusal || seen.refusal.fault))
     return `${tag} merged without it, but ${seen.refusal?.fault ?? 'its issue was not looked for'}`;
-  if (test.then) {
-    const then = state.then;
-    if (!then) return `no ticket for ${test.then.dependency} to take after ${tag}`;
-    const fault = ticketFault(then, test.then, APP_BOT);
-    if (fault) return fault;
-  }
-  if (test.newer) {
-    const later = state.later ?? {};
-    const fault = newerFault({
-      number: pull.number,
-      first: test.newer.first,
-      later: test.newer.later,
-      name: test.newer.package,
-      issueAtOpen: later.issueAtOpen,
-      issueNow: later.issueNow,
-      headAtOpen: later.headAtOpen,
-      headNow: pull.head,
-      mergedAt: pull.mergedAt,
-      toldAt: later.toldAt,
-      adds: later.adds ?? [],
-    });
-    if (fault) return fault;
-  }
   return undefined;
 }
 
 /** What a passing recovery test adds to its line. */
-function recoveryWords(state: State, test: Test, seen: Seen): string {
+function recoveryWords(test: Test, seen: Seen): string {
   const tl = seen.timeline;
   const words = [
     test.checksRun && tl ? `written again ${tl.rewrites.length} time${tl.rewrites.length === 1 ? '' : 's'}` : '',
     test.queueRuns && tl ? `queued ${tl.adds.length} times` : '',
-    test.then && state.then?.closed
-      ? `#${state.then.workItem} closed ${state.then.closed.outcome}, issue #${state.then.issue?.number} completed`
-      : '',
     test.removes ? `both copies moved` : '',
     test.beside ? besideWords(seen.besideOf, APP_BOT, seen.pulls[0]?.mergedAt) : '',
     test.refused && seen.refusal?.number
       ? `issue #${seen.refusal.number} says why the refused one waits (${seen.refusal.kind})`
-      : '',
-    test.newer && state.later?.issue
-      ? `it and issue #${state.later.issue} took ${test.newer.later} in place of ${test.newer.first}`
       : '',
   ].filter(Boolean);
   return words.length ? `, ${words.join(', ')}` : '';
@@ -1994,8 +1907,6 @@ function unreadVerdict(state: State, test: Test): { pass: boolean; why: string }
   return { pass: true, why: `${so}; ${seen.alertsAfter} alerts open at its file, ${seen.alertsBefore ?? 0} before` };
 }
 
-/** The mark of a line that is neither a pass nor a failure: what the staging can show, seen, and the rest said. */
-const TO_THE_GATES = 'SEEN TO THE GATES';
 function verdict(state: State, test: Test): { pass: boolean; why: string; mark?: string } {
   const seen = state.seen[test.id];
   const fail = (why: string) => ({ pass: false, why });
@@ -2191,30 +2102,6 @@ function verdict(state: State, test: Test): { pass: boolean; why: string; mark?:
   const pull = seen.pulls[0] as Pull;
   const tag = `#${pull.number}`;
   if (state.line?.strays.length) return fail(`the run is spoiled: the line worked ${state.line.strays.join(', ')} too`);
-  // A later target with advisories of its own (21's staging) ends at the scan's gates, with the line's part done.
-  if (test.newer?.gates && !pull.mergedAt) {
-    const later = state.later ?? {};
-    const seenSoFar = seenToTheGates({
-      number: pull.number,
-      first: test.newer.first,
-      later: test.newer.later,
-      name: test.newer.package,
-      issueAtOpen: later.issueAtOpen,
-      issueNow: later.issueNow,
-      headAtOpen: later.headAtOpen,
-      headNow: pull.head,
-      mergedAt: pull.mergedAt,
-      toldAt: later.toldAt,
-      adds: later.adds ?? [],
-      state: pull.state,
-      red: pull.red,
-      pending: pull.pending,
-      touched: pull.touched,
-      gates: test.newer.gates,
-    });
-    if (seenSoFar)
-      return { pass: false, mark: TO_THE_GATES, why: `${tag}, issue #${later.issue ?? '?'}: ${seenSoFar}` };
-  }
   if (state.line?.stalled && !pull.mergedAt)
     return fail(`${tag} stuck on the line: ${state.line.stalled}`.slice(0, 420));
   if (state.line?.held && !pull.mergedAt) return fail(`${tag} held on the line: ${state.line.held}`.slice(0, 420));
@@ -2282,7 +2169,7 @@ function verdict(state: State, test: Test): { pass: boolean; why: string; mark?:
     : (dirt?.errors.length ?? 0);
   if (dirt && errors + dirt.unhealthy.length + dirt.restarted.length)
     return fail(`${so}, ${ended}; not clean (see the run's last lines)`);
-  return { pass: true, why: `${so}, ${ended}${then}${recoveryWords(state, test, seen)}, nobody touched it` };
+  return { pass: true, why: `${so}, ${ended}${then}${recoveryWords(test, seen)}, nobody touched it` };
 }
 
 /**
@@ -2325,10 +2212,6 @@ function report(state: State) {
       `the revert: ${state.reverted.merge.slice(0, 7)} put back at ${state.reverted.commit?.slice(0, 7) ?? 'no commit'} (${state.reverted.at ?? 'never'}); scan ${state.scan3?.id ?? 'none'} after it; the worker restarted ${state.reverted.restartedAt ?? 'never'}; the pin watch read ${state.reverted.read ? `scan ${state.reverted.read.run} at ${state.reverted.read.at}` : 'no scan since, by its log'}; watched until ${state.reverted.watchedUntil ?? 'never'}`,
     );
   if (state.made) console.log(`the move on main: ${state.made.said} (${state.made.at})`);
-  if (state.later)
-    console.log(
-      `the target moved on: issue #${state.later.issue ?? '?'}, head ${state.later.headAtOpen?.slice(0, 7) ?? '?'} when it opened; lifted ${state.later.liftedAt ?? 'never'}, scan ${state.later.scan ?? 'none'}, given to the line ${state.later.toldAt ?? 'never'}; the pull request adds ${state.later.adds?.map((l) => l.trim()).join(', ') || 'no copy'}`,
-    );
   if (state.restart) {
     const r = state.restart;
     console.log(
@@ -2337,10 +2220,6 @@ function report(state: State) {
     for (const line of r.errors) console.log(`  error lines  ${line}`);
     for (const line of r.unhealthy) console.log(`  unhealthy    ${line}`);
   }
-  if (state.then)
-    console.log(
-      `the second ticket #${state.then.workItem}: taken ${state.then.takenAt ?? 'never'}, given back ${state.then.backAt ?? 'never'}; ${state.then.events.join(' ') || 'no event'}`,
-    );
   for (const test of TESTS) {
     const tl = state.seen[test.id]?.timeline;
     if (tl)
@@ -3010,8 +2889,6 @@ function run(state: State) {
     say(state, make(['start-the-line', 'REASON=a patching test']).trim());
     kubectl(['-n', 'factory', 'rollout', 'restart', 'deployment/patching']);
     const name = only.dependency.replace(/'/g, '');
-    // A test's second ticket (`then`, W3) is found now too, from the same scan, and taken later.
-    const second = only.then?.dependency.replace(/'/g, '');
     const scanned = state.scan1.createdAt;
     const ticket = (dependency: string, fresh: boolean) =>
       store(
@@ -3028,34 +2905,21 @@ function run(state: State) {
       if (open) say(state, `triage put this scan's signal for ${dependency} on #${open} (${row?.[1]})`);
       return open;
     };
-    for (let i = 0; !state.workItem || (second && !state.then); i++) {
+    for (let i = 0; !state.workItem; i++) {
       // The ticket the scan's send made or joined: one with a dependency signal since the scan started, or the one the
       // inbox says triage counted the send on. With neither in four minutes (an inbox that cannot be read), the open
       // ticket for the dependency is taken as it stands.
       const fresh = i <= 24;
       if (i === 25)
-        say(
-          state,
-          `no new signal on a ticket for ${name}${second ? ` or ${second}` : ''} in four minutes: taking the open ticket as it stands`,
-        );
+        say(state, `no new signal on a ticket for ${name} in four minutes: taking the open ticket as it stands`);
       state.workItem ??= ticket(name, fresh) ?? (fresh ? triaged(name) : undefined);
-      const then = second && !state.then ? (ticket(second, fresh) ?? (fresh ? triaged(second) : undefined)) : undefined;
-      // biome-ignore lint/suspicious/noThenProperty: the run's second ticket, never awaited
-      if (then) state.then = { workItem: then, events: [] };
-      if (state.workItem && (!second || state.then)) break;
+      if (state.workItem) break;
       if (i > 120) {
         say(state, make(['stop-the-line', 'REASON=the patching test found no ticket']).trim());
-        throw new Error(
-          `triage opened no ticket for ${state.workItem ? second : only.dependency} from this scan within 20 minutes`,
-        );
+        throw new Error(`triage opened no ticket for ${only.dependency} from this scan within 20 minutes`);
       }
       sleep(10_000);
     }
-    if (state.then)
-      say(
-        state,
-        `the second ticket, for ${second}: #${state.then.workItem}, taken once #${state.workItem}'s pull request merges`,
-      );
     // W3b: the move goes onto main now, as another change would have made it, before the line takes its ticket.
     if (only.made && !state.made) {
       const move = (state.scan1.moves ?? []).find((m) => only.moves.includes(m.name));
@@ -3098,19 +2962,15 @@ function run(state: State) {
         ? events[lastHold]?.[1] || 'no reason given'
         : undefined;
     const closed = events.find(([type]) => type === 'work-item.closed')?.[1];
-    const also = state.then ? ` and work_item <> '${state.then.workItem}'` : '';
     const strays = store(
-      `select distinct work_item from events where ts >= '${state.startedAt}' and work_item is not null and work_item <> '${state.workItem}'${also} and type in ('model.called', 'spec.written', 'pull-request.pushed', 'gates.started', 'issue.opened')`,
+      `select distinct work_item from events where ts >= '${state.startedAt}' and work_item is not null and work_item <> '${state.workItem}' and type in ('model.called', 'spec.written', 'pull-request.pushed', 'gates.started', 'issue.opened')`,
     ).map(([n]) => `#${n}`);
-    // Nothing new for ten minutes, and no step running: the line is stuck, and its own log says on what. Not while the
-    // line is told the second ticket alone (W3), which leaves the first waiting by design.
+    // Nothing new for ten minutes, and no step running: the line is stuck, and its own log says on what.
     let stalled: string | undefined;
-    const lent = Boolean(state.then?.takenAt && !state.then.backAt);
     const [last] = store(
-      `select extract(epoch from now() - greatest(max(ts), '${state.then?.backAt ?? state.startedAt}'::timestamptz))::int from events where work_item = '${state.workItem}'`,
+      `select extract(epoch from now() - greatest(max(ts), '${state.startedAt}'::timestamptz))::int from events where work_item = '${state.workItem}'`,
     ); // from the take, for a ticket days old (test 8a)
     if (
-      !lent &&
       !held &&
       !waitsForDeploy &&
       !closed &&
@@ -3130,10 +2990,10 @@ function run(state: State) {
     state.line = { held, closed, stalled, strays, events: types, enqueued, dequeued };
     if (types.includes('hold.answered')) state.line.held = `a hold was answered: ${state.line.held ?? ''}`;
   };
-  // A ticket that must close with no change (W3's second, W3b's own), once taken: its end, its hold, its failed
-  // steps and its issue.
-  const thenNow = () => {
-    for (const ticket of [state.then, state.made?.ticket]) if (ticket?.takenAt) ticketNow(ticket);
+  // A ticket that must close with no change (W3b's), once taken: its end, its hold, its failed steps and its issue.
+  const madeNow = () => {
+    const ticket = state.made?.ticket;
+    if (ticket?.takenAt) ticketNow(ticket);
   };
   const ticketNow = (then: TicketFacts) => {
     const events = store(
@@ -3167,53 +3027,6 @@ function run(state: State) {
       };
     }
   };
-  // Test 21: once the line's pull request is open, the exception is lifted and the app scanned again; once that scan
-  // is in, the dependency sense is restarted, as it reads a scan only as it starts or on its hour. After the watch
-  // (`over`) nothing is staged, and what the issue and the pull request then say is read.
-  const laterNow = (over = false) => {
-    const want = only?.newer;
-    const pulls = only ? (state.seen[only.id]?.pulls ?? []) : [];
-    const pull = pulls.length === 1 ? pulls[0] : undefined;
-    if (!want || !pull || !state.workItem) return;
-    state.later ??= {};
-    const later = state.later;
-    later.issue ??=
-      Number(store(`select coalesce(max(issue), 0) from line where work_item = '${state.workItem}'`)[0]?.[0] ?? 0) ||
-      undefined;
-    const body = () => (later.issue ? String(api<any>(APP, `issues/${later.issue}`).body ?? '') : undefined);
-    if (!later.liftedAt) {
-      if (over || pull.state !== 'open') return;
-      later.headAtOpen = pull.head;
-      later.issueAtOpen = body();
-      const out = sh(join(BIN, 'copies.sh'), ['lift-exception', want.package, ...want.lifts], {
-        cwd: BIN,
-        timeout: 10 * 60_000,
-      });
-      later.liftedAt = new Date().toISOString();
-      later.scan = dispatchScan(state, APP).id;
-      say(
-        state,
-        `#${pull.number} is open at ${pull.head.slice(0, 7)}: ${out.trim().split('\n').at(-1)?.replace(/^== /, '')}; scan ${later.scan} of the app dispatched`,
-      );
-      save(state);
-      return;
-    }
-    if (!later.toldAt && !over && later.scan) {
-      if (api<any>(APP, `actions/runs/${later.scan}`).status !== 'completed') return;
-      kubectl(['-n', 'factory', 'rollout', 'restart', 'deployment/patching']);
-      later.toldAt = new Date().toISOString();
-      say(state, `scan ${later.scan} is in: restarted the dependency sense, which reads it as it starts`);
-    }
-    later.issueNow = body();
-    const key = new RegExp(`^\\+(  ${want.package.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}@[^:(]+)[:(]`);
-    const patch: string =
-      api<any[]>(APP, `pulls/${pull.number}/files?per_page=100`).find((f) => f.filename === 'pnpm-lock.yaml')?.patch ??
-      '';
-    later.adds = [
-      ...new Set(patch.split('\n').flatMap((line) => (key.exec(line)?.[1] ? [`${key.exec(line)?.[1]}:`] : []))),
-    ];
-    save(state);
-  };
   // Test 25: Martin's review, asking for changes, posted as his login the first time the watch sees the move's pull
   // request, with what its required checks were doing then: one still running means no pass of the worker could have
   // queued the head before the review, as it queues only a head whose checks are all in.
@@ -3240,38 +3053,13 @@ function run(state: State) {
     );
     save(state);
   };
-  // W3's turns: the second ticket once the first's pull request merged and before its deploy (whose release would
-  // let the take's look close it as cleared, not the pin step as made), then the first back for its deploy.
-  const turns = () => {
-    const then = state.then;
-    if (!then || !state.workItem || then.backAt) return;
-    if (!then.takenAt && only && state.seen[only.id]?.pulls.find((p) => p.mergedAt)) {
-      then.takenAt = new Date().toISOString();
-      say(
-        state,
-        `#${state.workItem}'s pull request merged: the line takes #${then.workItem} alone. ${make(['take-the-line', `ONLY=${then.workItem}`]).trim()}`,
-      );
-      save(state);
-      return;
-    }
-    const waited = then.takenAt ? Date.now() - Date.parse(then.takenAt) : 0;
-    if (then.takenAt && (then.closed || then.held || waited > 20 * 60_000)) {
-      then.backAt = new Date().toISOString();
-      const why = then.closed ? `closed ${then.closed.outcome}` : then.held ? 'held' : 'not closed in 20 minutes';
-      say(
-        state,
-        `#${then.workItem} ${why}: the line takes #${state.workItem} back. ${make(['take-the-line', `ONLY=${state.workItem}`]).trim()}`,
-      );
-      save(state);
-    }
-  };
 
   // A test that ends out of tries (W1b) is watched past the limit, to see nothing comes after; the limit still judges
   // every deploy.
   const watchMin = Math.max(state.limitMin, ...tests.map((t) => t.watchMin ?? 0));
   const deadline = Date.parse(state.scan1.createdAt) + watchMin * 60_000;
-  // Done: deployed (and a second ticket ended, W3), or out of runs and settled (W1b), or a ticket closed with no change
-  // (W3b), or Dependabot's pull request closed, or left when the App's move it stands on is deployed (22).
+  // Done: deployed, or out of runs and settled (W1b), or a ticket closed with no change (W3b), or Dependabot's pull
+  // request closed, or left when the App's move it stands on is deployed (22).
   // One read from the run's scans alone (28), or after the watch (27), never holds it.
   const done = (t: Test) =>
     t.waits || t.reverted
@@ -3282,16 +3070,14 @@ function run(state: State) {
           ? Boolean(state.made?.ticket.closed)
           : t.duplicate
             ? verdict(state, t).pass || Boolean(state.seen[t.duplicate.of]?.deployedAt)
-            : Boolean(state.seen[t.id]?.deployedAt) && (!t.then || Boolean(state.then?.closed));
+            : Boolean(state.seen[t.id]?.deployedAt);
   let said = '';
   let saidAt = 0;
   while (!state.watchedUntil) {
     lineNow();
-    thenNow();
+    madeNow();
     observe(state, tests);
     dayOr(state, mergeDay);
-    turns();
-    laterNow();
     askChanges();
     const lines = tests.map((t) => `${t.id}:${verdict(state, t).why.slice(0, 60)}`).join('\n    ');
     if (lines !== said || Date.now() - saidAt >= SAY_MS) {
@@ -3363,9 +3149,7 @@ function run(state: State) {
       refused ||
       tests.every((t) => done(t) || holds(t) || settled(t) || refusedPush(t) || Boolean(state.seen[t.id]?.certain));
     const stopped =
-      Boolean(
-        state.line?.held || state.line?.closed || state.line?.stalled || state.line?.strays.length || state.then?.held,
-      ) && !all;
+      Boolean(state.line?.held || state.line?.closed || state.line?.stalled || state.line?.strays.length) && !all;
     if (all || stopped || Date.now() >= deadline || has('--once')) state.watchedUntil = new Date().toISOString();
     else sleep(Math.min(probeFailed ? SLOW_POLL_MS : POLL_MS, Math.max(1_000, deadline - Date.now())));
   }
@@ -3386,9 +3170,8 @@ function run(state: State) {
     confirmingScan(state, repo, tests);
   }
   lineNow();
-  thenNow();
+  madeNow();
   observe(state, tests, true);
-  laterNow(true);
   // After every other test is read for the last time, so nothing here changes what they are judged on.
   if (!has('--once')) {
     revertNow(state, repo, tests);
