@@ -232,8 +232,8 @@ export interface Sources {
   /** An image's index digest, and every platform manifest it lists (none for a single manifest). */
   manifests(reference: string): Promise<{ digest: string; platforms: string[] }>;
   /**
-   * An image's index digest, as `digest` gives it, asked with a HEAD, which no registry counts as a pull: for the
-   * routine listing, which wants the digest alone. Absent, `digest` is asked.
+   * An image's index digest, as `digest` gives it, asked with a HEAD, which no registry counts as a pull: for every
+   * read that wants the digest alone. Absent, `digest` is asked.
    */
   served?(reference: string): Promise<string>;
   /** A chart's versions in its repository's index, each with when it was published. */
@@ -770,7 +770,7 @@ export async function installable(
   const digestOf = (reference: string) => {
     let once = digests.get(reference);
     if (!once) {
-      once = asking(`The digest of ${reference}`, () => sources.digest(reference));
+      once = asking(`The digest of ${reference}`, () => (sources.served ?? sources.digest)(reference));
       digests.set(reference, once);
     }
     return once;
