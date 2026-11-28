@@ -174,6 +174,9 @@ describe('what Patching’s rows say', () => {
       ],
     });
     expect(failedOf(row(mine, 'example/store-cache'))?.label).toBe('Why no target');
+    expect(whyWords(row(mine, 'example/sidecar'), MARTIN)).toBe(
+      'The review gate passed #1348 as the scan’s move, and its required checks failed on each of its 3 tries, so the worker stopped trying this head. It writes the pull request again a day on, once main has moved. What failed is in the run.',
+    );
   });
 
   it('gives one way forward to GitHub for a row that waits, and what it does there', () => {
@@ -215,15 +218,15 @@ describe('what Patching’s rows say', () => {
   });
 });
 
-describe('the words of a pull request the gate held, and one that conflicts', () => {
+describe('the words of a pull request the gate held, one that conflicts, and one out of its check runs', () => {
   const sample = SAMPLES.findLast((e) => e.type === 'patching.read');
   if (sample?.type !== 'patching.read') throw new Error('the samples have no patching.read');
   const factory = sample.payload.repositories[0];
   const move = factory?.moves.find((m) => m.name === 'example-traces');
   if (!factory || !move) throw new Error('the samples have no example-traces');
-  const rowWith = (hold: 'held' | 'conflict') => {
+  const rowWith = (hold: 'held' | 'conflict' | 'checks-spent', kind: 'pin' | 'dependabot' = 'pin') => {
     const pull = {
-      kind: 'pin' as const,
+      kind,
       number: 1400,
       moves: [{ name: 'example-traces', lockfile: false }],
       opened: '2026-10-06T04:30:00.000Z',
@@ -253,6 +256,26 @@ describe('the words of a pull request the gate held, and one that conflicts', ()
     expect(row.waits).toBe(false);
     expect(whyWords(row, { martin: true })).toBe(
       '#1400 conflicts with main, so the worker makes the move again on main’s head within the hour. Nothing is asked of you.',
+    );
+  });
+
+  it('says the worker writes its own pin pull request again a day on, once main has moved, and where to put the cause right', () => {
+    const row = rowWith('checks-spent');
+    expect(whyWords(row, { martin: true })).toBe(
+      'The review gate passed #1400 as the scan’s move, and its required checks failed on every try, so the worker stopped trying this head. It writes the pull request again a day on, once main has moved. What failed is in the run.',
+    );
+    expect(wayOf(row)?.does).toBe(
+      'Read the run. Run it again there if it was the runner, or put the cause right on main: the worker writes it again a day on, and queues it once its checks pass.',
+    );
+  });
+
+  it('says of Dependabot’s, which the worker never writes, only that it stopped trying', () => {
+    const row = rowWith('checks-spent', 'dependabot');
+    expect(whyWords(row, { martin: true })).toBe(
+      'The review gate passed #1400 as the scan’s move, and its required checks failed on every try, so the worker stopped trying. What failed is in the run.',
+    );
+    expect(wayOf(row)?.does).toBe(
+      'Read the run. Run it again there if it was the runner, or put the cause right on its branch: the worker queues it once its checks pass.',
     );
   });
 });

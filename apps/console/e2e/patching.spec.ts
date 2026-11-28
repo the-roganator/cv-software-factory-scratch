@@ -165,7 +165,7 @@ test('a row opens in place, one at a time: why it waits, what failed and its run
   await expect(sidecar).toHaveAttribute('aria-expanded', 'true');
   const more = panel(page).locator(`#${await sidecar.getAttribute('aria-controls')}`);
   await expect(more).toContainText(
-    'The review gate passed #1348 as the scan’s move, and its required checks failed on each of its 3 tries, so the worker stopped trying.',
+    'The review gate passed #1348 as the scan’s move, and its required checks failed on each of its 3 tries, so the worker stopped trying this head. It writes the pull request again a day on, once main has moved. What failed is in the run.',
   );
   // A failed check by its name, its try and its run: never its log.
   await expect(more.locator('p.failed-run')).toHaveText('database tests · failed · try 3 of 3 · its run ↗');

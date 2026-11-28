@@ -214,6 +214,12 @@ function ruleWords(pull: Pull, who: Who): string | undefined {
 /** "#1342", or "it" where the pull request has no number to name. */
 const named = (pull: Pull | undefined) => (pull?.number !== undefined ? `#${pull.number}` : 'it');
 /** "The worker opened #1342" or "Dependabot opened #1350". */
+/**
+ * Whether the worker writes a pull request again once its head is out of its check runs: the App's pin pull request,
+ * a day on and once main has moved. One of Dependabot's is never written by the worker.
+ */
+const remade = (pull: Pull | undefined) => pull?.kind === 'pin';
+
 const opener = (pull: Pull) => `${pull.kind === 'dependabot' ? 'Dependabot' : 'The worker'} opened ${named(pull)}`;
 
 /** A refusal's kind, as a row says the pin step refused it: never pnpm's words. */
@@ -295,7 +301,7 @@ export function whyWords(row: PatchingRow, who: Who): string {
       case 'closed':
         return `${You(who)} closed ${named(pull)} without a merge, so the worker does not open it again for the same edits. A new target opens it again.`;
       case 'checks-spent':
-        return `${passed ? capital(passed) : opener(pull as Pull)}, and its required checks failed ${pull?.checks ? `on each of its ${count(pull.checks.of)} tries` : 'on every try'}, so the worker stopped trying. What failed is in the run.`;
+        return `${passed ? capital(passed) : opener(pull as Pull)}, and its required checks failed ${pull?.checks ? `on each of its ${count(pull.checks.of)} tries` : 'on every try'}, so the worker stopped trying${remade(pull) ? ' this head. It writes the pull request again a day on, once main has moved' : ''}. What failed is in the run.`;
       case 'queue-spent':
         return `${passed ? capital(passed) : opener(pull as Pull)}, and the merge queue took it out on each try, so the worker stopped adding it.`;
       case 'refused':
@@ -431,7 +437,9 @@ export function wayOf(row: PatchingRow): Way | undefined {
     case 'checks-spent':
       return at(
         'Open',
-        'Read the run. Run it again there if it was the runner, or put the cause right on its branch: the worker queues it once its checks pass.',
+        remade(pull)
+          ? 'Read the run. Run it again there if it was the runner, or put the cause right on main: the worker writes it again a day on, and queues it once its checks pass.'
+          : 'Read the run. Run it again there if it was the runner, or put the cause right on its branch: the worker queues it once its checks pass.',
       );
     case 'queue-spent':
       return at(
