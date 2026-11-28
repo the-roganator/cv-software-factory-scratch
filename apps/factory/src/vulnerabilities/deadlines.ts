@@ -25,7 +25,9 @@
  *   severity where their counts differ, the excepted left out of both), or of the newest below it on the line that is, three
  *   tried at most; an image that runs Node only once the Node it
  *   runs is one mise may install, the release `mise.toml` pins or a later one as old as its `minimum_release_age`, as
- *   the pin step moves Node with it. An image that arrives only with a k3s release is
+ *   the pin step moves Node with it. k3s's node image is fixed by a release, not a tag: the newest published one
+ *   after the pin on its Kubernetes minor (`k3sLine`) whose image is such a fix, three tried at most, installable
+ *   from that release's publication. An image that arrives only with a k3s release is
  *   installable from the day the first k3s release after the pin on its Kubernetes minor (its node image's tags) was
  *   published whose `k3s-images.txt` lists a copy without the finding. In an image of ours, only what its runtime stage's image
  *   has comes that way; anything else its Dockerfile adds, but an npm package, has no fix to count from. A package in
@@ -230,8 +232,8 @@ export interface Sources {
   /** An image's index digest, and every platform manifest it lists (none for a single manifest). */
   manifests(reference: string): Promise<{ digest: string; platforms: string[] }>;
   /**
-   * An image's index digest, as `digest` gives it, asked with a HEAD, which no registry counts as a pull: for the
-   * routine listing, which wants the digest alone. Absent, `digest` is asked.
+   * An image's index digest, as `digest` gives it, asked with a HEAD, which no registry counts as a pull: for every
+   * read that wants the digest alone. Absent, `digest` is asked.
    */
   served?(reference: string): Promise<string>;
   /** A chart's versions in its repository's index, each with when it was published. */
@@ -768,16 +770,18 @@ export async function installable(
   const digestOf = (reference: string) => {
     let once = digests.get(reference);
     if (!once) {
-      once = asking(`The digest of ${reference}`, () => sources.digest(reference));
+      once = asking(`The digest of ${reference}`, () => (sources.served ?? sources.digest)(reference));
       digests.set(reference, once);
     }
     return once;
   };
   /**
    * The tags a pin's fix is looked for at, newest first: what its tag names now (`newestOf`), then for a version the
-   * tags below that on its line and above the pin's own, `TRIED` in all at most.
+   * tags below that on its line and above the pin's own, `TRIED` in all at most. For k3s's node image, the published
+   * releases after the pin's on its line (`k3sLine`), as many.
    */
-  const candidatesOf = async (pin: string) => {
+  const candidatesOf = async (pin: string, k3s: boolean) => {
+    if (k3s) return k3sCandidates(pin);
     const first = await newestOf(pin, listTags);
     if (!first) return [];
     const { repository, tag = '' } = nameAndTag(pin);
@@ -788,6 +792,17 @@ export async function installable(
       .sort((a, b) => compareTags(b, a))
       .slice(0, TRIED - 1);
     return [first, ...below.map((each) => ({ reference: `${repository}:${each}`, tag: each, version: true }))];
+  };
+  const k3sCandidates = async (pin: string) => {
+    const { repository, tag = '' } = nameAndTag(pin);
+    const candidates: Candidate[] = [];
+    for (const release of k3sLine(tag.replace('-k3s', '+k3s'), await listTags(K3S_IMAGE)).reverse()) {
+      if (candidates.length === TRIED) break;
+      const each = release.replace('+k3s', '-k3s');
+      if (await k3sRelease(release)) candidates.push({ reference: `${repository}:${each}`, tag: each, version: true });
+      else unpublished.add(release);
+    }
+    return candidates;
   };
   type Scanned = Awaited<ReturnType<typeof scanned>>;
   type Candidate = NonNullable<Awaited<ReturnType<typeof newestOf>>>;
@@ -800,11 +815,11 @@ export async function installable(
    * the newest, marked so, with every image tried. A pin with nothing counted (its findings all excepted, or Node's
    * own) has nothing a candidate could have fewer of, so only the newest is read.
    */
-  const pickOf = (pin: string) => {
+  const pickOf = (pin: string, k3s: boolean) => {
     let once = picks.get(pin);
     if (!once) {
       once = (async () => {
-        const all = await candidatesOf(pin);
+        const all = await candidatesOf(pin, k3s);
         const own = worth(ratedByImage.get(identity(pin)), pin);
         const candidates = SEVERITIES.some((severity) => own[severity]) ? all : all.slice(0, 1);
         const tried: Scanned[] = [];
@@ -1152,7 +1167,7 @@ export async function installable(
       return;
     }
     const pin = pinOf(target) ?? '';
-    const pick = await pickOf(pin);
+    const pick = await pickOf(pin, target.kind === 'k3s');
     if (!pick) return;
     const { latest, image } = pick;
     // No candidate better than the pin is no fix today: said by the pin's name where one no longer has the finding.
@@ -1162,16 +1177,22 @@ export async function installable(
       return;
     }
     if (!image.has.has(has(finding.package, finding.advisory))) {
+      // k3s's node image is its release, installable from the day that was published.
+      if (target.kind === 'k3s') {
+        const release = latest.tag.replace('-k3s', '+k3s');
+        const published = time((await k3sRelease(release))?.published);
+        if (Number.isNaN(published)) return;
+        at[index] = published;
+        fixes[index] = { kind: 'k3s', release };
+        return;
+      }
       // An image that runs Node brings its Node, which waits for mise as Node's own move does.
-      const ready = target.kind !== 'k3s' ? await nodeReady(latest.reference) : 0;
+      const ready = await nodeReady(latest.reference);
       if (ready === undefined) return;
       // An image that gives no time it was made is installable from now, the day the scan first saw it without the
       // finding: the state keeps that day for every run after (`fixesOf` takes the earlier).
       at[index] = Math.max(image.created ?? now, ready);
-      fixes[index] =
-        target.kind === 'k3s'
-          ? { kind: 'k3s', release: latest.tag.replace(/-(k3s\d+)$/, '+$1') }
-          : { kind: 'image', tag: latest.tag, digest: await digestOf(latest.reference) };
+      fixes[index] = { kind: 'image', tag: latest.tag, digest: await digestOf(latest.reference) };
       return;
     }
     // A tag that is not a version, whose image nobody has made for half a year: a line no longer built.
