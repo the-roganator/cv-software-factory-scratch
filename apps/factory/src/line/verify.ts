@@ -269,9 +269,7 @@ function countedBefore(scan: SignalScan): Required<ScanCounts> {
  * each finding the move's newest signal listed with a fix is looked for among the scan's open findings, by its advisory
  * and its package: one still open and the move persists, which sends it back to Plan as any sense's does. A finding
  * the scan names as waiting (the worker's `waiting`: its fix is no move today) is open as one in a move is; a scan
- * that does not say what waits is read by its moves alone. One the scan still has with no fix today (the worker's
- * `unfixed`) is in no move and waits at no pin: the scan cannot show it closed, and the look waits for one that can,
- * as for any scan that cannot tell. None, and the
+ * that does not say what waits is read by its moves alone. None, and the
  * canary's journeys passed at the release's last step, and it has cleared. Verify reads the scan's findings, never a
  * version's name, and never an advisory's words: the read gives its id alone. It keeps the counts before and after.
  *
@@ -370,14 +368,6 @@ async function byScan(signal: FirstSignal, target: Target, c: Context): Promise<
     after,
   };
   if (routine ? stillListed(read, move) : open.some(isFixed)) return finished(signal, target, 'persists', evidence);
-  // A finding of the move's that the scan still has with no fix today left its moves without closing.
-  const unfixed = routine ? 0 : new Set((read.unfixed ?? []).filter(isFixed).map((each) => each.advisory)).size;
-  if (unfixed) {
-    return {
-      kind: 'wait',
-      why: `the scan of ${of} found no fix today for ${unfixed} of the move’s ${unfixed === 1 ? 'advisory' : 'advisories'}, so it cannot show ${unfixed === 1 ? 'it' : 'them'} closed (${read.run.url})`,
-    };
-  }
   const shows = routine ? 'no longer lists the move' : 'shows the move’s findings closed';
   const journeys = target.analysis?.measures.find((m) => m.name === 'journeys');
   if (!target.analysis) {

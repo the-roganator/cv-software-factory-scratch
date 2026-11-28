@@ -15,8 +15,7 @@
  *
  * `moves.json` also lists each pin with somewhere to go and no move that day (`waiting`), where the scan says so: read
  * with the findings the state names there (`Moves.waiting`), held to the state as far as it says (`waitingOf`), and
- * absent for a scan that does not say. A finding the scan has with no fix today is in neither list, and is named
- * apart (`Moves.unfixed`), so no reader takes one that left the moves for one that closed.
+ * absent for a scan that does not say.
  *
  * Both are the scan's by where they are, one run's, and each is held to the other: a state that does not open with
  * the repository's key for that run, a finding in a move past the list, or a count that differs from `moves.json`'s,
@@ -158,12 +157,6 @@ export interface Moves {
    * lists as moved, or a finding as fixed, on that scan's word alone. There, even empty, a pin it names is neither.
    */
   waiting?: ReadWaiting[] | undefined;
-  /**
-   * Each finding the scan has with no fix today, which no move clears and no pin waits for: none yet, a source that
-   * did not answer, a release its tool may not install yet. As open as one in a move, with nothing to say when it
-   * closes. Absent where there is none.
-   */
-  unfixed?: Pick<MoveFinding, 'advisory' | 'package' | 'severity'>[] | undefined;
   /**
    * The moves the run made with the pin step (github/made.ts): in the factory for the pin watch to commit, in the app
    * for the time and the answers its line's pin step makes them again with. Absent where it made none, or for a run
@@ -597,7 +590,7 @@ export function joined(
   run: ScanRun,
   file: MovesFile,
   state: State,
-): Pick<Moves, 'moves' | 'waiting' | 'unfixed'> & { file: Omit<MovesFile, 'moves' | 'waiting'> } {
+): { file: Omit<MovesFile, 'moves' | 'waiting'>; moves: ReadMove[]; waiting?: ReadWaiting[] } {
   if (file.repository !== repo) throw disagrees(repo, `run ${run.id}'s ${MOVES_FILE} is another repository's`);
   if (file.run !== String(run.id))
     throw disagrees(repo, `run ${run.id}'s ${MOVES_FILE} names ${file.run ? `run ${file.run}` : 'no run'}`);
@@ -649,12 +642,8 @@ export function joined(
       `${MOVES_FILE} counts ${file.totals.fixed} results with a fix and the state gives its moves ${read}`,
     );
   const waiting = waitingOf(repo, file, state);
-  // One with no fix is in no move and at no place that waits: named, so it is not taken for closed.
-  const unfixed = state.findings
-    .filter((each) => !each.fix && each.waiting === undefined)
-    .map(({ advisory, package: name, severity }) => ({ advisory, package: name, severity }));
   const { moves: _, waiting: __, ...rest } = file;
-  return { file: rest, moves, ...(waiting ? { waiting } : {}), ...(unfixed.length ? { unfixed } : {}) };
+  return { file: rest, moves, ...(waiting ? { waiting } : {}) };
 }
 
 /**

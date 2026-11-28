@@ -680,11 +680,8 @@ describe('Verify by the scan', () => {
     url: 'https://github.com/the-roganator/cv-worlds-worst-website/actions/runs/42000000001',
   };
 
-  /**
-   * The recorded read, or, with `fixedLockfile`, the same day once the lockfile's move has merged: its move gone, and
-   * its findings with it, or left in the state with no move: with no fix today (`unfixed`), or excepted, their fix kept.
-   */
-  function recorded(fixedLockfile = false, left: 'gone' | 'unfixed' | 'excepted' = 'gone'): Moves {
+  /** The recorded read, or, with `fixedLockfile`, the same day once the lockfile's move has merged: its move gone. */
+  function recorded(fixedLockfile = false): Moves {
     const file = fixture<MovesFile>('moves.json');
     const state = fixture<State>('state.json');
     if (!fixedLockfile) return { repository: REPO, run, ...joined(REPO, run, file, state) };
@@ -694,12 +691,7 @@ describe('Verify by the scan', () => {
       moves: kept,
       totals: { ...file.totals, fixed: 2, moves: 1, lanes: { ...file.totals.lanes, line: 1 } },
     };
-    const open = state.findings.flatMap((finding) => {
-      if (!finding.advisory.startsWith('GHSA-')) return [finding];
-      if (left === 'gone') return [];
-      const { move: _, fix, ...rest } = finding;
-      return [left === 'excepted' ? { ...rest, fix } : rest];
-    });
+    const open = state.findings.filter((finding) => !finding.advisory.startsWith('GHSA-'));
     return { repository: REPO, run, ...joined(REPO, run, day, { ...state, findings: open }) };
   }
 
@@ -820,31 +812,6 @@ describe('Verify by the scan', () => {
     ).toMatchObject({
       verification: { outcome: 'cleared' },
     });
-  });
-
-  it('waits while the scan still has a finding of the move’s with no fix today, which no move lists', async () => {
-    // The findings left the scan's moves and are still its findings: nothing there shows them closed.
-    const lost = recorded(true, 'unfixed');
-    expect(lost.unfixed).toContainEqual({ advisory: 'GHSA-0000-0000-0001', package: 'invented-pkg', severity: 'HIGH' });
-    expect(await look(move, released, options({ scans: scans(lost) }))).toEqual({
-      kind: 'wait',
-      why: `the scan of ccccccc found no fix today for 2 of the move’s advisories, so it cannot show them closed (${run.url})`,
-    });
-    // One of them in a move is open for certain: it persists.
-    const [one, ...rest] = lost.unfixed ?? [];
-    if (!one) throw new Error('the day has a finding with no fix');
-    const partly = { ...lost, unfixed: rest, waiting: [held({ findings: [one] })] };
-    expect(await look(move, released, options({ scans: scans(partly) }))).toMatchObject({
-      verification: { outcome: 'persists' },
-    });
-    // A finding with no fix that is none of the move's says nothing of it, and one Martin excepted, its fix known and
-    // in no move, is not one the scan has no fix for.
-    expect(recorded(true).unfixed).toEqual([{ advisory: 'CVE-2099-0003', package: 'otherlib', severity: 'MEDIUM' }]);
-    for (const day of [recorded(true), recorded(true, 'excepted')]) {
-      expect(await look(move, released, options({ scans: scans(day) }))).toMatchObject({
-        verification: { outcome: 'cleared' },
-      });
-    }
   });
 
   it('reads a scan that says nothing waits, and one that does not say what waits, by its moves alone', async () => {
