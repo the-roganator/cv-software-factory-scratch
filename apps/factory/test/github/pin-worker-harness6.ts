@@ -26,6 +26,7 @@ import { APP_LOGIN, LiveActions } from '../../src/github/actions.ts';
 import { WatchedHeads } from '../../src/github/branches.ts';
 import { GitHubError } from '../../src/github/client.ts';
 import {
+  checksFailed,
   type DeployQueueDependencies,
   type LabelEvents,
   pinHeadsOf,
@@ -58,6 +59,8 @@ export interface Options {
    * has the queue write the watch's commit again through the live action (`commitAgain`).
    */
   conclusion?: (head: string, check: string) => string | null;
+  /** The app that posted each required check's run: GitHub Actions without it. */
+  app?: string;
   /** Where the queue says what it decides of each head, and the watch reads it. */
   pulls?: PullStates;
   /** The level and the stop the queue reads: Guarded and running without it. */
@@ -255,6 +258,8 @@ export async function worker(
       now: () => clock,
       only,
       pulls: options.pulls,
+      level: async () => options.level?.() ?? ({ autonomy: 'guarded', stopped: false } as const),
+      failed: (repo, at) => checksFailed(queueReads)(repo, at),
     },
     FACTORY,
   );
@@ -283,7 +288,7 @@ export async function worker(
               conclusion: options.conclusion(sha, name),
             }
           : { status: 'completed', conclusion: 'success' }),
-        app: 'github-actions',
+        app: options.app ?? 'github-actions',
         startedAt: null,
         completedAt: null,
         title: null,

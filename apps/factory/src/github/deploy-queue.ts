@@ -65,9 +65,11 @@
  * same tree on the same parent, with a `Checks-run:` line in its message, which GitHub runs every check and the gate on
  * afresh, and which is recorded as the watch's. The App starts no run itself. After `RUN_TRIES` runs, counted from
  * the head's own message so a restart does not start the count again, the worker says so once in a comment, naming
- * the checks that failed, and the head is Martin's; one he runs again and passes goes on. A pin move's is made again
- * by its watch, on `main`'s head, once `main` has moved since that head and the head is a day old (`SPENT_REMAKE_MS`,
- * pins.ts): a new head, with its own runs. A failed check another app posted is not run again.
+ * the checks that failed, and the head is Martin's; one he runs again and passes goes on. A failed check another app
+ * posted is not run again: its head is out of runs at once, and nothing is said. A pin move's head out of its runs,
+ * either way, is made again by its watch, on `main`'s head, once `main` has moved since that head and the head is a
+ * day old (`SPENT_REMAKE_MS`, pins.ts), while the line runs and a check has failed there still: a new head, with its
+ * own runs, and the pull request's one comment said already.
  *
  * In a dry run the watches write nothing to GitHub and record no commit, so no head in GitHub is one a watch wrote: the
  * queues add nothing and record no enqueue. A dry run's own deploy and pin pull requests, which GitHub never had, are
@@ -329,6 +331,14 @@ export function checksWait(runs: readonly CheckRun[], required: readonly string[
   return undefined;
 }
 
+/** Whether a required check has failed at a head, as `checksWait` reads it now: what the pin watch asks before it writes a head out of its check runs again. */
+export const checksFailed =
+  (reads: Pick<Reads, 'checkRuns' | 'requiredChecks'>) =>
+  async (repo: string, head: string): Promise<boolean> => {
+    const [runs, required] = await Promise.all([reads.checkRuns(repo, head), reads.requiredChecks(repo, 'main')]);
+    return checksWait(runs, required)?.waits === 'failed';
+  };
+
 /** The latest run of each check main requires but the gate's, as `checksWait` reads them: the App's own count for nothing. */
 function latestRequired(runs: readonly CheckRun[], required: readonly string[]): CheckRun[] {
   const latest = new Map<string, CheckRun>();
@@ -408,11 +418,12 @@ export const RUN_TRIES = 3;
 
 /**
  * What the worker says on a pull request whose required checks failed on the `RUN_TRIES`th run of them; for a pin
- * move's (`pin`), that the pin watch makes the move again once `main` has moved and the head is a day old.
+ * move's (`pin`), said once however many heads fail so, that the pin watch makes the move again once `main` has moved
+ * and the head is a day old.
  */
 export function spentRunsComment(head: string, failed: readonly string[], pin = false): string {
   const next = pin
-    ? "The factory writes this commit again no more. Once `main` has moved and this head is a day old, it makes the move again on `main`'s head, where the checks run afresh; until then it is Martin's to run the checks again or close."
+    ? "The factory writes this commit again no more. While the checks fail, it makes the move again on `main`'s head once `main` has moved and the head is a day old, and says so here this once; meanwhile it is Martin's to run the checks again or close."
     : "The factory writes it again no more: it is Martin's to run the checks again or close.";
   return (
     `A required check failed on this pull request in ${RUN_TRIES} runs, the factory writing its commit again for ` +
@@ -430,18 +441,20 @@ const COMMENT_PAGES = 10;
 /**
  * Whether the App has already said on the pull request what a mark says of this head, by the mark its own comment
  * carries (the App's by its id, `APP_USER`): read from GitHub, so a worker that restarts says it no more than once,
- * whichever checks failed last when it reads. Every page, oldest first, up to `COMMENT_PAGES`; past them it is taken
+ * whichever checks failed last when it reads; with no head (`null`), of any head. Every page, oldest first, up to `COMMENT_PAGES`; past them it is taken
  * as not said, since anyone may comment on a public repository: the App says it, perhaps again, and the head is left
  * for Martin, where a read that failed would have the queue try the head for ever.
  */
-async function spentSaid(github: GitHub, repo: string, number: number, head: string, mark = SPENT_MARK) {
+async function spentSaid(github: GitHub, repo: string, number: number, head: string | null, mark = SPENT_MARK) {
   for (let page = 1; page <= COMMENT_PAGES; page++) {
     const comments = await github.read(
       repo,
       `/repos/${repo}/issues/${number}/comments?per_page=100&page=${page}`,
       z.array(z.object({ body: z.string().nullable(), user: z.object({ id: z.number().int() }).nullable() })),
     );
-    if (comments.some((made) => made.user?.id === APP_USER && mark.exec(made.body ?? '')?.[1] === head)) return true;
+    const said = (body: string | null) => mark.exec(body ?? '')?.[1];
+    if (comments.some((made) => made.user?.id === APP_USER && (head ? said(made.body) === head : said(made.body))))
+      return true;
     if (comments.length < 100) return false;
   }
   return false;
@@ -486,8 +499,9 @@ async function writeAgain(
   const run = checksRunOf(commit.message);
   if (run >= RUN_TRIES) {
     // Said before the head is left, so a comment that could not be made is tried on the next pass: made once, across
-    // restarts. A check Martin runs again and passes lets the head on, as any green check does.
-    if (actions.comment && !(await spentSaid(github, repo, number, head, SPENT_RUNS_MARK)))
+    // restarts, and on a pin move's pull request once for every head the watch makes of it, which its words cover. A
+    // check Martin runs again and passes lets the head on, as any green check does.
+    if (actions.comment && !(await spentSaid(github, repo, number, kind === 'pin' ? null : head, SPENT_RUNS_MARK)))
       await actions.comment(repo, number, spentRunsComment(head, names, kind === 'pin'));
     attempt.ranOut = true;
     state.note(number, head, { hold: 'checks-spent' });
