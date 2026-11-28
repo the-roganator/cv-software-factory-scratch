@@ -19,7 +19,7 @@
  *
  * The pull request carries a move when it rewrites a line one of the move's pins is on (a lockfile's, where the scan
  * found its package, or for a routine update, whose old entry a parent may keep, where the lockfile resolves it for a
- * manifest); it may carry several of the day's moves, and must carry each whole. Anything that differs is refused, and the
+ * manifest and the change moves that copy); it may carry several of the day's moves, and must carry each whole. Anything that differs is refused, and the
  * reason says where: a line no move writes, a pin left unmoved, a version or digest other than the scan's, a file
  * added, removed, renamed or changed in mode, anything under `.github/`, and a move the scan gave to no one to make
  * (`unmade`: the lanes `issue` and `none`, a fix that waits for Martin's bench run among them), which waits for Martin
@@ -304,18 +304,24 @@ export async function proveMove(
   // A routine update of a package moves the copy its manifests resolve, and leaves a copy a parent's range keeps
   // (apps/runner/src/pins.ts's `movePackage`): the entry the scan found the package at may be a line the lockfile
   // still has. So it is carried, too, by a change that rewrites where main's lockfile resolves the package for a
-  // manifest, at the version the move is from.
+  // manifest, at the version the move is from, and resolves it there at other versions than main does. pnpm writes a
+  // package's peers on that line, beside its version: a change that rewrites the peer alone, as a fix of the peer
+  // does, moves no copy of the package and carries no update of it.
   const resolved = (move: ScanMove) => {
     const { withheld } = move;
     if (!move.lockfile || !withheld || !isRoutine(move)) return [];
     const from = new Set(withheld.from.split(', '));
+    const imported = (lock: string) => importedVersions(lock, withheld.package);
+    const versions = (lock: string) => imported(lock).map((each) => each.version);
     return [...new Set(withheld.pins.map((pin) => pin.file))]
       .filter((file) => LOCKFILE.test(file))
-      .flatMap((file) =>
-        importedVersions(byPath.get(file)?.base ?? '', withheld.package)
+      .flatMap((file) => {
+        const { base = '', head = '' } = byPath.get(file) ?? {};
+        if (versions(base).join() === versions(head).join()) return [];
+        return imported(base)
           .filter((each) => from.has(each.version))
-          .map((each) => ({ file, line: each.line })),
-      );
+          .map((each) => ({ file, line: each.line }));
+      });
   };
   const carried = scan.filter((move) =>
     [...pinsOf(move), ...resolved(move)].some((pin) => pin.line >= 1 && touched.get(pin.file)?.has(pin.line)),
