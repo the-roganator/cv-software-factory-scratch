@@ -60,7 +60,8 @@
  * (`StateRoutine.content`), and the move lists at the digest the tag serves that day where that has waited, or else
  * at the newest it has seen that has, so a tag rebuilt every day comes due all the same, a day behind, and one pushed
  * again after its wait lists at what it was. A digest the tag no longer serves is asked for by itself before it is
- * listed: one the registry has dropped is forgotten, and the pin waits for the next. A pin whose tag has waited and
+ * listed: one the registry answers that it no longer has is forgotten, and the pin waits for the next, while a
+ * registry that does not answer forgets nothing, and the pin is unread that day. A pin whose tag has waited and
  * whose content has not is in the listing's `waits`, which `moves.json` gives as `waiting`: it is no move that day,
  * and not a move gone. A chart's pin holds no digest
  * and its index's is not read, so a chart's content is its version, whose day is the first sight its wait already
@@ -90,7 +91,7 @@ import { type Chart, isFixture } from './inventory.ts';
 import { type Behind, isMajor, isRoutine, type Move, type Pin, pinKey, type RoutineWait } from './moves.ts';
 import { satisfies } from './node.ts';
 import { repositoryOf, splitReference } from './reference.ts';
-import { lockfileLine, type ReadTarget } from './scan.ts';
+import { isAnswer, lockfileLine, type ReadTarget } from './scan.ts';
 import { type StateRoutine, type StateSeen, settle, waitMs } from './state.ts';
 import { compareTags, compareVersions, majorOf } from './versions.ts';
 
@@ -446,7 +447,18 @@ export async function routine(asked: Asked): Promise<Listing> {
       // The newest tag that has waited: it lists at a digest that has waited its own day, or not yet.
       if (!due) return contentWait(group, content.kept);
       const at = target.digest === digest ? `${name}:${each}` : `${name}@${target.digest}`;
-      if (target.digest !== digest && !(await served(at).catch(() => undefined))) {
+      // Only the registry's answer says a digest is gone (`isAnswer`): a fault is thrown on, the pin is unread today,
+      // and its record stands.
+      const gone =
+        target.digest !== digest &&
+        (await served(at).then(
+          () => false,
+          (error: unknown) => {
+            if (isAnswer(error)) return true;
+            throw error;
+          },
+        ));
+      if (gone) {
         // A digest the tag has moved on from and the registry no longer has: forgotten, and the next is waited for.
         const left = content.kept.filter((seen) => seen !== content.due);
         waited(group, today, Number.NaN, policy.days, 0, left);

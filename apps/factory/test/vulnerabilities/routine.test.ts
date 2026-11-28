@@ -319,6 +319,18 @@ describe('an image’s pin that is behind', () => {
     const dropped = await listed(world('c', day3.records, { gone: [digest('b')] }), NOW + 3.5 * DAY);
     expect(dropped.routine).toEqual([]);
     expect(dropped.listing.counts).toMatchObject({ waiting: 1, unread: 0 });
+    // A registry that does not answer for it has not dropped it: the pin is unread that day, its record keeps the
+    // digest, and the move lists at it once the registry is back.
+    const silent = await listed(
+      world('c', day3.records, { down: [`served example/image@${digest('b')}`] }),
+      NOW + 3.5 * DAY,
+    );
+    expect(silent.routine).toEqual([]);
+    expect(silent.listing.counts).toMatchObject({ waiting: 0, unread: 1 });
+    expect(silent.listing.waits).toBeUndefined();
+    expect(silent.records[0]?.content?.map((seen) => seen.target)).toContain(`image 2.18.1@${digest('b')}`);
+    const back = await listed(world('c', silent.records), NOW + 4 * DAY);
+    expect(back.routine.map((move) => move.to)).toEqual([{ kind: 'image', tag: '2.18.1', digest: digest('b') }]);
     // The listing says the pin waits for its content, by the digest that comes due first, and when.
     expect(dropped.listing.waits).toEqual([
       {
