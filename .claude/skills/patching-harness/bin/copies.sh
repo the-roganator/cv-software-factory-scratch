@@ -18,13 +18,14 @@
 #   ./copies.sh forget-closed  make the watches forget the pull requests a reset closed (reset does this itself)
 #   ./copies.sh dependabot   close the copies' Dependabot pull requests the real ones closed, or no test needs
 #   ./copies.sh reopen-dependabot [factory|app]  open again each one of Dependabot's the tests need that is closed, and
-#                            ask Dependabot to make it again on main (the harness calls it before a run whose test
-#                            needs one)
+#                            ask Dependabot to make it again on main, but one kept as it is, which is only opened, and
+#                            one a summon brings afresh, which is left closed (the harness calls it before a run whose
+#                            test needs one)
 #   ./copies.sh worker 0|1   stop or start the scratch cluster's GitHub worker
 #   ./copies.sh line stop|start|new-work-off  the scratch line stopped or started, or new work set off, by the
 #                            factory copy's own `make` in work/factory, as Martin's commands (stop.sh calls it)
-#   ./copies.sh summon-dependabot [factory|app]  have Dependabot look at a copy now, the app's by default (test 20;
-#                            the harness calls it)
+#   ./copies.sh summon-dependabot [factory|app]  have Dependabot look at a copy now, the app's by default (test 20,
+#                            and test 22 on the factory copy; the harness calls it)
 #   ./copies.sh move-on-main <file> <image> <tag> <tag@digest>  an image's move put on the app copy's main, as another
 #                            change would have made it (W3b; the harness calls it)
 #   ./copies.sh lift-exception <package> <advisory>…  the factory copy's exceptions of those advisories for a package
@@ -534,14 +535,15 @@ pin_images() {
   say "pinned: factory $(cat "$WORK/factory.sha"), app $(cat "$WORK/app.sha")"
 }
 
-# Dependabot remembers each pull request closed unmerged and skips that version for good; the real repositories have
-# closed many, the copies none. So a copy's Dependabot pull request is closed when the real repository closed the same
-# one, by title in any case, unmerged: the copy's Dependabot then skips what the real one skips.
+# Dependabot remembers a pull request for one dependency that is closed unmerged and skips that version for good; the
+# real repositories have closed many, the copies none. So a copy's Dependabot pull request is closed when the real
+# repository closed the same one, by title in any case, unmerged: the copy's Dependabot then skips what the real one
+# skips.
 # Every other open Dependabot pull request on a copy is closed too, but those the tests need (DEPENDABOT_KEEP_*, a
 # regex over the lowercased title, in baseline.env): each runs the copy's CI on the organisation's shared runners at
 # every reset, and closing one makes only the copy's Dependabot skip that version.
-# One the tests need that is closed (by an earlier reset, or by the worker once main had its versions, test 22) is
-# opened again: the newest closed one of each alternative of the regex (split at `|`) that no open one matches.
+# One the tests need that is closed (by an earlier reset, or by the worker once main had its versions) is opened
+# again: the newest closed one of each alternative of the regex (split at `|`) that no open one matches.
 # Dependabot answers no `@dependabot reopen` on a closed pull request, so the harness reopens it itself, which GitHub
 # allows while its branch exists, and asks Dependabot to make it again (`@dependabot recreate`): the branch it
 # reopens stands on a main from before the baseline, and conflicts until Dependabot has built it on main as it is.
@@ -549,22 +551,59 @@ pin_images() {
 # Dependabot is summoned to look at the copy (summon_dependabot), whose run rebuilds its own open pull requests.
 # One kept as it is (DEPENDABOT_AS_IS_FACTORY, Playwright's, which test 22's worker must leave alone) is reopened and no
 # more: Dependabot is not asked to make it again, which it does not answer on that one, and it is no reason to summon.
+# One made again (DEPENDABOT_REMAKE_FACTORY, Postgres's, test 22's own) is a group's, which Dependabot opens again
+# after a close ("Closing it will not ignore any of these versions"), and makes again only at its own times. Each
+# build makes the baseline's commits anew, so one from an earlier baseline differs from main by every commit between
+# them. So an open one that conflicts, or whose head is older than main's last move to the baseline, is closed, and
+# Dependabot's acknowledgement waited for, a minute at most: it deletes the branch. The run that needs one then finds
+# none open and summons Dependabot, which opens a fresh one on main as it is (harness.ts). A close Dependabot has not
+# taken in is one it still holds as open, and a summon would bring none: that pull request is opened again and left.
+# A closed one of these is never opened again here.
 dependabot_as_is() { # <copy>: the regex of those kept on whatever base they have
   if [[ $1 == "$APP_COPY" ]]; then printf %s '^$'; else printf %s "${DEPENDABOT_AS_IS_FACTORY:-^$}"; fi
+}
+dependabot_remake() { # <copy>: the regex of those closed when stale, for a summon to bring afresh
+  if [[ $1 == "$APP_COPY" ]]; then printf %s '^$'; else printf %s "${DEPENDABOT_REMAKE_FACTORY:-^$}"; fi
+}
+# One of Dependabot's made again, open: kept when it stands on the baseline as main has it, closed otherwise.
+dependabot_fresh_or_closed() { # <copy> <number> <title> <branch>
+  local copy=$1 n=$2 title=$3 branch=$4 oid head mergeable since
+  since=$(baseline_pushed_at "$copy")
+  oid=$(gh pr view "$n" -R "$copy" --json headRefOid --jq .headRefOid)
+  mergeable=$(gh pr view "$n" -R "$copy" --json mergeable --jq .mergeable)
+  head=$(gh api "repos/$copy/commits/$oid" --jq .commit.committer.date)
+  # Both are GitHub's UTC times to the second, which sort as text.
+  if [[ $mergeable != CONFLICTING && ! $head < $since ]]; then
+    echo "  kept Dependabot's #$n ($title): made since main was last put at the baseline"
+    return 0
+  fi
+  gh_retry pr close "$n" -R "$copy" -c "Closed for the patching tests: it conflicts with main or is from before the baseline, and a run that needs one has Dependabot open it afresh." >/dev/null
+  for _ in $(seq 1 12); do
+    if ! gh api "repos/$copy/git/ref/heads/$branch" >/dev/null 2>&1; then
+      echo "  closed Dependabot's #$n ($title): it conflicts with main or is from before the baseline, and Dependabot took the close"
+      return 0
+    fi
+    sleep 5
+  done
+  gh_retry pr reopen "$n" -R "$copy" >/dev/null || true
+  echo "  Dependabot did not take the close of #$n ($title) within a minute, so a summon would bring no other: opened again, as it is" >&2
 }
 dependabot_keep() { # <copy>: the regex of the pull requests its tests need
   if [[ $1 == "$APP_COPY" ]]; then printf %s "$DEPENDABOT_KEEP_APP"; else printf %s "$DEPENDABOT_KEEP_FACTORY"; fi
 }
 dependabot_only_needed() { # <copy>
   local copy=$1 keep as_is; keep=$(dependabot_keep "$1"); as_is=$(dependabot_as_is "$1")
-  gh pr list -R "$copy" --author app/dependabot --state open --limit 200 --json number,title \
-    --jq '.[] | "\(.number)\t\(.title | ascii_downcase)"' |
-    while IFS=$'\t' read -r n title; do
+  local remake; remake=$(dependabot_remake "$1")
+  gh pr list -R "$copy" --author app/dependabot --state open --limit 200 --json number,title,headRefName \
+    --jq '.[] | "\(.number)\t\(.title | ascii_downcase)\t\(.headRefName)"' |
+    while IFS=$'\t' read -r n title branch; do
       if ! grep -qE -- "$keep" <<<"$title"; then
         gh_retry pr close "$n" -R "$copy" -c "Closed for the patching tests: the copy keeps only the Dependabot pull requests they need." >/dev/null
         echo "  closed Dependabot's #$n ($title): no test needs it"
       elif grep -qE -- "$as_is" <<<"$title"; then
         echo "  kept Dependabot's #$n ($title) as it is"
+      elif grep -qE -- "$remake" <<<"$title"; then
+        dependabot_fresh_or_closed "$copy" "$n" "$title" "$branch"
       else
         # Made again on the baseline just pushed, so its checks are the baseline's, not a run from before the reset.
         gh_retry pr comment "$n" -R "$copy" -b "@dependabot recreate" >/dev/null
@@ -584,7 +623,7 @@ baseline_pushed_at() { # <copy>
   printf %s "$at"
 }
 dependabot_reopen() { # <copy>
-  local copy=$1 keep as_is; keep=$(dependabot_keep "$1"); as_is=$(dependabot_as_is "$1")
+  local copy=$1 keep as_is remake; keep=$(dependabot_keep "$1"); as_is=$(dependabot_as_is "$1"); remake=$(dependabot_remake "$1")
   local open closed one n title reopened=() since oid head mergeable behind=
   open=$(gh pr list -R "$copy" --author app/dependabot --state open --limit 200 --json title --jq '.[].title | ascii_downcase')
   closed=$(gh pr list -R "$copy" --author app/dependabot --state closed --limit 200 --json number,title,mergedAt \
@@ -592,6 +631,8 @@ dependabot_reopen() { # <copy>
   while IFS= read -r one; do
     [[ -n $one && $one != '^$' ]] || continue
     grep -qE -- "$one" <<<"$open" && continue
+    # One made again is never opened again: the run that needs it summons Dependabot for a fresh one.
+    if tr '|' '\n' <<<"$remake" | grep -qxF -- "$one"; then continue; fi
     n=$(awk -F'\t' -v re="$one" '$2 ~ re { print $1; exit }' <<<"$closed")
     title=$(awk -F'\t' -v re="$one" '$2 ~ re { print $2; exit }' <<<"$closed")
     if [[ -n $n ]] && grep -qE -- "$as_is" <<<"$title"; then
@@ -666,8 +707,9 @@ dependabot_like_real() { # <copy> <real>
 reset_one() { # <copy> <dir>
   local copy=$1 dir=$2
   say "reset $copy"
-  # Pull requests: everything but Dependabot's is closed and its branch deleted. Closing Dependabot's would tell it to
-  # skip that version for good; left open, it rebases them on the baseline itself.
+  # Pull requests: everything but Dependabot's is closed and its branch deleted. Dependabot's are closed by their
+  # own rules (dependabot_like_real, dependabot_only_needed): closing one for a single dependency tells Dependabot to
+  # skip that version for good.
   gh pr list -R "$copy" --state open --limit 200 --json number,author,headRefName \
     --jq '.[] | select(.author.login != "app/dependabot") | "\(.number) \(.headRefName)"' |
     while read -r n branch; do gh_retry pr close "$n" -R "$copy" --delete-branch >/dev/null || true; done
