@@ -291,7 +291,7 @@ describe('the deploy queue watch', () => {
     const missing = green().filter((r) => r.name !== 'pull request title');
     expect(checksWait(missing, REQUIRED)?.waits).toBe('checks');
     // The factory's App's own run of a required check's name counts for nothing.
-    const forged = [...missing, run('pull request title', 'success', 'mrogan-software-factory')];
+    const forged = [...missing, run('pull request title', 'success', 'the-roganator-scratch-factory')];
     // No required check read is no check passed.
     expect(checksWait(green(), [])?.waits).toBe('checks');
     expect(checksWait(forged, REQUIRED)?.waits).toBe('checks');
@@ -334,7 +334,7 @@ describe('the deploy queue watch', () => {
         outs === 0
           ? queue()
           : queue({
-              added: { at: '2026-11-18T04:47:47Z', by: 'mrogan-software-factory' },
+              added: { at: '2026-11-18T04:47:47Z', by: 'the-roganator-scratch-factory' },
               removed: {
                 at: '2026-11-18T04:53:12Z',
                 by,
@@ -377,7 +377,7 @@ describe('the deploy queue watch', () => {
   it('counts the queue’s failures from GitHub, so a worker that restarts neither starts again nor stops early', async () => {
     const out = (failures: number) =>
       queue({
-        added: { at: '2026-11-18T04:47:47Z', by: 'mrogan-software-factory' },
+        added: { at: '2026-11-18T04:47:47Z', by: 'the-roganator-scratch-factory' },
         removed: {
           at: '2026-11-18T04:53:12Z',
           by: 'github-merge-queue',
@@ -561,7 +561,7 @@ describe('the deploy queue watch', () => {
 
   it('waits on a conflict with main before it adds again a head the queue took out for one', async () => {
     const out = queue({
-      added: { at: '2026-11-18T04:47:47Z', by: 'mrogan-software-factory' },
+      added: { at: '2026-11-18T04:47:47Z', by: 'the-roganator-scratch-factory' },
       removed: {
         at: '2026-11-18T04:53:12Z',
         by: 'github-merge-queue',
@@ -585,7 +585,7 @@ describe('the deploy queue watch', () => {
   it('leaves out a head Martin took out of the queue, across a restart, by GitHub’s record of the removal', async () => {
     const comments: Comment[] = [];
     const taken = queue({
-      added: { at: '2026-11-18T04:47:47Z', by: 'mrogan-software-factory' },
+      added: { at: '2026-11-18T04:47:47Z', by: 'the-roganator-scratch-factory' },
       removed: {
         at: '2026-11-18T04:53:12Z',
         by: 'mrogan',
@@ -632,7 +632,7 @@ describe('the deploy queue watch', () => {
 
   it('adds a head whose pull request left the queue at the head before: a branch that moved is no removal of the new head', async () => {
     const before = queue({
-      added: { at: '2026-11-18T04:47:47Z', by: 'mrogan-software-factory' },
+      added: { at: '2026-11-18T04:47:47Z', by: 'the-roganator-scratch-factory' },
       removed: {
         at: '2026-11-18T04:53:12Z',
         by: 'github-merge-queue',
@@ -1555,7 +1555,7 @@ describe('the pin queue watch', () => {
       'passed only by the factory’s App',
       [
         ...green().filter((r) => r.name !== 'lint, types, tests'),
-        run('lint, types, tests', 'success', 'mrogan-software-factory'),
+        run('lint, types, tests', 'success', 'the-roganator-scratch-factory'),
       ],
     ],
   ];

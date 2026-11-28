@@ -169,7 +169,7 @@ describe('what Patching’s rows say', () => {
         {
           name: 'database tests',
           words: 'failed · try 3 of 3',
-          href: 'https://github.com/the-roganator/cv-software-factory/actions/runs/19220481337',
+          href: 'https://github.com/the-roganator/cv-software-factory-scratch/actions/runs/19220481337',
         },
       ],
     });
@@ -179,12 +179,12 @@ describe('what Patching’s rows say', () => {
   it('gives one way forward to GitHub for a row that waits, and what it does there', () => {
     expect(wayOf(row(mine, 'example-logs'))).toEqual({
       verb: 'Review',
-      href: 'https://github.com/the-roganator/cv-software-factory/pull/1344',
+      href: 'https://github.com/the-roganator/cv-software-factory-scratch/pull/1344',
       what: '#1344',
       does: 'Approve its head commit there: the worker then adds it to the merge queue.',
     });
     expect(wayOf(row(mine, 'example/devcontainer-base'))?.href).toBe(
-      'https://github.com/the-roganator/cv-worlds-worst-website/issues/81',
+      'https://github.com/the-roganator/cv-worlds-worst-website-scratch/issues/81',
     );
     expect(wayOf(row(mine, 'example/scanner-proxy'))).toBeUndefined();
   });

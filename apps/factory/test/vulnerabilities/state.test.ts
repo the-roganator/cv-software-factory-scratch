@@ -20,7 +20,7 @@ import {
 import { zipOf } from './zip-of.ts';
 
 /** The state the scan keeps between runs (state.ts, ADR 0026): its seal, its shape, and how the last one is found. */
-const REPOSITORY = 'the-roganator/cv-software-factory';
+const REPOSITORY = 'the-roganator/cv-software-factory-scratch';
 const KEY = readKey(newKey());
 
 const STATE: State = {
@@ -79,7 +79,7 @@ describe('the seal', () => {
     const sealed = seal(STATE, KEY);
     expect(() => open(sealed, readKey(newKey()), REPOSITORY, STATE.run)).toThrow(StateError);
     expect(() => open(sealed, KEY, REPOSITORY, '19234567891')).toThrow(StateError);
-    expect(() => open(sealed, KEY, 'the-roganator/cv-worlds-worst-website', STATE.run)).toThrow(StateError);
+    expect(() => open(sealed, KEY, 'the-roganator/cv-worlds-worst-website-scratch', STATE.run)).toThrow(StateError);
   });
 
   it('refuses a file changed by a byte, cut short, too large, or that is no state', () => {
@@ -567,7 +567,7 @@ describe('the last state kept', () => {
   it('passes over a fork’s run, another branch’s, a run that kept none, and a state that has expired', async () => {
     const { api } = github(
       [
-        run(90, { head_repository: { full_name: 'someone/cv-software-factory' } }),
+        run(90, { head_repository: { full_name: 'someone/cv-software-factory-scratch' } }),
         run(80, { head_branch: 'feat/other' }),
         run(70),
         run(60),

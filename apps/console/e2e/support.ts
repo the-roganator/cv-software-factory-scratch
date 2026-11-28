@@ -267,7 +267,7 @@ export const SESSION = {
       current: true,
     },
   ],
-  tools: { grafana: 'http://grafana.localhost:8080/', argocd: 'http://argocd.localhost:8080/' },
+  tools: { grafana: 'http://grafana.localhost:9080/', argocd: 'http://argocd.localhost:9080/' },
 };
 
 /**

@@ -47,8 +47,8 @@ import type { RefusalRecorder } from './refusals.ts';
 /** Martin's GitHub account (`mrogan`), as `scripts/review-gate.ts` knows him. */
 export const MARTIN = 6206459;
 
-/** The App's bot account (`mrogan-software-factory[bot]`): the user that opens its issues and pull requests. */
-export const APP_USER = 337_765_427;
+/** The App's bot account (`the-roganator-scratch-factory[bot]`): the user that opens its issues and pull requests. */
+export const APP_USER = 357_103_795;
 
 /**
  * GitHub's Dependabot (`dependabot[bot]`), as `scripts/review-routing.ts` knows it: the one account beside the App's

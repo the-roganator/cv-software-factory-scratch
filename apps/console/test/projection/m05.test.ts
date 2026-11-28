@@ -205,7 +205,7 @@ describe('a move that waits for the merge when its issue is written again', () =
       'issue.opened',
       'factory',
       {
-        repository: 'the-roganator/cv-worlds-worst-website',
+        repository: 'the-roganator/cv-worlds-worst-website-scratch',
         number: 40,
         move: { name: 'invented-pkg', ecosystem: 'npm', from: '2.0.0', to },
       },

@@ -1541,7 +1541,7 @@ describe('the words each criterion quotes', () => {
           version: 'd487739',
           symptom: 'outdated-dependency',
           move: {
-            repository: 'the-roganator/cv-worlds-worst-website',
+            repository: 'the-roganator/cv-worlds-worst-website-scratch',
             name: 'invented-twice',
             ecosystem: 'npm',
             from: '5.7.1,7.5.1',

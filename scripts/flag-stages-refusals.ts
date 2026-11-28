@@ -14,7 +14,7 @@
  * Run it with the Role and the policy on the cluster, as the branch that changes either has them, whenever either or
  * policy/flags.ts changes, with credentials that may impersonate a service account (Martin's own), and a few seconds
  * after a change: the API server takes a moment to load a policy. `KUBE_CONTEXT` names the cluster
- * (`k3d-software-factory` by default).
+ * (`k3d-software-factory-scratch` by default).
  *
  * Each request is a server-side dry run, sent as the admin service sends its own: the whole of `flags` as it was read,
  * with its flags replaced, conditional on its resourceVersion. It passes through authorisation and admission exactly as
@@ -342,7 +342,7 @@ function ask(context: string, read: FeatureFlag, c: Case): Answer {
 }
 
 if (import.meta.main) {
-  const context = process.env.KUBE_CONTEXT ?? 'k3d-software-factory';
+  const context = process.env.KUBE_CONTEXT ?? 'k3d-software-factory-scratch';
   // The Roles and the policy as the cluster runs them, or nothing asked.
   const taken = JSON.parse(
     execFileSync('node', [join(import.meta.dirname, 'policy-hash.ts'), 'flag-stages-refusals'], {
