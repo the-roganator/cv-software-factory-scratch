@@ -83,6 +83,7 @@ import {
   notListed,
   PIN_PASS_LIMIT_MS,
   type PodLine,
+  passBaseline,
   pickScan,
   pinsFault,
   pinWatchLacks,
@@ -705,7 +706,8 @@ interface State {
   };
   limitMin: number;
   flags: string[];
-  /** The commit each copy's `baseline` branch was at when the run began: what its verdicts stood on. */
+  /** The pass the run is of (confirm.sh's folder, by name, as PATCHING_PASS), and the baseline it stood on, as built. */
+  pass?: string | undefined;
   baseline?: Baseline;
   /** A small run: the only tests this run stands for (`--only 1,2,N4`). The rest are not run, and not judged from it. */
   only?: string[] | undefined;
@@ -2355,38 +2357,46 @@ function report(state: State) {
     console.log(`\nthe harness restarted the GitHub worker and the dependency sense at ${state.kickedAt}`);
 }
 
-/** The commit each copy's `baseline` branch is at now. */
-function baselineNow(): Baseline {
-  const at = (repo: string) => sh('gh', ['api', `repos/${repo}/commits/baseline`, '--jq', '.sha']).trim();
-  return { factory: at(FACTORY), app: at(APP) };
+/** The baseline as built, which a reset puts each copy's main at: the two commits copies.sh keeps beside its clones. */
+function baselineBuilt(): Baseline {
+  const at = (side: string) => readFileSync(join(CLONES, `${side}.sha`), 'utf8').trim();
+  return { factory: at('factory'), app: at('app') };
 }
 /**
- * Every test, one line each, from the latest finished run that held it on the baseline the copies have now, which is
- * the pass's (decide.ts's `summaryRun`); each line says the run and the baseline it stood on. A test with no such run
- * reads NOT RUN, whatever an older baseline's run said of it.
+ * Every test, one line each, from the latest finished run of the pass that held it (decide.ts's `summaryRun`): a pass
+ * is confirm.sh's folder, by name, which each run it starts records, with the baseline it stood on. A verdict that
+ * stood on an earlier baseline than the pass's newest run says so before its words; a test the pass never reached
+ * reads NOT RUN, whatever another pass's run said of it.
  */
-function summary() {
-  const baseline = baselineNow();
-  console.log(`the pass's baseline: ${baselineWords(baseline)}`);
+function summary(pass: string | undefined) {
+  if (!pass)
+    throw new Error('summary <pass>: the name of its folder, which confirm.sh gives its runs as PATCHING_PASS');
   const runs = readdirSync(RUNS)
     .filter((d) => existsSync(join(RUNS, d, 'state.json')))
     .sort()
     .map(load)
-    .filter((r) => r.done && !r.flags.includes('--once'));
+    .filter((r) => !r.flags.includes('--once'));
+  const latest = passBaseline(runs, pass);
+  const earlier = [...new Set(runs.filter((r) => r.pass === pass).map((r) => baselineWords(r.baseline)))].filter(
+    (words) => words !== baselineWords(latest),
+  );
+  console.log(`${pass} stands on ${baselineWords(latest)}${earlier.length ? `; earlier: ${earlier.join('; ')}` : ''}`);
   for (const test of TESTS) {
     const id = test.id.padEnd(3);
     const title = test.title.padEnd(46);
     const from = summaryRun(
-      runs.filter((r) => inRun(r, test)),
-      baseline,
+      runs.filter((r) => r.done && inRun(r, test)),
+      pass,
+      latest,
     );
     if (test.notRun) console.log(`${id} NOT RUN  ${title} ${test.notRun}`);
     else if ('notRun' in from) console.log(`${id} NOT RUN  ${title} ${from.notRun}`);
     else {
       const { run } = from;
+      const on = from.earlier ? `(earlier baseline, ${baselineWords(run.baseline)}) ` : '';
       const { pass, why, mark: other } = verdict(run, test);
       const mark = other ?? (run.dropped?.[test.id] ? 'NOT RUN ' : pass ? 'PASS    ' : 'FAIL    ');
-      console.log(`${id} ${mark} ${title} ${why}  [${run.id}, on ${baselineWords(baseline)}]`);
+      console.log(`${id} ${mark} ${title} ${on}${why}  [${run.id}]`);
     }
   }
 }
@@ -3469,7 +3479,8 @@ if (command === 'factory' || command === 'app') {
     only: onlyOf(rest),
     with: withOf(command, rest),
     seen: {},
-    baseline: baselineNow(),
+    pass: process.env.PATCHING_PASS || undefined,
+    baseline: baselineBuilt(),
   };
   save(state);
   if (TESTS.some((t) => t.id === test && t.restart)) runRestart(state);
@@ -3624,10 +3635,10 @@ if (command === 'factory' || command === 'app') {
   }
   report(state);
 } else if (command === 'summary') {
-  summary();
+  summary(rest[0] ?? process.env.PATCHING_PASS);
 } else {
   console.error(
-    'usage: harness.ts factory | app <test> [--limit <min>] [--no-reset] [--no-scan] [--no-kick] [--once] | batch <tests>|none | only <tests> | rests | waits <since> stopped|supervised|either [<said since>] | variables <tests> | resume [<run>] | report [<run>] | logs [<run>] | reread [<run>] | summary',
+    'usage: harness.ts factory | app <test> [--limit <min>] [--no-reset] [--no-scan] [--no-kick] [--once] | batch <tests>|none | only <tests> | rests | waits <since> stopped|supervised|either [<said since>] | variables <tests> | resume [<run>] | report [<run>] | logs [<run>] | reread [<run>] | summary [<pass>]',
   );
   process.exit(2);
 }

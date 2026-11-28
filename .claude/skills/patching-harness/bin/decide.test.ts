@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
+  baselineWords,
   besideWords,
   branchFits,
   certainFail,
@@ -37,6 +38,7 @@ import {
   PIN_PASS_MS,
   type PodFacts,
   type PullFacts,
+  passBaseline,
   pickScan,
   pinsFault,
   pinWatchLacks,
@@ -1088,28 +1090,39 @@ describe("a run's pod logs, from Loki", () => {
 });
 
 describe('the summary of a pass', () => {
-  const pass = { factory: '4fd1e66f00', app: 'f98a567300' };
-  const other = { factory: '90be8b2300', app: '1f07328a00' };
+  const first = { factory: '90be8b2300', app: '1f07328a00' };
+  const fixed = { factory: '4fd1e66f00', app: '1f07328a00' };
+  const runs = [
+    { id: 'before', pass: 'pass-6', baseline: first },
+    { id: 'one', pass: 'pass-7', baseline: first },
+    { id: 'two', pass: 'pass-7', baseline: first },
+    { id: 'by-hand', baseline: fixed },
+    { id: 'three', pass: 'pass-7', baseline: fixed },
+  ];
 
-  it('takes a test’s verdict from its latest run on the pass’s baseline', () => {
-    const runs = [
-      { id: 'one', baseline: pass },
-      { id: 'two', baseline: pass },
-      { id: 'three', baseline: other },
-    ];
-    expect(summaryRun(runs, pass)).toEqual({ run: runs[1] });
+  it('stands on the baseline of the pass’s newest run', () => {
+    expect(passBaseline(runs, 'pass-7')).toEqual(fixed);
+    expect(passBaseline(runs, 'pass-6')).toEqual(first);
+    expect(passBaseline(runs, 'pass-8')).toBeUndefined();
   });
 
-  it('reads NOT RUN for a test the pass never reached, and says what its last run stood on', () => {
-    expect(summaryRun([{ id: 'old', baseline: other }], pass)).toEqual({
-      notRun: 'no finished run on this baseline: old stood on factory 90be8b2, app 1f07328',
-    });
-    // A run on the pass's factory baseline and another app baseline is another baseline.
-    expect(summaryRun([{ id: 'half', baseline: { ...pass, app: other.app } }], pass)).toHaveProperty('notRun');
-    expect(summaryRun([{ id: 'unstamped' }], pass)).toEqual({
-      notRun: 'no finished run on this baseline: unstamped stood on one it did not record',
-    });
-    expect(summaryRun([], pass)).toEqual({ notRun: 'no finished run yet' });
+  it('takes a test’s verdict from its latest run of the pass, on whichever of its baselines', () => {
+    expect(summaryRun(runs, 'pass-7', fixed)).toEqual({ run: runs[4], earlier: false });
+  });
+
+  it('marks a verdict that stood on an earlier baseline than the pass’s latest, and keeps it', () => {
+    expect(summaryRun(runs.slice(0, 3), 'pass-7', fixed)).toEqual({ run: runs[2], earlier: true });
+    expect(summaryRun([{ id: 'unstamped', pass: 'pass-7' }], 'pass-7', fixed)).toHaveProperty('earlier', true);
+  });
+
+  it('reads NOT RUN for a test the pass never reached: a run of another pass, or of none, never counts', () => {
+    expect(summaryRun([runs[0], runs[3]] as typeof runs, 'pass-7', fixed)).toEqual({ notRun: 'not reached in pass-7' });
+    expect(summaryRun([], 'pass-7', fixed)).toEqual({ notRun: 'no finished run yet' });
+  });
+
+  it('says a baseline by both copies’ commits', () => {
+    expect(baselineWords(fixed)).toBe('factory 4fd1e66, app 1f07328');
+    expect(baselineWords(undefined)).toBe('a baseline it did not record');
   });
 });
 

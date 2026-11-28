@@ -897,28 +897,36 @@ export function podLogs(lines: readonly PodLine[]): Map<string, string> {
 
 // ── The summary ─────────────────────────────────────────────────────────────────────────────────────────────────────
 
-/** The commit each copy's `baseline` branch is at: what a run stood on, and what a pass counts its verdicts on. */
+/** The commit of each copy's baseline, as built: what a run stood on. */
 export interface Baseline {
   factory: string;
   app: string;
 }
-export const baselineWords = (b: Baseline) => `factory ${b.factory.slice(0, 7)}, app ${b.app.slice(0, 7)}`;
+export const baselineWords = (b: Baseline | undefined) =>
+  b ? `factory ${b.factory.slice(0, 7)}, app ${b.app.slice(0, 7)}` : 'a baseline it did not record';
+/** What the summary reads of a run: the pass it was of (confirm.sh's folder, by name) and the baseline it stood on. */
+export interface PassRun {
+  id: string;
+  pass?: string | undefined;
+  baseline?: Baseline | undefined;
+}
+/** The baseline a pass stands on now: its newest run's, the runs oldest first. */
+export const passBaseline = (runs: readonly PassRun[], pass: string): Baseline | undefined =>
+  runs.findLast((r) => r.pass === pass)?.baseline;
 /**
  * The run the summary takes a test's verdict from: the latest of the finished runs that held it, oldest first, that
- * stood on the pass's baseline. With none the test reads NOT RUN, and why: the latest run that held it and the
- * baseline that one stood on, never its verdict.
+ * was of the pass, on whichever of the pass's baselines, and whether that is an earlier one than the pass stands on
+ * now (`latest`), as a verdict from before a fix is. A run of another pass, or of none, never counts: with none of
+ * this pass the test reads NOT RUN, whatever an older run said of it.
  */
-export function summaryRun<R extends { id: string; baseline?: Baseline | undefined }>(
+export function summaryRun<R extends PassRun>(
   runs: readonly R[],
-  pass: Baseline,
-): { run: R } | { notRun: string } {
-  const run = runs.findLast((r) => r.baseline?.factory === pass.factory && r.baseline?.app === pass.app);
-  if (run) return { run };
-  const last = runs.at(-1);
-  if (!last) return { notRun: 'no finished run yet' };
-  return {
-    notRun: `no finished run on this baseline: ${last.id} stood on ${last.baseline ? baselineWords(last.baseline) : 'one it did not record'}`,
-  };
+  pass: string,
+  latest: Baseline | undefined,
+): { run: R; earlier: boolean } | { notRun: string } {
+  const run = runs.findLast((r) => r.pass === pass);
+  if (!run) return { notRun: runs.length ? `not reached in ${pass}` : 'no finished run yet' };
+  return { run, earlier: run.baseline?.factory !== latest?.factory || run.baseline?.app !== latest?.app };
 }
 
 // ── Martin asks for changes on a move that would merge ──────────────────────────────────────────────────────────────
