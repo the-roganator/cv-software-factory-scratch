@@ -52,6 +52,7 @@ import {
   probeQuery,
   queuedFault,
   queueWords,
+  resetScan,
   restartVerdict,
   revertedVerdict,
   rolloutProgressing,
@@ -1570,6 +1571,29 @@ describe('a test judged on either of its pins', () => {
     expect(both.mark).toBe('NOT RUN');
     expect(both.why).toContain('4a: pre-flight');
     expect(both.why).toContain('4b: pre-flight');
+  });
+});
+
+describe("the reset's own scan, under a run that stands on a later push's", () => {
+  const baseline = '9cdd6f9';
+  const o = { baseline, since: '2026-11-28T15:12:48Z', before: '2026-11-28T15:19:37Z' };
+  const scan = (id: number, headSha: string, createdAt: string, event = 'push') => ({ id, event, headSha, createdAt });
+  const own = scan(31, baseline, '2026-11-28T15:19:11Z');
+  const summoned = scan(41, 'e72d1db', '2026-11-28T15:19:37Z');
+
+  it("is the scan the baseline's push started, before the one the run stands on", () => {
+    expect(resetScan([summoned, own], o)).toBe(31);
+  });
+
+  it('is never a scan of another commit, one dispatched, or one from before the reset or after the run’s scan', () => {
+    expect(resetScan([summoned], o)).toBeUndefined();
+    expect(resetScan([scan(32, baseline, '2026-11-28T15:19:11Z', 'workflow_dispatch')], o)).toBeUndefined();
+    expect(resetScan([scan(12, baseline, '2026-11-28T13:46:00Z')], o)).toBeUndefined();
+    expect(resetScan([scan(52, baseline, '2026-11-28T15:40:00Z')], o)).toBeUndefined();
+  });
+
+  it('is the newest, where a reset pushed the baseline more than once', () => {
+    expect(resetScan([scan(30, baseline, '2026-11-28T15:15:00Z'), own], o)).toBe(31);
   });
 });
 

@@ -97,6 +97,7 @@ import {
   probeQuery,
   queuedFault,
   queueWords,
+  resetScan,
   restartVerdict,
   revertedVerdict,
   rolloutProgressing,
@@ -846,6 +847,31 @@ function pushScan(repo: string, commit: string, since: string): Scan | undefined
  * The warnings of a scan's run that name one of these moves' pins: by the move's name, or the image's repository or
  * its last part, as the scan words a pin it lists no fix for.
  */
+/**
+ * The reset's own scan under a run that stands on a later push's (decide.ts's `resetScan`): the scan the push of the
+ * baseline started, where the reset's last commit is one past it (the summon for test 22). The baseline's commit is
+ * that commit's parent, read from the commit itself, as the copy's `baseline` branch moves at the next build.
+ */
+function resetScanOf(state: State, repo: string): Scan | undefined {
+  const reset = state.reset;
+  const scan1 = state.scan1;
+  if (!reset || !scan1 || reset.before === reset.after) return undefined;
+  const baseline = api<any>(repo, `commits/${reset.after}`).parents?.[0]?.sha as string | undefined;
+  if (!baseline) return undefined;
+  const runs: any[] =
+    api<any>(repo, `actions/workflows/vulnerabilities.yml/runs?branch=main&event=push&head_sha=${baseline}&per_page=20`)
+      .workflow_runs ?? [];
+  const id = resetScan(
+    runs.map((r) => ({ id: r.id, event: r.event, headSha: r.head_sha, createdAt: r.created_at })),
+    {
+      baseline,
+      since: new Date(Date.parse(reset.startedAt) - 120_000).toISOString().replace(/\.\d+Z$/, 'Z'),
+      before: scan1.createdAt,
+    },
+  );
+  const run = runs.find((r) => r.id === id);
+  return run && { id: run.id, createdAt: run.created_at };
+}
 function scanWarnings(repo: string, scan: Scan, names: string[]): string[] {
   const parts = names.flatMap((name) => {
     const pin = name.includes(': ') ? (name.split(': ').at(-1) ?? name) : name;
@@ -2754,6 +2780,20 @@ function run(state: State) {
     say(state, `scan ${scan.id} ${scan.conclusion}: ${scan.moves?.length ?? 'no'} moves`);
     save(state);
   }
+  // A run that summoned Dependabot stands on the scan of the summon's push, which ran behind the scan the baseline's
+  // own push started and read the state that one left: that earlier scan is the first after the reset, and is read
+  // as it (test 28), where the run would otherwise never read it.
+  if (!state.scan0 && !state.pods0 && state.summonedAt && state.campaign === 'factory') {
+    const first = resetScanOf(state, repo);
+    if (first) {
+      state.scan0 = awaitScan(state, repo, first, 'scan0');
+      say(
+        state,
+        `scan ${first.id}, started ${first.createdAt}: the baseline's own push started it, before the summon's, so it is the first after the reset, with no state; it lists ${state.scan0.moves?.length ?? 'no'} moves`,
+      );
+      save(state);
+    }
+  }
   // The first scan after a reset has no state, so every image's digest and chart's version it finds is first seen
   // that day and waits a day: it lists none of them, and where the pin has a lesser move (an image's, to a bare version
   // of what it carries) it lists that and says the content waits. Where it lacks a move the run's tests stand on, or
@@ -3677,8 +3717,19 @@ if (command === 'factory' || command === 'app') {
   // A finished run judged again from what it recorded: nothing is read from the copy or the cluster as they stand,
   // which a later reset has emptied (its issues, its open pull requests, what was deployed). `--scan2 <id>` names the
   // scan that confirms it, whose moves.json is read afresh: one that finished after the run stopped waiting.
+  // `--scan0` reads the reset's own scan for a run that stood on a later push's and did not read it (`resetScanOf`):
+  // GitHub keeps the scan's run and its moves.json, and the run recorded when each pull request was opened.
   const named = rest.indexOf('--scan2');
-  const state = load((named === 0 ? undefined : rest[0]) ?? latestRun() ?? '');
+  const state = load(rest[0] && !rest[0].startsWith('--') ? rest[0] : (latestRun() ?? ''));
+  if (rest.includes('--scan0')) {
+    const repo = state.campaign === 'app' ? APP : FACTORY;
+    const first = resetScanOf(state, repo);
+    if (!first)
+      throw new Error(`reread --scan0: no scan of ${repo} that the baseline's push started under this run's reset`);
+    state.scan0 = awaitScan(state, repo, first, 'scan0');
+    if (!state.scan0.moves) throw new Error(`scan ${first.id} left no moves.json to read`);
+    save(state);
+  }
   if (named >= 0) {
     const id = Number(rest[named + 1]);
     if (!Number.isInteger(id) || id <= 0) throw new Error('reread <run> --scan2 <id>: the id of a run of the scan');
@@ -3734,7 +3785,7 @@ if (command === 'factory' || command === 'app') {
   summary(rest[0] ?? process.env.PATCHING_PASS);
 } else {
   console.error(
-    'usage: harness.ts factory | app <test> [--limit <min>] [--no-reset] [--no-scan] [--no-kick] [--once] | batch <tests>|none | only <tests> | listing | rests | waits <since> stopped|supervised|either [<said since>] | variables <tests> | resume [<run>] | report [<run>] | logs [<run>] | reread [<run>] | days [<run>] [--read [<seq>]] [--restart] | days --stopped <since> [--restart] | summary [<pass>]',
+    'usage: harness.ts factory | app <test> [--limit <min>] [--no-reset] [--no-scan] [--no-kick] [--once] | batch <tests>|none | only <tests> | listing | rests | waits <since> stopped|supervised|either [<said since>] | variables <tests> | resume [<run>] | report [<run>] | logs [<run>] | reread [<run>] [--scan0] [--scan2 <id>] | days [<run>] [--read [<seq>]] [--restart] | days --stopped <since> [--restart] | summary [<pass>]',
   );
   process.exit(2);
 }
