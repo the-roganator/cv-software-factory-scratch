@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
+  baselineWords,
   besideWords,
   branchFits,
   certainFail,
@@ -20,9 +21,11 @@ import {
   isRoutine,
   issueFault,
   issueOfMove,
+  type LokiStream,
   leftAloneFault,
   lineTooEarly,
   lockfileKey,
+  lokiPage,
   majorNext,
   majorNextFault,
   majorNotFirst,
@@ -35,10 +38,12 @@ import {
   PIN_PASS_MS,
   type PodFacts,
   type PullFacts,
+  passBaseline,
   pickScan,
   pinsFault,
   pinWatchLacks,
   pinWatchLine,
+  podLogs,
   printOf,
   probeQuery,
   queuedFault,
@@ -57,6 +62,8 @@ import {
   staleTarget,
   startingPods,
   stillListed,
+  storeBack,
+  summaryRun,
   type TicketFacts,
   targetOf,
   ticketFault,
@@ -994,6 +1001,17 @@ describe('the store restarting under a report', () => {
     expect(watcherRode(away.replace('"level":40', '"level":30'))).toEqual({ away: false, back: false });
   });
 
+  it('reads "back" from the pod: another uid than the first, not being deleted, Ready', () => {
+    // The pod the report was left under, however healthy.
+    expect(storeBack('a', { uid: 'a', deleting: false, ready: true })).toBe(false);
+    // A replacement on its way out, and one not yet Ready, and none at all.
+    expect(storeBack('a', { uid: 'b', deleting: true, ready: true })).toBe(false);
+    expect(storeBack('a', { uid: 'b', deleting: false, ready: false })).toBe(false);
+    expect(storeBack('a', undefined)).toBe(false);
+    // A replacement met inside the window and left alone is the store.
+    expect(storeBack('a', { uid: 'b', deleting: false, ready: true })).toBe(true);
+  });
+
   it('fails a report the app did not take, and a store that did not restart', () => {
     expect(restartVerdict({ ...ok, posted: 429 }).why).toContain('429');
     expect(restartVerdict({ ...ok, restarted: false }).pass).toBe(false);
@@ -1008,6 +1026,103 @@ describe('the store restarting under a report', () => {
     const verdict = restartVerdict({ ...ok, errors: ['logs-7c9: 1 (check failed)'] });
     expect(verdict.pass).toBe(false);
     expect(verdict.why).toContain('logs-7c9');
+  });
+});
+
+describe("a run's pod logs, from Loki", () => {
+  const entry = (pod: string, ns: string, line: string): LokiStream => ({
+    stream: { k8s_pod_name: pod, k8s_namespace_name: 'factory' },
+    values: [[ns, line]],
+  });
+
+  it('puts a page in time order, whatever order its streams come in, and asks for no more when it is not full', () => {
+    const page = lokiPage(
+      [
+        {
+          stream: { k8s_pod_name: 'github-1' },
+          values: [
+            ['30', 'c'],
+            ['10', 'a'],
+          ],
+        },
+        entry('triage-1', '20', 'b'),
+        { stream: {}, values: [['15', 'no pod']] },
+      ],
+      5,
+    );
+    expect(page.lines.map((l) => `${l.pod} ${l.line}`)).toEqual(['github-1 a', 'triage-1 b', 'github-1 c']);
+    expect(page.next).toBeUndefined();
+  });
+
+  it('starts the next page at a full page’s last nanosecond, and leaves that nanosecond’s lines to it', () => {
+    const page = lokiPage(
+      [entry('github-1', '10', 'a'), entry('github-1', '20', 'b'), entry('triage-1', '20', 'c')],
+      3,
+    );
+    expect(page.lines.map((l) => l.line)).toEqual(['a']);
+    expect(page.next).toBe('20');
+    // The next page gives both lines of that nanosecond, so none is lost or written twice.
+    const next = lokiPage([entry('github-1', '20', 'b'), entry('triage-1', '20', 'c')], 3);
+    expect([...page.lines, ...next.lines].map((l) => l.line)).toEqual(['a', 'b', 'c']);
+    expect(next.next).toBeUndefined();
+  });
+
+  it('keeps a full page of one nanosecond and moves past it', () => {
+    const page = lokiPage(
+      [entry('github-1', '1795828451646141512', 'a'), entry('triage-1', '1795828451646141512', 'b')],
+      2,
+    );
+    expect(page.lines).toHaveLength(2);
+    expect(page.next).toBe('1795828451646141513');
+  });
+
+  it('gives each pod its lines, one a line, as kubectl prints a log', () => {
+    const logs = podLogs([
+      { pod: 'github-1', ns: '10', line: 'a' },
+      { pod: 'triage-1', ns: '20', line: 'b' },
+      { pod: 'github-1', ns: '30', line: 'c' },
+    ]);
+    expect([...logs]).toEqual([
+      ['github-1', 'a\nc\n'],
+      ['triage-1', 'b\n'],
+    ]);
+  });
+});
+
+describe('the summary of a pass', () => {
+  const first = { factory: '90be8b2300', app: '1f07328a00' };
+  const fixed = { factory: '4fd1e66f00', app: '1f07328a00' };
+  const runs = [
+    { id: 'before', pass: 'pass-6', baseline: first },
+    { id: 'one', pass: 'pass-7', baseline: first },
+    { id: 'two', pass: 'pass-7', baseline: first },
+    { id: 'by-hand', baseline: fixed },
+    { id: 'three', pass: 'pass-7', baseline: fixed },
+  ];
+
+  it('stands on the baseline of the pass’s newest run', () => {
+    expect(passBaseline(runs, 'pass-7')).toEqual(fixed);
+    expect(passBaseline(runs, 'pass-6')).toEqual(first);
+    expect(passBaseline(runs, 'pass-8')).toBeUndefined();
+  });
+
+  it('takes a test’s verdict from its latest run of the pass, on whichever of its baselines', () => {
+    expect(summaryRun(runs, 'pass-7', fixed)).toEqual({ run: runs[4], earlier: false });
+  });
+
+  it('marks a verdict that stood on an earlier baseline than the pass’s latest, and keeps it', () => {
+    expect(summaryRun(runs.slice(0, 3), 'pass-7', fixed)).toEqual({ run: runs[2], earlier: true });
+    expect(summaryRun([{ id: 'unstamped', pass: 'pass-7' }], 'pass-7', fixed)).toHaveProperty('earlier', true);
+  });
+
+  it('reads NOT RUN for a test the pass never reached: a run of another pass, or of none, never counts', () => {
+    expect(summaryRun([runs[0], runs[3]] as typeof runs, 'pass-7', fixed)).toEqual({ notRun: 'not reached in pass-7' });
+    expect(summaryRun([], 'pass-7', fixed)).toEqual({ notRun: 'no finished run yet' });
+  });
+
+  it('says a baseline by both copies’ commits', () => {
+    expect(baselineWords(fixed)).toBe('factory 4fd1e66, app 1f07328');
+    expect(baselineWords(undefined)).toBe('a baseline it did not record');
   });
 });
 
