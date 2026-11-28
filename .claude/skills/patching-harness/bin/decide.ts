@@ -843,6 +843,84 @@ export function restartVerdict(o: {
   };
 }
 
+/** The store's pod as the cluster has it (W5): its uid, whether it is being deleted, and whether it is Ready. */
+export interface StorePod {
+  uid: string;
+  deleting: boolean;
+  ready: boolean;
+}
+/**
+ * Whether the store is back after W5 kept it away: a pod of another uid than the one the report was left under, not
+ * being deleted, and Ready. It is read from the pod as it stands, so a replacement that came inside the window and was
+ * left alone is the store, and one still going is not.
+ */
+export const storeBack = (was: string, pod: StorePod | undefined): boolean =>
+  pod !== undefined && pod.uid !== was && !pod.deleting && pod.ready;
+
+// ── Every pod's log for a run, from Loki ────────────────────────────────────────────────────────────────────────────
+
+/** A stream of Loki's answer to a range query: its labels, and each entry's time in nanoseconds with its line. */
+export interface LokiStream {
+  stream: Record<string, string>;
+  values: [string, string][];
+}
+/** A line a pod logged, and when, in nanoseconds. */
+export interface PodLine {
+  pod: string;
+  ns: string;
+  line: string;
+}
+/** How many lines one query asks Loki for: the most it gives. */
+export const LOKI_PAGE = 5000;
+/**
+ * A page of Loki's answer as lines, oldest first, and where the next page starts when this one is full: at its last
+ * line's nanosecond, whose lines are left for that page to give whole, as several pods may log within one. A full page
+ * of a single nanosecond is kept, and the next starts after it.
+ */
+export function lokiPage(streams: readonly LokiStream[], limit: number): { lines: PodLine[]; next?: string } {
+  const lines = streams
+    .flatMap((s) => s.values.map(([ns, line]) => ({ pod: s.stream.k8s_pod_name ?? '', ns, line })))
+    .filter((l) => l.pod)
+    .sort((a, b) => (BigInt(a.ns) < BigInt(b.ns) ? -1 : BigInt(a.ns) > BigInt(b.ns) ? 1 : 0));
+  const count = streams.reduce((sum, s) => sum + s.values.length, 0);
+  const last = lines.at(-1)?.ns;
+  if (count < limit || last === undefined) return { lines };
+  if (lines[0]?.ns === last) return { lines, next: String(BigInt(last) + 1n) };
+  return { lines: lines.filter((l) => l.ns !== last), next: last };
+}
+/** Each pod's log from its lines in the order given, a line each, as `kubectl logs` prints one. */
+export function podLogs(lines: readonly PodLine[]): Map<string, string> {
+  const logs = new Map<string, string>();
+  for (const { pod, line } of lines) logs.set(pod, `${logs.get(pod) ?? ''}${line}\n`);
+  return logs;
+}
+
+// ── The summary ─────────────────────────────────────────────────────────────────────────────────────────────────────
+
+/** The commit each copy's `baseline` branch is at: what a run stood on, and what a pass counts its verdicts on. */
+export interface Baseline {
+  factory: string;
+  app: string;
+}
+export const baselineWords = (b: Baseline) => `factory ${b.factory.slice(0, 7)}, app ${b.app.slice(0, 7)}`;
+/**
+ * The run the summary takes a test's verdict from: the latest of the finished runs that held it, oldest first, that
+ * stood on the pass's baseline. With none the test reads NOT RUN, and why: the latest run that held it and the
+ * baseline that one stood on, never its verdict.
+ */
+export function summaryRun<R extends { id: string; baseline?: Baseline | undefined }>(
+  runs: readonly R[],
+  pass: Baseline,
+): { run: R } | { notRun: string } {
+  const run = runs.findLast((r) => r.baseline?.factory === pass.factory && r.baseline?.app === pass.app);
+  if (run) return { run };
+  const last = runs.at(-1);
+  if (!last) return { notRun: 'no finished run yet' };
+  return {
+    notRun: `no finished run on this baseline: ${last.id} stood on ${last.baseline ? baselineWords(last.baseline) : 'one it did not record'}`,
+  };
+}
+
 // ── Martin asks for changes on a move that would merge ──────────────────────────────────────────────────────────────
 
 /** How the timeline names a review, as a touch: the run's own, on the test that asks for changes, is no one's hand. */

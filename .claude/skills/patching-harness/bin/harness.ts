@@ -32,6 +32,7 @@
  *                                       as that says, by the worker's own word (confirm.sh's batch D asks)
  *     node harness.ts resume <run>      carry on a run that was stopped
  *     node harness.ts report [<run>]    the lines of a run (the latest by default)
+ *     node harness.ts logs [<run>]      every factory pod's log for a run, from Loki, beside those it kept
  */
 // biome-ignore-all lint/suspicious/noExplicitAny: it reads GitHub's and the cluster's JSON as each gives it, untyped
 import { execFileSync } from 'node:child_process';
@@ -43,12 +44,15 @@ import {
   readdirSync,
   readFileSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { APP, FACTORY, TESTS, type Test } from './catalogue.ts';
 import {
+  type Baseline,
+  baselineWords,
   besideWords,
   branchFits,
   certainFail,
@@ -64,8 +68,10 @@ import {
   isRoutine,
   issueFault,
   issueOfMove,
+  LOKI_PAGE,
   leftAloneFault,
   lineTooEarly,
+  lokiPage,
   MOVED_WAIT_MS,
   type MovesFile,
   majorNext,
@@ -76,10 +82,12 @@ import {
   newerFault,
   notListed,
   PIN_PASS_LIMIT_MS,
+  type PodLine,
   pickScan,
   pinsFault,
   pinWatchLacks,
   pinWatchLine,
+  podLogs,
   printOf,
   probeQuery,
   queuedFault,
@@ -90,12 +98,15 @@ import {
   rolloutProgressing,
   routineBranch,
   rulesetsFault,
+  type StorePod,
   saysNotPulled,
   seenToTheGates,
   settleMs,
   shownAs,
   startingPods,
   stillListed,
+  storeBack,
+  summaryRun,
   type TicketFacts,
   ticketFault,
   unreadMoves,
@@ -694,6 +705,8 @@ interface State {
   };
   limitMin: number;
   flags: string[];
+  /** The commit each copy's `baseline` branch was at when the run began: what its verdicts stood on. */
+  baseline?: Baseline;
   /** A small run: the only tests this run stands for (`--only 1,2,N4`). The rest are not run, and not judged from it. */
   only?: string[] | undefined;
   resetAt?: string | undefined;
@@ -745,6 +758,8 @@ interface State {
   scan2?: Scan | undefined;
   /** `errorAt`: when each error line was logged (ISO; '' where the line gave no time), so a move answers only for those since its pull request opened. */
   clean?: { errors: string[]; unhealthy: string[]; restarted: string[]; errorAt?: string[] };
+  /** The end of what the run's logs are read from Loki to: when they were first read. */
+  logsUntil?: string;
   /** The forgeries forge.ts made for this run: each test's pull request and the commit that must be held. */
   forged?: Record<string, { number?: number; head?: string; refused?: string; landed?: string }>;
   seen: Record<string, Seen>;
@@ -1693,6 +1708,7 @@ function clean(state: State): NonNullable<State['clean']> {
   const restarted = now.pods
     .filter((p) => state.pods0 && p.name in state.pods0 && p.restarts > (state.pods0[p.name] ?? 0))
     .map((p) => `${p.name} +${p.restarts - (state.pods0?.[p.name] ?? 0)}`);
+  lokiLogs(state, new Date());
   return { errors, unhealthy, restarted, errorAt };
 }
 /** Each factory worker's error lines since a time, a line a pod, and when each was logged; its log is kept with the run. */
@@ -1729,6 +1745,50 @@ function errorLines(state: State, now: Cluster, since: string): { errors: string
     }
   }
   return { errors, errorAt };
+}
+/**
+ * Every factory pod's log for the run, from Loki, which still has the lines of a pod a deploy replaced: from the
+ * run's reset (or the report, or its scan) to `until`, the first time it is read, a file for each pod that has none
+ * yet, so `kubectl logs`' own stays the word on a pod that was alive at the end. A read through the API server, with
+ * no port-forward. Nothing is judged from these files, and a failure is said and fails nothing.
+ */
+function lokiLogs(state: State, until: Date) {
+  try {
+    const from = state.reset?.startedAt ?? state.restart?.at ?? state.scan1?.createdAt;
+    if (!from) throw new Error('the run has no reset, report or scan to read from');
+    state.logsUntil ??= until.toISOString();
+    const lines: PodLine[] = [];
+    for (let start: string | undefined = `${Date.parse(from)}000000`; start; ) {
+      const query = new URLSearchParams({
+        query: '{service_name="pod-logs", k8s_namespace_name="factory"}',
+        start,
+        end: `${Date.parse(state.logsUntil)}000000`,
+        limit: String(LOKI_PAGE),
+        direction: 'forward',
+      });
+      const path = `/api/v1/namespaces/telemetry/services/loki:3100/proxy/loki/api/v1/query_range?${query}`;
+      const page = lokiPage(JSON.parse(kubectl(['get', '--raw', path], 300_000)).data.result, LOKI_PAGE);
+      lines.push(...page.lines);
+      start = page.next;
+    }
+    const dir = join(dirOf(state.id), 'logs');
+    mkdirSync(dir, { recursive: true });
+    const kept: string[] = [];
+    for (const [pod, text] of podLogs(lines)) {
+      if (existsSync(join(dir, `${pod}.log`))) continue;
+      writeFileSync(join(dir, `${pod}.log`), text);
+      kept.push(`${pod} (${text.split('\n').length - 1})`);
+    }
+    save(state);
+    say(
+      state,
+      kept.length
+        ? `kept from Loki, each pod that had no log here, with its lines: ${kept.join(', ')}`
+        : 'Loki has no factory pod of the run whose log is not already kept',
+    );
+  } catch (error) {
+    say(state, `Loki's logs of the run's pods were not kept: ${String((error as Error).message).slice(0, 300)}`);
+  }
 }
 
 // ── The verdict, one line a test ────────────────────────────────────────────────────────────────────────────────────
@@ -2295,8 +2355,19 @@ function report(state: State) {
     console.log(`\nthe harness restarted the GitHub worker and the dependency sense at ${state.kickedAt}`);
 }
 
-/** Every test, one line each, from the latest finished run that held it. */
+/** The commit each copy's `baseline` branch is at now. */
+function baselineNow(): Baseline {
+  const at = (repo: string) => sh('gh', ['api', `repos/${repo}/commits/baseline`, '--jq', '.sha']).trim();
+  return { factory: at(FACTORY), app: at(APP) };
+}
+/**
+ * Every test, one line each, from the latest finished run that held it on the baseline the copies have now, which is
+ * the pass's (decide.ts's `summaryRun`); each line says the run and the baseline it stood on. A test with no such run
+ * reads NOT RUN, whatever an older baseline's run said of it.
+ */
 function summary() {
+  const baseline = baselineNow();
+  console.log(`the pass's baseline: ${baselineWords(baseline)}`);
   const runs = readdirSync(RUNS)
     .filter((d) => existsSync(join(RUNS, d, 'state.json')))
     .sort()
@@ -2305,13 +2376,17 @@ function summary() {
   for (const test of TESTS) {
     const id = test.id.padEnd(3);
     const title = test.title.padEnd(46);
-    const run = runs.filter((r) => inRun(r, test)).at(-1);
+    const from = summaryRun(
+      runs.filter((r) => inRun(r, test)),
+      baseline,
+    );
     if (test.notRun) console.log(`${id} NOT RUN  ${title} ${test.notRun}`);
-    else if (!run) console.log(`${id} NOT RUN  ${title} no finished run yet`);
+    else if ('notRun' in from) console.log(`${id} NOT RUN  ${title} ${from.notRun}`);
     else {
+      const { run } = from;
       const { pass, why, mark: other } = verdict(run, test);
       const mark = other ?? (run.dropped?.[test.id] ? 'NOT RUN ' : pass ? 'PASS    ' : 'FAIL    ');
-      console.log(`${id} ${mark} ${title} ${why}  [${run.id}]`);
+      console.log(`${id} ${mark} ${title} ${why}  [${run.id}, on ${baselineWords(baseline)}]`);
     }
   }
 }
@@ -3249,29 +3324,19 @@ function runRestart(state: State) {
     Number(
       store(`select count(*) from inbox where sense = 'report' and signal->'report'->>'text' = '${text}'`)[0]?.[0] ?? 0,
     );
-  const uid = () => {
+  const pod = (): StorePod | undefined => {
     try {
-      return kubectl(['-n', 'factory', 'get', 'pod', 'postgres-0', '-o', 'jsonpath={.metadata.uid} {.status.phase}']);
+      const { metadata, status } = JSON.parse(kubectl(['-n', 'factory', 'get', 'pod', 'postgres-0', '-o', 'json']));
+      return {
+        uid: metadata.uid,
+        deleting: Boolean(metadata.deletionTimestamp),
+        ready: Boolean(status?.containerStatuses?.[0]?.ready),
+      };
     } catch {
-      return '';
+      return undefined;
     }
   };
-  const ready = () => {
-    try {
-      return kubectl([
-        '-n',
-        'factory',
-        'get',
-        'pod',
-        'postgres-0',
-        '-o',
-        'jsonpath={.status.containerStatuses[0].ready}',
-      ]);
-    } catch {
-      return '';
-    }
-  };
-  const was = uid().split(' ')[0] ?? '';
+  const was = pod()?.uid ?? '';
   if (!was) throw new Error('pre-flight, no verdict: the scratch store has no pod postgres-0');
   const at = new Date().toISOString();
   const posted = Number(
@@ -3293,27 +3358,23 @@ function runRestart(state: State) {
     ]).trim(),
   );
   // Away for some 25 seconds, so at least two of the watcher's turns (every ten) fall inside: the StatefulSet puts the
-  // pod back within seconds, so it is deleted again each time it is there. Only ever the pod.
+  // pod back within seconds and Postgres serves a second after, so the pod is deleted a few times a second, each
+  // replacement before it is Ready. Only ever the pod.
   const awayFrom = Date.now();
-  const gone = new Set<string>([was]);
   while (Date.now() - awayFrom < 25_000) {
     try {
       kubectl(['-n', 'factory', 'delete', 'pod', 'postgres-0', '--wait=false', '--ignore-not-found']);
     } catch {}
-    sleep(2_000);
-    const now = uid().split(' ')[0] ?? '';
-    if (now) gone.add(now);
+    sleep(250);
   }
-  // The last one deleted may still be going: a pod met in the window is never the one that counts as back.
   const awayS = Math.round((Date.now() - awayFrom) / 1000);
   say(state, `left a report through the app (${posted}) and kept the store's pod away for ${awayS} s`);
   state.restart = { at, posted, restarted: false, inbox: 0, errors: [], unhealthy: [], awayS };
   save(state);
-  // Back: a pod of another uid than any deleted, ready.
+  // Back, as the pod itself says (decide.ts's `storeBack`): the last one deleted may still be going.
   for (let i = 0; i < 60 && !state.restart.restarted; i++) {
     sleep(5_000);
-    const now = uid().split(' ')[0] ?? '';
-    state.restart.restarted = Boolean(now) && !gone.has(now) && ready() === 'true';
+    state.restart.restarted = storeBack(was, pod());
   }
   say(state, state.restart.restarted ? 'the store is back' : 'the store did not come back in five minutes');
   for (let i = 0; state.restart.restarted && posted === 202 && i < 72; i++) {
@@ -3334,6 +3395,7 @@ function runRestart(state: State) {
   }
   const now = cluster();
   state.restart.errors = errorLines(state, now, at).errors;
+  lokiLogs(state, new Date());
   try {
     state.restart.watcher = watcherRode(
       kubectl(['-n', 'factory', 'logs', 'deployment/logs', '--all-containers', `--since-time=${at}`], 300_000),
@@ -3407,6 +3469,7 @@ if (command === 'factory' || command === 'app') {
     only: onlyOf(rest),
     with: withOf(command, rest),
     seen: {},
+    baseline: baselineNow(),
   };
   save(state);
   if (TESTS.some((t) => t.id === test && t.restart)) runRestart(state);
@@ -3536,6 +3599,11 @@ if (command === 'factory' || command === 'app') {
   run(load(rest[0] ?? latestRun() ?? ''));
 } else if (command === 'report') {
   report(load(rest[0] ?? latestRun() ?? ''));
+} else if (command === 'logs') {
+  // A run's pod logs from Loki, which keeps them seven days: to the run's last word the first time, and no file it
+  // already has is written again.
+  const state = load(rest[0] ?? latestRun() ?? '');
+  lokiLogs(state, statSync(join(dirOf(state.id), 'log.txt')).mtime);
 } else if (command === 'reread') {
   // A finished run judged again from what it recorded: nothing is read from the copy or the cluster as they stand,
   // which a later reset has emptied (its issues, its open pull requests, what was deployed). `--scan2 <id>` names the
@@ -3559,7 +3627,7 @@ if (command === 'factory' || command === 'app') {
   summary();
 } else {
   console.error(
-    'usage: harness.ts factory | app <test> [--limit <min>] [--no-reset] [--no-scan] [--no-kick] [--once] | batch <tests>|none | only <tests> | rests | waits <since> stopped|supervised|either [<said since>] | variables <tests> | resume [<run>] | report [<run>] | reread [<run>] | summary',
+    'usage: harness.ts factory | app <test> [--limit <min>] [--no-reset] [--no-scan] [--no-kick] [--once] | batch <tests>|none | only <tests> | rests | waits <since> stopped|supervised|either [<said since>] | variables <tests> | resume [<run>] | report [<run>] | logs [<run>] | reread [<run>] | summary',
   );
   process.exit(2);
 }
