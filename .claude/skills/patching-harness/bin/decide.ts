@@ -843,6 +843,92 @@ export function restartVerdict(o: {
   };
 }
 
+/** The store's pod as the cluster has it (W5): its uid, whether it is being deleted, and whether it is Ready. */
+export interface StorePod {
+  uid: string;
+  deleting: boolean;
+  ready: boolean;
+}
+/**
+ * Whether the store is back after W5 kept it away: a pod of another uid than the one the report was left under, not
+ * being deleted, and Ready. It is read from the pod as it stands, so a replacement that came inside the window and was
+ * left alone is the store, and one still going is not.
+ */
+export const storeBack = (was: string, pod: StorePod | undefined): boolean =>
+  pod !== undefined && pod.uid !== was && !pod.deleting && pod.ready;
+
+// ── Every pod's log for a run, from Loki ────────────────────────────────────────────────────────────────────────────
+
+/** A stream of Loki's answer to a range query: its labels, and each entry's time in nanoseconds with its line. */
+export interface LokiStream {
+  stream: Record<string, string>;
+  values: [string, string][];
+}
+/** A line a pod logged, and when, in nanoseconds. */
+export interface PodLine {
+  pod: string;
+  ns: string;
+  line: string;
+}
+/** How many lines one query asks Loki for: the most it gives. */
+export const LOKI_PAGE = 5000;
+/**
+ * A page of Loki's answer as lines, oldest first, and where the next page starts when this one is full: at its last
+ * line's nanosecond, whose lines are left for that page to give whole, as several pods may log within one. A full page
+ * of a single nanosecond is kept, and the next starts after it.
+ */
+export function lokiPage(streams: readonly LokiStream[], limit: number): { lines: PodLine[]; next?: string } {
+  const lines = streams
+    .flatMap((s) => s.values.map(([ns, line]) => ({ pod: s.stream.k8s_pod_name ?? '', ns, line })))
+    .filter((l) => l.pod)
+    .sort((a, b) => (BigInt(a.ns) < BigInt(b.ns) ? -1 : BigInt(a.ns) > BigInt(b.ns) ? 1 : 0));
+  const count = streams.reduce((sum, s) => sum + s.values.length, 0);
+  const last = lines.at(-1)?.ns;
+  if (count < limit || last === undefined) return { lines };
+  if (lines[0]?.ns === last) return { lines, next: String(BigInt(last) + 1n) };
+  return { lines: lines.filter((l) => l.ns !== last), next: last };
+}
+/** Each pod's log from its lines in the order given, a line each, as `kubectl logs` prints one. */
+export function podLogs(lines: readonly PodLine[]): Map<string, string> {
+  const logs = new Map<string, string>();
+  for (const { pod, line } of lines) logs.set(pod, `${logs.get(pod) ?? ''}${line}\n`);
+  return logs;
+}
+
+// ── The summary ─────────────────────────────────────────────────────────────────────────────────────────────────────
+
+/** The commit of each copy's baseline, as built: what a run stood on. */
+export interface Baseline {
+  factory: string;
+  app: string;
+}
+export const baselineWords = (b: Baseline | undefined) =>
+  b ? `factory ${b.factory.slice(0, 7)}, app ${b.app.slice(0, 7)}` : 'a baseline it did not record';
+/** What the summary reads of a run: the pass it was of (confirm.sh's folder, by name) and the baseline it stood on. */
+export interface PassRun {
+  id: string;
+  pass?: string | undefined;
+  baseline?: Baseline | undefined;
+}
+/** The baseline a pass stands on now: its newest run's, the runs oldest first. */
+export const passBaseline = (runs: readonly PassRun[], pass: string): Baseline | undefined =>
+  runs.findLast((r) => r.pass === pass)?.baseline;
+/**
+ * The run the summary takes a test's verdict from: the latest of the finished runs that held it, oldest first, that
+ * was of the pass, on whichever of the pass's baselines, and whether that is an earlier one than the pass stands on
+ * now (`latest`), as a verdict from before a fix is. A run of another pass, or of none, never counts: with none of
+ * this pass the test reads NOT RUN, whatever an older run said of it.
+ */
+export function summaryRun<R extends PassRun>(
+  runs: readonly R[],
+  pass: string,
+  latest: Baseline | undefined,
+): { run: R; earlier: boolean } | { notRun: string } {
+  const run = runs.findLast((r) => r.pass === pass);
+  if (!run) return { notRun: runs.length ? `not reached in ${pass}` : 'no finished run yet' };
+  return { run, earlier: run.baseline?.factory !== latest?.factory || run.baseline?.app !== latest?.app };
+}
+
 // ── Martin asks for changes on a move that would merge ──────────────────────────────────────────────────────────────
 
 /** How the timeline names a review, as a touch: the run's own, on the test that asks for changes, is no one's hand. */
@@ -1466,4 +1552,151 @@ export function majorNext(
   if (lists) return { scan: lists.id, listed: true };
   const waits = later.find((scan) => shownAs({ [WAITING_KEY]: scan[WAITING_KEY] }, first.name) === 'waiting');
   return waits ? { scan: waits.id, listed: false } : undefined;
+}
+
+// ── The sense's day ─────────────────────────────────────────────────────────────────────────────────────────────────
+
+/** A pull request or issue of the dependency sense's day (`patching.read`'s `pulls`), as the store or the public has it. */
+export interface DayRow {
+  kind: string;
+  number?: number;
+  moves: { name: string; lockfile: boolean; package?: string }[];
+  opened: string;
+  state: string;
+  settled?: string;
+  rule?: string;
+  checks?: { state: string; try: number; of: number; failed: { name: string; run: number }[] };
+  hold?: string;
+  issue?: string;
+  withheld?: boolean;
+}
+/** What GitHub says of a head whose checks are out of runs: the required checks red, its `Checks-run:`, its failed runs. */
+export interface SpentFacts {
+  red: string[];
+  run: number;
+  failed: { name: string; run: number }[];
+}
+/**
+ * One thing a day is asked: a pull request as GitHub had it when the day was read, the tests it stands for, and how it
+ * must wait where a test says (`hold`, `spent`); or an issue of the App's, which must only be there.
+ */
+export interface DayAsk {
+  tests: string[];
+  number: number;
+  issue?: boolean;
+  state?: string;
+  mergedAt?: string | undefined;
+  rule?: string | undefined;
+  hold?: 'level' | 'stopped';
+  spent?: SpentFacts;
+}
+/** A day as a run keeps it: the factory copy's rows as the store has them and as the public is served them, and what is asked. */
+export interface KeptDay {
+  label: string;
+  seq: number;
+  read: string;
+  rows: DayRow[];
+  public: DayRow[];
+  asks: DayAsk[];
+}
+const said = (word: string | undefined) => (word ? `\`${word}\`` : 'none');
+/**
+ * Why a row is not GitHub's pull request: another state, a merge at another second, or, while it is open and the gate
+ * has judged, another rule. `opened` is not compared: for a pull request's first hour it is the pin watch's own clock.
+ */
+export function rowFault(row: DayRow | undefined, pull: Pick<DayAsk, 'state' | 'mergedAt' | 'rule'>) {
+  if (!row) return 'not in the day';
+  if (row.state !== pull.state) return `${row.state} in the day, ${pull.state} on GitHub`;
+  if (pull.mergedAt && Date.parse(row.settled ?? '') !== Date.parse(pull.mergedAt))
+    return `merged at ${row.settled} in the day, ${pull.mergedAt} on GitHub`;
+  if (pull.state === 'open' && pull.rule && row.rule !== pull.rule)
+    return `rule ${said(row.rule)} and hold ${said(row.hold)} in the day, where the gate's rule on GitHub is ${said(pull.rule)}`;
+  return undefined;
+}
+/** Why an open row does not wait for the level or the stop, which the worker asks last, its checks through. */
+export function holdFault(row: DayRow, hold: 'level' | 'stopped') {
+  if (row.hold !== hold) return `hold ${said(row.hold)} in the day, not ${said(hold)}`;
+  if (row.checks?.state !== 'passed') return `hold ${said(hold)} with its checks ${row.checks?.state ?? 'unsaid'}`;
+  return undefined;
+}
+/**
+ * Why a row does not say its checks are out of runs as GitHub has them: the hold, the checks failed on the last try,
+ * that try the head's own run, a failed check named that GitHub has red, and each named with a failed run of the head's.
+ */
+export function spentFault(row: DayRow, github: SpentFacts) {
+  const checks = row.checks;
+  if (row.hold !== 'checks-spent') return `hold ${said(row.hold)} in the day, not \`checks-spent\``;
+  if (checks?.state !== 'failed' || checks.try !== checks.of || checks.try !== github.run)
+    return `checks ${checks?.state ?? 'unsaid'} on try ${checks?.try} of ${checks?.of} in the day, not failed on the last, which is run ${github.run} on GitHub`;
+  if (!checks.failed.some((f) => github.red.includes(f.name)))
+    return `the day names ${checks.failed.map((f) => f.name).join(', ') || 'no check'}, where GitHub has ${github.red.join(', ') || 'none'} red`;
+  const stray = checks.failed.find((f) => !github.failed.some((g) => g.name === f.name && g.run === f.run));
+  return stray ? `${stray.name}'s run ${stray.run} is none of the head's failed runs on GitHub` : undefined;
+}
+/**
+ * Why the public's row is not the store's as a visitor may read it (packages/events/src/public.ts's `publicPull`): no
+ * move's package ever; one with a lockfile's move and not merged is `withheld`, with no number, its times to the day,
+ * no failed check, and, unless it is open with no hold, nothing of what it waits for; any other is whole.
+ */
+export function withheldFault(row: DayRow, pub: DayRow | undefined) {
+  if (!pub) return 'no row of the public day beside it';
+  if (pub.moves.some((m) => m.package !== undefined)) return "the public has a move's package";
+  if (!row.moves.some((m) => m.lockfile) || row.state === 'merged')
+    return pub.withheld || pub.number !== row.number ? 'the public withholds it, and it is public whole' : undefined;
+  if (!pub.withheld || pub.number !== undefined) return 'the public has its number';
+  if (![pub.opened, pub.settled ?? pub.opened].every((t) => t.endsWith('T00:00:00Z')))
+    return 'the public has its times to the second';
+  if (pub.checks?.failed.length) return 'the public names its failed checks';
+  const waits = row.state !== 'open' || row.kind === 'issue' || row.hold !== undefined;
+  return waits && [pub.rule, pub.hold, pub.checks, pub.issue].some((v) => v !== undefined)
+    ? 'the public says what it waits for'
+    : undefined;
+}
+/**
+ * A kept day judged: a line for each thing asked, as GitHub or what differs, and one for the whole public day, row by
+ * row beside the store's. A lockfile's package is in no line.
+ */
+export function dayLines(day: KeptDay): { lines: string[]; faults: number } {
+  const lines = [`the sense's day, ${day.label} (seq ${day.seq}, read ${day.read.slice(11, 19)}Z):`];
+  let faults = 0;
+  const line = (what: string, fault: string | undefined, words: string) => {
+    if (fault) faults++;
+    lines.push(`  ${what}: ${fault ? `FAULT ${fault}` : words}`);
+  };
+  for (const ask of day.asks) {
+    const at = day.rows.findIndex((r) => r.number === ask.number);
+    const row = day.rows[at];
+    const fault =
+      (ask.issue ? (row ? undefined : 'not in the day') : rowFault(row, ask)) ??
+      (row && ask.spent ? spentFault(row, ask.spent) : undefined) ??
+      (row && ask.hold ? holdFault(row, ask.hold) : undefined) ??
+      (row ? withheldFault(row, day.public[at]) : undefined);
+    const words = [
+      row?.state === 'merged'
+        ? `merged ${row.settled?.slice(11)}, read ${Math.round((Date.parse(day.read) - Date.parse(row.settled ?? '')) / 1000)} s later`
+        : row?.state,
+      row?.rule && `rule ${said(row.rule)}`,
+      row?.hold && `hold ${said(row.hold)}`,
+      ask.spent &&
+        row?.checks &&
+        `${row.checks.failed.map((f) => `${f.name} (run ${f.run})`).join(', ')} failed on try ${row.checks.try} of ${row.checks.of}`,
+      day.public[at]?.withheld && 'withheld from the public',
+    ].filter(Boolean);
+    line(
+      `${ask.issue ? 'issue ' : ''}#${ask.number} ${ask.tests.join(' ')}`,
+      fault,
+      `${words.join(', ')}${ask.issue ? '' : ': as GitHub'}`,
+    );
+  }
+  const off = day.rows.findIndex((row, i) => withheldFault(row, day.public[i]));
+  line(
+    "the public's day",
+    day.rows.length !== day.public.length
+      ? `${day.public.length} rows, where the store has ${day.rows.length}`
+      : off >= 0
+        ? `row ${off + 1}, #${day.rows[off]?.number}: ${withheldFault(day.rows[off] as DayRow, day.public[off])}`
+        : undefined,
+    `${day.rows.length} rows, ${day.public.filter((r) => r.withheld).length} withheld, each as a visitor may read it`,
+  );
+  return { lines, faults };
 }

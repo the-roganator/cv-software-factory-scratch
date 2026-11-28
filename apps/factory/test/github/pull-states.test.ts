@@ -130,6 +130,18 @@ describe('the record of pull requests that carry moves', () => {
     expect(parses(states.read(FACTORY).pulls).success).toBe(true);
   });
 
+  it('gives the pin watch what a queue last said of a head, and nothing of any other head or pull request', () => {
+    const states = new PullStates({ sources, now: () => NOW });
+    states.say(FACTORY, 1040, HEAD, { rule: 'move' }, true);
+    states.say(FACTORY, 1040, HEAD, { hold: 'checks-spent' });
+    expect(states.said(FACTORY, 1040, HEAD)).toEqual({ rule: 'move', hold: 'checks-spent' });
+    expect(states.said(FACTORY, 1040, 'f'.repeat(40))).toBeUndefined();
+    expect(states.said(FACTORY, 1041, HEAD)).toBeUndefined();
+    // A new head's say is in place of the old one's.
+    states.say(FACTORY, 1040, 'f'.repeat(40), { rule: 'move' }, true);
+    expect(states.said(FACTORY, 1040, HEAD)).toBeUndefined();
+  });
+
   it('keeps what settled in the last 28 days, newest first after the open ones, and nothing older', () => {
     const states = new PullStates({ sources: () => ['pins'], now: () => NOW });
     states.saw(FACTORY, 'pins', [

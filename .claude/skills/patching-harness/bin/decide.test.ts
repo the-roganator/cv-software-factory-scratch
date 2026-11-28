@@ -5,12 +5,15 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   appLockfileMove,
+  baselineWords,
   besideWords,
   branchFits,
   certainFail,
   changesVerdict,
   clearsAs,
+  type DayRow,
   type DuplicateFacts,
+  dayLines,
   dependabotMissing,
   duplicateVerdict,
   eitherVerdict,
@@ -21,12 +24,15 @@ import {
   type HoldFacts,
   holdBroken,
   holdDecided,
+  holdFault,
   isRoutine,
   issueFault,
   issueOfMove,
+  type LokiStream,
   leftAloneFault,
   lineTooEarly,
   lockfileKey,
+  lokiPage,
   majorNext,
   majorNextFault,
   majorNotFirst,
@@ -39,10 +45,12 @@ import {
   PIN_PASS_MS,
   type PodFacts,
   type PullFacts,
+  passBaseline,
   pickScan,
   pinsFault,
   pinWatchLacks,
   pinWatchLine,
+  podLogs,
   printOf,
   probeQuery,
   queuedFault,
@@ -53,14 +61,18 @@ import {
   rolloutProgressing,
   routineBranch,
   routineMajorBranch,
+  rowFault,
   type ScanRun,
   saysNotPulled,
   seenToTheGates,
   settleMs,
   shownAs,
+  spentFault,
   staleTarget,
   startingPods,
   stillListed,
+  storeBack,
+  summaryRun,
   type TicketFacts,
   targetOf,
   ticketFault,
@@ -71,6 +83,7 @@ import {
   waitsReading,
   watcherRode,
   watchRead,
+  withheldFault,
   withoutDependabot,
   withSetting,
   workflowPins,
@@ -999,6 +1012,17 @@ describe('the store restarting under a report', () => {
     expect(watcherRode(away.replace('"level":40', '"level":30'))).toEqual({ away: false, back: false });
   });
 
+  it('reads "back" from the pod: another uid than the first, not being deleted, Ready', () => {
+    // The pod the report was left under, however healthy.
+    expect(storeBack('a', { uid: 'a', deleting: false, ready: true })).toBe(false);
+    // A replacement on its way out, and one not yet Ready, and none at all.
+    expect(storeBack('a', { uid: 'b', deleting: true, ready: true })).toBe(false);
+    expect(storeBack('a', { uid: 'b', deleting: false, ready: false })).toBe(false);
+    expect(storeBack('a', undefined)).toBe(false);
+    // A replacement met inside the window and left alone is the store.
+    expect(storeBack('a', { uid: 'b', deleting: false, ready: true })).toBe(true);
+  });
+
   it('fails a report the app did not take, and a store that did not restart', () => {
     expect(restartVerdict({ ...ok, posted: 429 }).why).toContain('429');
     expect(restartVerdict({ ...ok, restarted: false }).pass).toBe(false);
@@ -1013,6 +1037,103 @@ describe('the store restarting under a report', () => {
     const verdict = restartVerdict({ ...ok, errors: ['logs-7c9: 1 (check failed)'] });
     expect(verdict.pass).toBe(false);
     expect(verdict.why).toContain('logs-7c9');
+  });
+});
+
+describe("a run's pod logs, from Loki", () => {
+  const entry = (pod: string, ns: string, line: string): LokiStream => ({
+    stream: { k8s_pod_name: pod, k8s_namespace_name: 'factory' },
+    values: [[ns, line]],
+  });
+
+  it('puts a page in time order, whatever order its streams come in, and asks for no more when it is not full', () => {
+    const page = lokiPage(
+      [
+        {
+          stream: { k8s_pod_name: 'github-1' },
+          values: [
+            ['30', 'c'],
+            ['10', 'a'],
+          ],
+        },
+        entry('triage-1', '20', 'b'),
+        { stream: {}, values: [['15', 'no pod']] },
+      ],
+      5,
+    );
+    expect(page.lines.map((l) => `${l.pod} ${l.line}`)).toEqual(['github-1 a', 'triage-1 b', 'github-1 c']);
+    expect(page.next).toBeUndefined();
+  });
+
+  it('starts the next page at a full page’s last nanosecond, and leaves that nanosecond’s lines to it', () => {
+    const page = lokiPage(
+      [entry('github-1', '10', 'a'), entry('github-1', '20', 'b'), entry('triage-1', '20', 'c')],
+      3,
+    );
+    expect(page.lines.map((l) => l.line)).toEqual(['a']);
+    expect(page.next).toBe('20');
+    // The next page gives both lines of that nanosecond, so none is lost or written twice.
+    const next = lokiPage([entry('github-1', '20', 'b'), entry('triage-1', '20', 'c')], 3);
+    expect([...page.lines, ...next.lines].map((l) => l.line)).toEqual(['a', 'b', 'c']);
+    expect(next.next).toBeUndefined();
+  });
+
+  it('keeps a full page of one nanosecond and moves past it', () => {
+    const page = lokiPage(
+      [entry('github-1', '1795828451646141512', 'a'), entry('triage-1', '1795828451646141512', 'b')],
+      2,
+    );
+    expect(page.lines).toHaveLength(2);
+    expect(page.next).toBe('1795828451646141513');
+  });
+
+  it('gives each pod its lines, one a line, as kubectl prints a log', () => {
+    const logs = podLogs([
+      { pod: 'github-1', ns: '10', line: 'a' },
+      { pod: 'triage-1', ns: '20', line: 'b' },
+      { pod: 'github-1', ns: '30', line: 'c' },
+    ]);
+    expect([...logs]).toEqual([
+      ['github-1', 'a\nc\n'],
+      ['triage-1', 'b\n'],
+    ]);
+  });
+});
+
+describe('the summary of a pass', () => {
+  const first = { factory: '90be8b2300', app: '1f07328a00' };
+  const fixed = { factory: '4fd1e66f00', app: '1f07328a00' };
+  const runs = [
+    { id: 'before', pass: 'pass-6', baseline: first },
+    { id: 'one', pass: 'pass-7', baseline: first },
+    { id: 'two', pass: 'pass-7', baseline: first },
+    { id: 'by-hand', baseline: fixed },
+    { id: 'three', pass: 'pass-7', baseline: fixed },
+  ];
+
+  it('stands on the baseline of the pass’s newest run', () => {
+    expect(passBaseline(runs, 'pass-7')).toEqual(fixed);
+    expect(passBaseline(runs, 'pass-6')).toEqual(first);
+    expect(passBaseline(runs, 'pass-8')).toBeUndefined();
+  });
+
+  it('takes a test’s verdict from its latest run of the pass, on whichever of its baselines', () => {
+    expect(summaryRun(runs, 'pass-7', fixed)).toEqual({ run: runs[4], earlier: false });
+  });
+
+  it('marks a verdict that stood on an earlier baseline than the pass’s latest, and keeps it', () => {
+    expect(summaryRun(runs.slice(0, 3), 'pass-7', fixed)).toEqual({ run: runs[2], earlier: true });
+    expect(summaryRun([{ id: 'unstamped', pass: 'pass-7' }], 'pass-7', fixed)).toHaveProperty('earlier', true);
+  });
+
+  it('reads NOT RUN for a test the pass never reached: a run of another pass, or of none, never counts', () => {
+    expect(summaryRun([runs[0], runs[3]] as typeof runs, 'pass-7', fixed)).toEqual({ notRun: 'not reached in pass-7' });
+    expect(summaryRun([], 'pass-7', fixed)).toEqual({ notRun: 'no finished run yet' });
+  });
+
+  it('says a baseline by both copies’ commits', () => {
+    expect(baselineWords(fixed)).toBe('factory 4fd1e66, app 1f07328');
+    expect(baselineWords(undefined)).toBe('a baseline it did not record');
   });
 });
 
@@ -1618,5 +1739,118 @@ describe('the line under an app’s test, before the scan the run stands on', ()
     expect(lineTooEarly('line.started')).toMatch(/running before the scan the run stands on is in/);
     expect(lineTooEarly('line.stopped')).toBeUndefined();
     expect(lineTooEarly(undefined)).toBeUndefined();
+  });
+});
+
+describe("the sense's day", () => {
+  const row = (over: Partial<DayRow> = {}): DayRow => ({
+    kind: 'pin',
+    number: 41,
+    moves: [{ name: 'tempo', lockfile: false }],
+    opened: '2026-11-28T08:59:23.180Z',
+    state: 'open',
+    ...over,
+  });
+  const passed = { state: 'passed', try: 1, of: 3, failed: [] };
+  const locked = (over: Partial<DayRow> = {}) =>
+    row({ moves: [{ name: 'a package in `pnpm-lock.yaml`', lockfile: true, package: 'left-pad' }], ...over });
+  const withheld = (over: Partial<DayRow> = {}): DayRow => ({
+    kind: 'pin',
+    moves: [{ name: 'a package in `pnpm-lock.yaml`', lockfile: true }],
+    opened: '2026-11-28T00:00:00Z',
+    state: 'open',
+    withheld: true,
+    ...over,
+  });
+
+  it('reads a row as GitHub has the pull request', () => {
+    expect(rowFault(undefined, { state: 'open' })).toBe('not in the day');
+    expect(rowFault(row(), { state: 'merged' })).toBe('open in the day, merged on GitHub');
+    const merged = row({ state: 'merged', settled: '2026-11-28T09:12:40.000Z' });
+    expect(rowFault(merged, { state: 'merged', mergedAt: '2026-11-28T09:12:40Z' })).toBeUndefined();
+    expect(rowFault(merged, { state: 'merged', mergedAt: '2026-11-28T09:12:41Z' })).toMatch(/09:12:41Z on GitHub/);
+    // A day read before the gate judged: the worker still waits for the verdict GitHub already has.
+    expect(rowFault(row({ hold: 'verdict' }), { state: 'open', rule: 'major' })).toMatch(/hold `verdict`.*`major`/);
+    expect(rowFault(row({ rule: 'major' }), { state: 'open', rule: 'major' })).toBeUndefined();
+    expect(rowFault(row({ rule: 'move' }), { state: 'open' })).toBeUndefined();
+  });
+
+  it('holds a major for the level and a move for the stop only with its checks through', () => {
+    expect(holdFault(row({ hold: 'level', checks: passed }), 'level')).toBeUndefined();
+    expect(holdFault(row({ hold: 'level', checks: passed }), 'stopped')).toBe('hold `level` in the day, not `stopped`');
+    expect(holdFault(row({ hold: 'stopped', checks: { ...passed, state: 'running' } }), 'stopped')).toMatch(/running/);
+    expect(holdFault(row(), 'level')).toMatch(/hold none/);
+  });
+
+  it('says checks are out of runs with the check, the try and the run GitHub has', () => {
+    const failed = [{ name: 'title', run: 77 }];
+    const spent = row({ hold: 'checks-spent', checks: { state: 'failed', try: 3, of: 3, failed } });
+    const github = { red: ['title'], run: 3, failed: [...failed, { name: 'title', run: 70 }] };
+    expect(spentFault(spent, github)).toBeUndefined();
+    expect(spentFault(row({ hold: 'checks' }), github)).toMatch(/not `checks-spent`/);
+    expect(spentFault({ ...spent, checks: { state: 'failed', try: 2, of: 3, failed } }, github)).toMatch(/try 2 of 3/);
+    expect(spentFault(spent, { ...github, run: 2 })).toMatch(/run 2 on GitHub/);
+    expect(spentFault(spent, { ...github, red: ['lint'] })).toMatch(/names title, where GitHub has lint red/);
+    expect(spentFault(spent, { ...github, failed: [{ name: 'title', run: 70 }] })).toMatch(/run 77 is none/);
+  });
+
+  it("withholds a lockfile's pull request from the public until it merges", () => {
+    expect(withheldFault(row(), row())).toBeUndefined();
+    expect(withheldFault(row(), undefined)).toMatch(/no row/);
+    expect(withheldFault(row(), withheld())).toMatch(/public whole/);
+    const held = locked({ rule: 'held', hold: 'held', checks: passed });
+    expect(withheldFault(held, withheld())).toBeUndefined();
+    expect(withheldFault(held, held)).toBe("the public has a move's package");
+    expect(withheldFault(held, withheld({ number: 41 }))).toBe('the public has its number');
+    expect(withheldFault(held, withheld({ opened: held.opened }))).toBe('the public has its times to the second');
+    expect(withheldFault(held, withheld({ hold: 'held' }))).toBe('the public says what it waits for');
+    // Open with no hold, it keeps its checks, but not which failed.
+    const running = { state: 'failed', try: 1, of: 3, failed: [{ name: 'title', run: 7 }] };
+    expect(
+      withheldFault(locked({ checks: running }), withheld({ checks: { ...running, failed: [] } })),
+    ).toBeUndefined();
+    expect(withheldFault(locked({ checks: running }), withheld({ checks: running }))).toMatch(/failed checks/);
+    expect(withheldFault(locked({ kind: 'issue', issue: 'refused' }), withheld({ kind: 'issue' }))).toBeUndefined();
+    const merged = locked({ state: 'merged', settled: '2026-11-28T09:12:40Z' });
+    expect(withheldFault(merged, { ...merged, moves: withheld().moves })).toBeUndefined();
+    expect(withheldFault(merged, withheld({ state: 'merged' }))).toMatch(/public whole/);
+  });
+
+  it('judges a kept day in a line a pull request, and the public day whole', () => {
+    const rows = [
+      row({ rule: 'major', hold: 'level', checks: passed }),
+      locked({ number: 42, rule: 'held', hold: 'held', checks: passed }),
+      row({ number: 43, state: 'merged', settled: '2026-11-28T09:58:10Z' }),
+      locked({ number: 44, kind: 'issue', issue: 'refused' }),
+    ];
+    const day = {
+      label: 'end',
+      seq: 9,
+      read: '2026-11-28T10:01:10.650Z',
+      rows,
+      public: [rows[0] as DayRow, withheld(), rows[2] as DayRow, withheld({ kind: 'issue' })],
+      asks: [
+        { tests: ['4a'], number: 41, state: 'open', rule: 'major', hold: 'level' as const },
+        { tests: ['6', '9'], number: 42, state: 'open', rule: 'held' },
+        { tests: ['1'], number: 43, state: 'merged', mergedAt: '2026-11-28T09:58:10Z' },
+        { tests: ['23'], number: 44, issue: true },
+      ],
+    };
+    expect(dayLines(day)).toEqual({
+      faults: 0,
+      lines: [
+        "the sense's day, end (seq 9, read 10:01:10Z):",
+        '  #41 4a: open, rule `major`, hold `level`: as GitHub',
+        '  #42 6 9: open, rule `held`, hold `held`, withheld from the public: as GitHub',
+        '  #43 1: merged 09:58:10Z, read 181 s later: as GitHub',
+        '  issue #44 23: open, withheld from the public',
+        "  the public's day: 4 rows, 2 withheld, each as a visitor may read it",
+      ],
+    });
+    const stale = dayLines({ ...day, rows: [row({ hold: 'verdict' }), ...rows.slice(1)], public: rows });
+    expect(stale.faults).toBe(4);
+    expect(stale.lines[1]).toMatch(/#41 4a: FAULT rule none and hold `verdict`/);
+    expect(stale.lines.at(-1)).toBe("  the public's day: FAULT row 2, #42: the public has a move's package");
+    expect(stale.lines.join('\n')).not.toContain('left-pad');
   });
 });

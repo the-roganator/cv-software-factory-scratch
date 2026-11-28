@@ -27,10 +27,12 @@
  *     node harness.ts app W5            the store restarted under a report: no reset, no scan
  *     node harness.ts batch 1,2 | none  the pin watch's moves for those tests, or none, written to batch.env
  *     node harness.ts listing           whether each copy's scan of its baseline lists what every test stands on
+ *     node harness.ts days [<run>]      the dependency sense's days the run kept, judged against GitHub
  *     node harness.ts waits <since> stopped|supervised|either   whether every move's pull request opened since waits
  *                                       as that says, by the worker's own word (confirm.sh's batch D asks)
  *     node harness.ts resume <run>      carry on a run that was stopped
  *     node harness.ts report [<run>]    the lines of a run (the latest by default)
+ *     node harness.ts logs [<run>]      every factory pod's log for a run, from Loki, beside those it kept
  */
 // biome-ignore-all lint/suspicious/noExplicitAny: it reads GitHub's and the cluster's JSON as each gives it, untyped
 import { execFileSync } from 'node:child_process';
@@ -42,6 +44,7 @@ import {
   readdirSync,
   readFileSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -49,12 +52,16 @@ import { join } from 'node:path';
 import { APP, EITHER, FACTORY, TESTS, type Test, testIds } from './catalogue.ts';
 import {
   appLockfileMove,
+  type Baseline,
+  baselineWords,
   besideWords,
   branchFits,
   certainFail,
   changesVerdict,
   clearsAs,
+  type DayAsk,
   type DuplicateFacts,
+  dayLines,
   dependabotMissing,
   duplicateVerdict,
   eitherVerdict,
@@ -66,8 +73,11 @@ import {
   isRoutine,
   issueFault,
   issueOfMove,
+  type KeptDay,
+  LOKI_PAGE,
   leftAloneFault,
   lineTooEarly,
+  lokiPage,
   MOVED_WAIT_MS,
   type MovesFile,
   majorNext,
@@ -78,10 +88,13 @@ import {
   newerFault,
   notListed,
   PIN_PASS_LIMIT_MS,
+  type PodLine,
+  passBaseline,
   pickScan,
   pinsFault,
   pinWatchLacks,
   pinWatchLine,
+  podLogs,
   printOf,
   probeQuery,
   queuedFault,
@@ -92,12 +105,15 @@ import {
   rolloutProgressing,
   routineBranch,
   rulesetsFault,
+  type StorePod,
   saysNotPulled,
   seenToTheGates,
   settleMs,
   shownAs,
   startingPods,
   stillListed,
+  storeBack,
+  summaryRun,
   type TicketFacts,
   ticketFault,
   unlisted,
@@ -105,6 +121,7 @@ import {
   VERDICT_WAIT,
   WAITING_KEY,
   type WaitingPull,
+  WORKER_POLL_S,
   waitedVerdict,
   waitsReading,
   watcherRode,
@@ -701,6 +718,9 @@ interface State {
   };
   limitMin: number;
   flags: string[];
+  /** The pass the run is of (confirm.sh's folder, by name, as PATCHING_PASS), and the baseline it stood on, as built. */
+  pass?: string | undefined;
+  baseline?: Baseline;
   /** A small run: the only tests this run stands for (`--only 1,2,N4`). The rest are not run, and not judged from it. */
   only?: string[] | undefined;
   resetAt?: string | undefined;
@@ -741,6 +761,8 @@ interface State {
     issues: { number: number; author: string; body: string; at?: string }[];
   };
   kickedAt?: string;
+  /** When the run restarted the dependency sense for its day after the first merge (`mergeDay`). */
+  dayAsked?: string;
   /** When the run summoned Dependabot (test 20; test 22, at its reset). */
   summonedAt?: string;
   /** The scratch GitHub worker's poll, in seconds, as its Deployment sets it (60 when it sets none). */
@@ -752,6 +774,8 @@ interface State {
   scan2?: Scan | undefined;
   /** `errorAt`: when each error line was logged (ISO; '' where the line gave no time), so a move answers only for those since its pull request opened. */
   clean?: { errors: string[]; unhealthy: string[]; restarted: string[]; errorAt?: string[] };
+  /** The end of what the run's logs are read from Loki to: when they were first read. */
+  logsUntil?: string;
   /** The forgeries forge.ts made for this run: each test's pull request and the commit that must be held. */
   forged?: Record<string, { number?: number; head?: string; refused?: string; landed?: string }>;
   seen: Record<string, Seen>;
@@ -1687,6 +1711,7 @@ function clean(state: State): NonNullable<State['clean']> {
   const restarted = now.pods
     .filter((p) => state.pods0 && p.name in state.pods0 && p.restarts > (state.pods0[p.name] ?? 0))
     .map((p) => `${p.name} +${p.restarts - (state.pods0?.[p.name] ?? 0)}`);
+  lokiLogs(state, new Date());
   return { errors, unhealthy, restarted, errorAt };
 }
 /** Each factory worker's error lines since a time, a line a pod, and when each was logged; its log is kept with the run. */
@@ -1723,6 +1748,50 @@ function errorLines(state: State, now: Cluster, since: string): { errors: string
     }
   }
   return { errors, errorAt };
+}
+/**
+ * Every factory pod's log for the run, from Loki, which still has the lines of a pod a deploy replaced: from the
+ * run's reset (or the report, or its scan) to `until`, the first time it is read, a file for each pod that has none
+ * yet, so `kubectl logs`' own stays the word on a pod that was alive at the end. A read through the API server, with
+ * no port-forward. Nothing is judged from these files, and a failure is said and fails nothing.
+ */
+function lokiLogs(state: State, until: Date) {
+  try {
+    const from = state.reset?.startedAt ?? state.restart?.at ?? state.scan1?.createdAt;
+    if (!from) throw new Error('the run has no reset, report or scan to read from');
+    state.logsUntil ??= until.toISOString();
+    const lines: PodLine[] = [];
+    for (let start: string | undefined = `${Date.parse(from)}000000`; start; ) {
+      const query = new URLSearchParams({
+        query: '{service_name="pod-logs", k8s_namespace_name="factory"}',
+        start,
+        end: `${Date.parse(state.logsUntil)}000000`,
+        limit: String(LOKI_PAGE),
+        direction: 'forward',
+      });
+      const path = `/api/v1/namespaces/telemetry/services/loki:3100/proxy/loki/api/v1/query_range?${query}`;
+      const page = lokiPage(JSON.parse(kubectl(['get', '--raw', path], 300_000)).data.result, LOKI_PAGE);
+      lines.push(...page.lines);
+      start = page.next;
+    }
+    const dir = join(dirOf(state.id), 'logs');
+    mkdirSync(dir, { recursive: true });
+    const kept: string[] = [];
+    for (const [pod, text] of podLogs(lines)) {
+      if (existsSync(join(dir, `${pod}.log`))) continue;
+      writeFileSync(join(dir, `${pod}.log`), text);
+      kept.push(`${pod} (${text.split('\n').length - 1})`);
+    }
+    save(state);
+    say(
+      state,
+      kept.length
+        ? `kept from Loki, each pod that had no log here, with its lines: ${kept.join(', ')}`
+        : 'Loki has no factory pod of the run whose log is not already kept',
+    );
+  } catch (error) {
+    say(state, `Loki's logs of the run's pods were not kept: ${String((error as Error).message).slice(0, 300)}`);
+  }
 }
 
 // ── The verdict, one line a test ────────────────────────────────────────────────────────────────────────────────────
@@ -2288,6 +2357,10 @@ function report(state: State) {
   }
   if (state.kickedAt)
     console.log(`\nthe harness restarted the GitHub worker and the dependency sense at ${state.kickedAt}`);
+  for (const day of keptDays(dirOf(state.id))) {
+    console.log('');
+    printDay(day);
+  }
 }
 
 /** A test's line: its mark, why, and, in the summary, the run it is from. */
@@ -2315,21 +2388,44 @@ function folded(lines: Line[]): Line[] {
 const printed = (line: Line) =>
   `${line.id.padEnd(3)} ${line.mark.padEnd(8)} ${line.title.padEnd(46)} ${line.why}${line.run ? `  [${line.run}]` : ''}`;
 
-/** Every test, one line each, from the latest finished run that held it. */
-function summary() {
+/** The baseline as built, which a reset puts each copy's main at: the two commits copies.sh keeps beside its clones. */
+function baselineBuilt(): Baseline {
+  const at = (side: string) => readFileSync(join(CLONES, `${side}.sha`), 'utf8').trim();
+  return { factory: at('factory'), app: at('app') };
+}
+/**
+ * Every test, one line each, from the latest finished run of the pass that held it (decide.ts's `summaryRun`): a pass
+ * is confirm.sh's folder, by name, which each run it starts records, with the baseline it stood on. A verdict that
+ * stood on an earlier baseline than the pass's newest run says so before its words; a test the pass never reached
+ * reads NOT RUN, whatever another pass's run said of it.
+ */
+function summary(pass: string | undefined) {
+  if (!pass)
+    throw new Error('summary <pass>: the name of its folder, which confirm.sh gives its runs as PATCHING_PASS');
   const runs = readdirSync(RUNS)
     .filter((d) => existsSync(join(RUNS, d, 'state.json')))
     .sort()
     .map(load)
-    .filter((r) => r.done && !r.flags.includes('--once'));
+    .filter((r) => !r.flags.includes('--once'));
+  const latest = passBaseline(runs, pass);
+  const earlier = [...new Set(runs.filter((r) => r.pass === pass).map((r) => baselineWords(r.baseline)))].filter(
+    (words) => words !== baselineWords(latest),
+  );
+  console.log(`${pass} stands on ${baselineWords(latest)}${earlier.length ? `; earlier: ${earlier.join('; ')}` : ''}`);
   const lines = TESTS.map((test): Line => {
     const { id, title } = test;
-    const run = runs.filter((r) => inRun(r, test)).at(-1);
+    const from = summaryRun(
+      runs.filter((r) => r.done && inRun(r, test)),
+      pass,
+      latest,
+    );
     if (test.notRun) return { id, mark: 'NOT RUN', title, why: test.notRun };
-    if (!run) return { id, mark: 'NOT RUN', title, why: 'no finished run yet' };
-    const { pass, why, mark: other } = verdict(run, test);
-    const mark = other ?? (run.dropped?.[test.id] ? 'NOT RUN' : pass ? 'PASS' : 'FAIL');
-    return { id, mark, title, why, run: run.id };
+    if ('notRun' in from) return { id, mark: 'NOT RUN', title, why: from.notRun };
+    const { run } = from;
+    const on = from.earlier ? `(earlier baseline, ${baselineWords(run.baseline)}) ` : '';
+    const { pass: passed, why, mark: other } = verdict(run, test);
+    const mark = other ?? (run.dropped?.[test.id] ? 'NOT RUN' : passed ? 'PASS' : 'FAIL');
+    return { id, mark, title, why: `${on}${why}`, run: run.id };
   });
   for (const line of folded(lines)) console.log(printed(line));
 }
@@ -2426,6 +2522,152 @@ function listing() {
   if (!unstaged.length) return;
   console.log(`unstaged, with nothing to judge on this baseline today: ${unstaged.join(', ')}`);
   process.exit(1);
+}
+
+// ── The sense's day ─────────────────────────────────────────────────────────────────────────────────────────────────
+
+const CONSOLE = 'https://console.localhost:9443';
+const daysOf = (dir: string) => join(dir, 'days');
+/** A run's kept days, oldest first. */
+const keptDays = (dir: string): KeptDay[] =>
+  (existsSync(daysOf(dir)) ? readdirSync(daysOf(dir)) : [])
+    .filter((name) => name.endsWith('.json'))
+    .map((name) => JSON.parse(readFileSync(join(daysOf(dir), name), 'utf8')) as KeptDay)
+    .sort((a, b) => a.read.localeCompare(b.read));
+/** The dependency sense restarted, so it reads the worker's door now and not on its hour: when, for `senseRead`. */
+function askDay(): string {
+  const at = new Date().toISOString();
+  kubectl(['-n', 'factory', 'rollout', 'restart', 'deployment/patching']);
+  return at;
+}
+/** Whether the sense has made a pass since: its day appended, or the same as its last (commands/patching.ts's words). */
+function senseRead(since: string): boolean {
+  try {
+    return /patching: (the day appended|nothing changed, nothing appended)/.test(
+      kubectl(['-n', 'factory', 'logs', 'deployment/patching', `--since-time=${since}`]),
+    );
+  } catch {
+    return false;
+  }
+}
+/** A head's failed Actions runs, as GitHub lists its check runs: what a day's `failed` must name. */
+const failedRuns = (head: string) =>
+  ((api<any>(FACTORY, `commits/${head}/check-runs?per_page=100`).check_runs ?? []) as any[])
+    .filter((run) => run.conclusion === 'failure')
+    .map((run) => ({ name: String(run.name), run: Number(/\/actions\/runs\/(\d+)/.exec(run.details_url ?? '')?.[1]) }));
+/**
+ * What a run asks of a day, from GitHub as the run last read it: each test's pull requests, one line however many
+ * tests stand on it, and each issue. One whose checks must end out of runs is asked that (W1b), an open one the gate
+ * passed as a major below Lights-out the level (4, 18). With `merged`, only what has merged: the read after the first
+ * merge, when everything else is still moving.
+ */
+function runAsks(state: State, merged: boolean): DayAsk[] {
+  const asks = new Map<number, DayAsk>();
+  for (const test of TESTS.filter((t) => inRun(state, t))) {
+    const seen = state.seen[test.id];
+    for (const pull of seen?.pulls ?? []) {
+      if (merged && !pull.mergedAt) continue;
+      const { number, state: at, mergedAt, rule } = pull;
+      const ask = asks.get(number) ?? { tests: [], number, state: at, mergedAt, rule };
+      ask.tests.push(test.id);
+      if (test.checksRun?.spent)
+        ask.spent = { red: pull.red, run: seen?.timeline?.checksRun ?? 0, failed: failedRuns(pull.head) };
+      else if (at === 'open' && rule === 'major' && !state.flags.includes('--lights-out')) ask.hold = 'level';
+      asks.set(number, ask);
+    }
+    for (const number of merged ? [] : (seen?.issues ?? []))
+      asks.set(number, { tests: [test.id], number, issue: true });
+  }
+  return [...asks.values()];
+}
+/**
+ * A day of the sense's read and kept in `<dir>/days/`, since a restore of the store deletes it: the newest, or the
+ * one at `seq`; the factory copy's rows from the store, the same event's as the console serves a visitor, and what is
+ * asked of it. Undefined when the store has no such day.
+ */
+function keepDay(dir: string, label: string, asks: DayAsk[], seq?: number): KeptDay | undefined {
+  const [found] = store(
+    `select seq, payload->>'read', (select r->'pulls' from jsonb_array_elements(payload->'repositories') r where r->>'repository' = '${FACTORY}') from events where type = 'patching.read'${seq ? ` and seq = ${seq}` : ''} order by seq desc limit 1`,
+  );
+  if (!found) return undefined;
+  const at = Number(found[0]);
+  const feed: any[] = JSON.parse(
+    sh('curl', ['-sk', '--compressed', '--max-time', '60', `${CONSOLE}/api/events?after=${at - 1}`]),
+  );
+  const served = feed
+    .find((event) => event.seq === at)
+    ?.payload.repositories.find((r: any) => r.repository === FACTORY);
+  const day: KeptDay = {
+    label,
+    seq: at,
+    read: found[1] ?? '',
+    rows: JSON.parse(found[2] || '[]'),
+    public: served?.pulls ?? [],
+    asks,
+  };
+  mkdirSync(daysOf(dir), { recursive: true });
+  writeFileSync(join(daysOf(dir), `${label}.json`), JSON.stringify(day, null, 1));
+  return day;
+}
+/**
+ * The day after a factory run's first merge, which the worker's queue must have settled within its minute: the sense
+ * is restarted two of the worker's polls after the merge, and its day kept on the watch's first turn after its pass.
+ */
+function mergeDay(state: State) {
+  const dir = dirOf(state.id);
+  if (dayFailed || state.campaign !== 'factory' || existsSync(join(daysOf(dir), 'merge.json'))) return;
+  const merged = Object.values(state.seen)
+    .flatMap((seen) => seen.pulls.map((pull) => pull.mergedAt ?? ''))
+    .filter(Boolean)
+    .sort()[0];
+  if (!merged) return;
+  if (!state.dayAsked) {
+    if (Date.now() - Date.parse(merged) < 2 * (state.workerPollS ?? WORKER_POLL_S) * 1000) return;
+    state.dayAsked = askDay();
+    say(state, 'the dependency sense restarted, for its day after the first merge');
+  } else if (senseRead(state.dayAsked)) {
+    const day = keepDay(dir, 'merge', runAsks(state, true));
+    say(
+      state,
+      day ? `the sense's day after the first merge kept: seq ${day.seq}` : 'the store has no day of the sense',
+    );
+  }
+}
+/** The day at the end of a factory run's watch, every test decided: the sense restarted, and five minutes for its pass. */
+function endDay(state: State) {
+  const dir = dirOf(state.id);
+  if (state.campaign !== 'factory' || state.flags.includes('--once') || existsSync(join(daysOf(dir), 'end.json')))
+    return;
+  const day = freshDay(dir, 'end', runAsks(state, false));
+  say(
+    state,
+    day
+      ? `the sense's day at the end of the watch kept: seq ${day.seq}`
+      : 'no day of the sense kept: it made no pass in five minutes',
+  );
+}
+/** The sense restarted, its pass waited for, five minutes at most, and its day kept. */
+function freshDay(dir: string, label: string, asks: DayAsk[]): KeptDay | undefined {
+  const asked = askDay();
+  const until = Date.now() + 5 * 60_000;
+  while (!senseRead(asked) && Date.now() < until) sleep(10_000);
+  return senseRead(asked) ? keepDay(dir, label, asks) : undefined;
+}
+/** A read of the day that fails is said, and never ends the run; the read after the first merge is not tried again. */
+let dayFailed = false;
+function dayOr(state: State, read: (state: State) => void) {
+  try {
+    read(state);
+  } catch (error) {
+    dayFailed = true;
+    say(state, `the sense's day was not read: ${String(error).split('\n')[0]?.slice(0, 200)}`);
+  }
+}
+/** A day's lines printed; whether it has a fault. */
+function printDay(day: KeptDay): boolean {
+  const { lines, faults } = dayLines(day);
+  console.log(lines.join('\n'));
+  return faults > 0;
 }
 
 // ── The campaign ────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -3047,6 +3289,7 @@ function run(state: State) {
     lineNow();
     thenNow();
     observe(state, tests);
+    dayOr(state, mergeDay);
     turns();
     laterNow();
     askChanges();
@@ -3127,6 +3370,8 @@ function run(state: State) {
     else sleep(Math.min(probeFailed ? SLOW_POLL_MS : POLL_MS, Math.max(1_000, deadline - Date.now())));
   }
   save(state);
+  // Before the confirming scan, and before test 27 restarts the worker, whose door then answers nothing for a while.
+  dayOr(state, endDay);
 
   if (state.startedAt && !state.stoppedAt) {
     say(state, make(['stop-the-line', 'REASON=the patching test is over']).trim());
@@ -3361,29 +3606,19 @@ function runRestart(state: State) {
     Number(
       store(`select count(*) from inbox where sense = 'report' and signal->'report'->>'text' = '${text}'`)[0]?.[0] ?? 0,
     );
-  const uid = () => {
+  const pod = (): StorePod | undefined => {
     try {
-      return kubectl(['-n', 'factory', 'get', 'pod', 'postgres-0', '-o', 'jsonpath={.metadata.uid} {.status.phase}']);
+      const { metadata, status } = JSON.parse(kubectl(['-n', 'factory', 'get', 'pod', 'postgres-0', '-o', 'json']));
+      return {
+        uid: metadata.uid,
+        deleting: Boolean(metadata.deletionTimestamp),
+        ready: Boolean(status?.containerStatuses?.[0]?.ready),
+      };
     } catch {
-      return '';
+      return undefined;
     }
   };
-  const ready = () => {
-    try {
-      return kubectl([
-        '-n',
-        'factory',
-        'get',
-        'pod',
-        'postgres-0',
-        '-o',
-        'jsonpath={.status.containerStatuses[0].ready}',
-      ]);
-    } catch {
-      return '';
-    }
-  };
-  const was = uid().split(' ')[0] ?? '';
+  const was = pod()?.uid ?? '';
   if (!was) throw new Error('pre-flight, no verdict: the scratch store has no pod postgres-0');
   const at = new Date().toISOString();
   const posted = Number(
@@ -3405,27 +3640,23 @@ function runRestart(state: State) {
     ]).trim(),
   );
   // Away for some 25 seconds, so at least two of the watcher's turns (every ten) fall inside: the StatefulSet puts the
-  // pod back within seconds, so it is deleted again each time it is there. Only ever the pod.
+  // pod back within seconds and Postgres serves a second after, so the pod is deleted a few times a second, each
+  // replacement before it is Ready. Only ever the pod.
   const awayFrom = Date.now();
-  const gone = new Set<string>([was]);
   while (Date.now() - awayFrom < 25_000) {
     try {
       kubectl(['-n', 'factory', 'delete', 'pod', 'postgres-0', '--wait=false', '--ignore-not-found']);
     } catch {}
-    sleep(2_000);
-    const now = uid().split(' ')[0] ?? '';
-    if (now) gone.add(now);
+    sleep(250);
   }
-  // The last one deleted may still be going: a pod met in the window is never the one that counts as back.
   const awayS = Math.round((Date.now() - awayFrom) / 1000);
   say(state, `left a report through the app (${posted}) and kept the store's pod away for ${awayS} s`);
   state.restart = { at, posted, restarted: false, inbox: 0, errors: [], unhealthy: [], awayS };
   save(state);
-  // Back: a pod of another uid than any deleted, ready.
+  // Back, as the pod itself says (decide.ts's `storeBack`): the last one deleted may still be going.
   for (let i = 0; i < 60 && !state.restart.restarted; i++) {
     sleep(5_000);
-    const now = uid().split(' ')[0] ?? '';
-    state.restart.restarted = Boolean(now) && !gone.has(now) && ready() === 'true';
+    state.restart.restarted = storeBack(was, pod());
   }
   say(state, state.restart.restarted ? 'the store is back' : 'the store did not come back in five minutes');
   for (let i = 0; state.restart.restarted && posted === 202 && i < 72; i++) {
@@ -3446,6 +3677,7 @@ function runRestart(state: State) {
   }
   const now = cluster();
   state.restart.errors = errorLines(state, now, at).errors;
+  lokiLogs(state, new Date());
   try {
     state.restart.watcher = watcherRode(
       kubectl(['-n', 'factory', 'logs', 'deployment/logs', '--all-containers', `--since-time=${at}`], 300_000),
@@ -3516,6 +3748,8 @@ if (command === 'factory' || command === 'app') {
     only: onlyOf(rest),
     with: withOf(command, rest),
     seen: {},
+    pass: process.env.PATCHING_PASS || undefined,
+    baseline: baselineBuilt(),
   };
   save(state);
   if (TESTS.some((t) => t.id === test && t.restart)) runRestart(state);
@@ -3639,6 +3873,11 @@ if (command === 'factory' || command === 'app') {
   run(load(rest[0] ?? latestRun() ?? ''));
 } else if (command === 'report') {
   report(load(rest[0] ?? latestRun() ?? ''));
+} else if (command === 'logs') {
+  // A run's pod logs from Loki, which keeps them seven days: to the run's last word the first time, and no file it
+  // already has is written again.
+  const state = load(rest[0] ?? latestRun() ?? '');
+  lokiLogs(state, statSync(join(dirOf(state.id), 'log.txt')).mtime);
 } else if (command === 'reread') {
   // A finished run judged again from what it recorded: nothing is read from the copy or the cluster as they stand,
   // which a later reset has emptied (its issues, its open pull requests, what was deployed). `--scan2 <id>` names the
@@ -3660,11 +3899,47 @@ if (command === 'factory' || command === 'app') {
   report(state);
 } else if (command === 'listing') {
   listing();
+} else if (command === 'days') {
+  // The sense's days judged against GitHub, and the exit status: 1 when one has a fault. `days [<run>]` judges again
+  // what the run kept. `--read [<seq>]` first reads the store's newest day, or that one, and keeps it beside them,
+  // asked what the run last recorded of GitHub; `--restart` restarts the sense before it, for a day read now.
+  // `days --stopped <since>` is batch D's, at Guarded with the line stopped: of every pull request the App opened for
+  // a move since, a move's must be held `stopped` and a major's `level`.
+  const restart = rest.includes('--restart');
+  const seq = Number(rest[rest.indexOf('--read') + 1]) || undefined;
+  let days: (KeptDay | undefined)[];
+  if (rest[0] === '--stopped') {
+    const since = rest[1] ?? '';
+    if (!/^\d{4}-\d\d-\d\dT[\d:]+Z$/.test(since)) throw new Error('days --stopped <since, as 2026-11-26T20:00:00Z>');
+    const dir = dirOf(`${since.replace(/[-:]/g, '').slice(0, 13)}Z-D`);
+    const asks: DayAsk[] = api<any[]>(FACTORY, 'pulls?state=open&per_page=100')
+      .filter((p) => p.user.login === APP_BOT && p.created_at >= since && p.title.startsWith('chore(pin): '))
+      .map((p) => readPull(FACTORY, p))
+      .map(({ number, state, rule }) => ({
+        tests: ['26'],
+        number,
+        state,
+        rule,
+        ...(rule === 'major' ? { hold: 'level' as const } : rule === 'move' ? { hold: 'stopped' as const } : {}),
+      }));
+    days = [restart ? freshDay(dir, 'stopped', asks) : keepDay(dir, 'stopped', asks)];
+  } else {
+    const state = load(rest[0] && !rest[0].startsWith('--') ? rest[0] : (latestRun() ?? ''));
+    const dir = dirOf(state.id);
+    if (restart) days = [freshDay(dir, 'now', runAsks(state, false))];
+    else if (rest.includes('--read')) days = [keepDay(dir, `seq-${seq ?? 'newest'}`, runAsks(state, false), seq)];
+    else days = keptDays(dir);
+  }
+  if (!days.length || days.includes(undefined)) {
+    console.log('no day of the sense to judge: the run kept none, or the store has none, or the sense made no pass');
+    process.exit(1);
+  }
+  process.exit(days.filter((day) => day && printDay(day)).length ? 1 : 0);
 } else if (command === 'summary') {
-  summary();
+  summary(rest[0] ?? process.env.PATCHING_PASS);
 } else {
   console.error(
-    'usage: harness.ts factory | app <test> [--limit <min>] [--no-reset] [--no-scan] [--no-kick] [--once] | batch <tests>|none | only <tests> | listing | rests | waits <since> stopped|supervised|either [<said since>] | variables <tests> | resume [<run>] | report [<run>] | reread [<run>] | summary',
+    'usage: harness.ts factory | app <test> [--limit <min>] [--no-reset] [--no-scan] [--no-kick] [--once] | batch <tests>|none | only <tests> | listing | rests | waits <since> stopped|supervised|either [<said since>] | variables <tests> | resume [<run>] | report [<run>] | logs [<run>] | reread [<run>] | days [<run>] [--read [<seq>]] [--restart] | days --stopped <since> [--restart] | summary [<pass>]',
   );
   process.exit(2);
 }

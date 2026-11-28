@@ -65,8 +65,9 @@
  * same tree on the same parent, with a `Checks-run:` line in its message, which GitHub runs every check and the gate on
  * afresh, and which is recorded as the watch's. The App starts no run itself. After `RUN_TRIES` runs, counted from
  * the head's own message so a restart does not start the count again, the worker says so once in a comment, naming
- * the checks that failed, and the head is Martin's; one he runs again and passes goes on. A failed check another app
- * posted is not run again.
+ * the checks that failed, and the head is Martin's; one he runs again and passes goes on. A pin move's is made again
+ * by its watch, on `main`'s head, once `main` has moved since that head and the head is a day old (`SPENT_REMAKE_MS`,
+ * pins.ts): a new head, with its own runs. A failed check another app posted is not run again.
  *
  * In a dry run the watches write nothing to GitHub and record no commit, so no head in GitHub is one a watch wrote: the
  * queues add nothing and record no enqueue. A dry run's own deploy and pin pull requests, which GitHub never had, are
@@ -399,18 +400,24 @@ const REMOVED_MARK = /<!-- factory: out of the queue ([0-9a-f]{40}) -->/;
  * How many runs of its checks one commit of a watch's gets, its first and each time it is written again
  * (`commitAgain`), before the queue stops writing it again: a required check that failed or hung on the App's own move
  * (a hung job is cancelled by its own time limit, and fails) may be a flake, as in the queue (`QUEUE_TRIES`), and a
- * move left red waits for its branch's next write, the next day's scan. Counted from the head's own message (its
- * `Checks-run:` line, `checksRunOf`), so a restart does not start the count again.
+ * move left red waits for its watch's next write: a deploy's, a newer build; a pin move's, the day's moves at its files
+ * changing, or, `main` having moved, the head turning a day old (`SPENT_REMAKE_MS`, pins.ts). Counted from the head's
+ * own message (its `Checks-run:` line, `checksRunOf`), so a restart does not start the count again.
  */
 export const RUN_TRIES = 3;
 
-/** What the worker says on a pull request whose required checks failed on the `RUN_TRIES`th run of them. */
-export function spentRunsComment(head: string, failed: readonly string[]): string {
+/**
+ * What the worker says on a pull request whose required checks failed on the `RUN_TRIES`th run of them; for a pin
+ * move's (`pin`), that the pin watch makes the move again once `main` has moved and the head is a day old.
+ */
+export function spentRunsComment(head: string, failed: readonly string[], pin = false): string {
+  const next = pin
+    ? "The factory writes this commit again no more. Once `main` has moved and this head is a day old, it makes the move again on `main`'s head, where the checks run afresh; until then it is Martin's to run the checks again or close."
+    : "The factory writes it again no more: it is Martin's to run the checks again or close.";
   return (
     `A required check failed on this pull request in ${RUN_TRIES} runs, the factory writing its commit again for ` +
-    `each: ${failed.map((name) => `\`${name}\``).join(', ')} failed the last time, at ${head.slice(0, 7)}. The ` +
-    "factory writes it again no more: it is Martin's to run the checks again or close.\n\n" +
-    `<!-- factory: checks out of tries ${head} -->`
+    `each: ${failed.map((name) => `\`${name}\``).join(', ')} failed the last time, at ${head.slice(0, 7)}. ` +
+    `${next}\n\n<!-- factory: checks out of tries ${head} -->`
   );
 }
 
@@ -481,7 +488,7 @@ async function writeAgain(
     // Said before the head is left, so a comment that could not be made is tried on the next pass: made once, across
     // restarts. A check Martin runs again and passes lets the head on, as any green check does.
     if (actions.comment && !(await spentSaid(github, repo, number, head, SPENT_RUNS_MARK)))
-      await actions.comment(repo, number, spentRunsComment(head, names));
+      await actions.comment(repo, number, spentRunsComment(head, names, kind === 'pin'));
     attempt.ranOut = true;
     state.note(number, head, { hold: 'checks-spent' });
     log.warn(
