@@ -17,6 +17,7 @@ import type { EventWriter } from '@software-factory/store';
 import type { Logger } from 'pino';
 import type { Sql } from 'postgres';
 import type { Profile, SpendPolicy } from '../../../../policy/spend.ts';
+import { PassLog } from '../store-absence.ts';
 import { SpendCapped } from './errors.ts';
 import { observeCaps } from './metrics.ts';
 
@@ -73,6 +74,8 @@ export class Spend {
   /** The day's and month's spend as the last reconcile counted it, for the metrics: a minute old at most once started. */
   #counted: { day: number; month: number; caps: SpendPolicy } | undefined;
   #unobserve: (() => void) | undefined;
+  /** Says how each reconcile ended: a short absence of the store as a warning, anything else as an error. */
+  readonly #reconciles: PassLog;
 
   constructor({ sql, events, profile, policy, log, clock = () => new Date() }: SpendOptions) {
     this.#sql = sql;
@@ -81,6 +84,13 @@ export class Spend {
     this.#policy = typeof policy === 'function' ? policy : async () => policy;
     this.#log = log;
     this.#clock = clock;
+    // A store restarting, as patching Postgres restarts it, fails a reconcile: a warning, not a fault, for a minute.
+    this.#reconciles = new PassLog(log, clock, {
+      away: 'could not update the line on spend caps, as the store is away: the next call or tick tries again',
+      stillAway: 'could not update the line on spend caps: the store has been away for over a minute',
+      failed: 'could not update the line on spend caps',
+      back: (seconds) => `the spend count reached the store again, after ${seconds} s`,
+    });
   }
 
   /** Spend in the current day and month. */
@@ -153,9 +163,10 @@ export class Spend {
   reconcile(): Promise<void> {
     this.#queue = this.#queue
       .then(() => this.#reconcile())
-      .catch((error: unknown) => {
-        this.#log.error({ err: error }, 'could not update the line on spend caps');
-      });
+      .then(
+        () => this.#reconciles.passed(),
+        (error: unknown) => this.#reconciles.failed(error),
+      );
     return this.#queue;
   }
 
