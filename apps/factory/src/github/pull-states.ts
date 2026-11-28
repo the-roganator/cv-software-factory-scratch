@@ -170,6 +170,12 @@ export class PullStates {
     says.set(number, { head, say: replace || was?.head !== head ? say : { ...was.say, ...say } });
   }
 
+  /** What a queue last said of an open pull request, where it said it of this head: of any other head, nothing. */
+  said(repo: string, number: number, head: string): QueueSay | undefined {
+    const was = this.#repo(repo).says.get(number);
+    return was?.head === head ? was.say : undefined;
+  }
+
   /** A queue's pass made: the pull requests it no longer reads as open are forgotten. */
   passedQueue(repo: string, source: 'pin-queue' | 'workflow-queue', open: ReadonlySet<number>): void {
     const state = this.#repo(repo);

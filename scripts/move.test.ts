@@ -434,6 +434,99 @@ describe('a routine update of a package whose old entry a parent keeps', () => {
     const elsewhere: Changed[] = [{ ...modified(LOCK, BASE, BASE.replace('sha512-h', 'sha512-i')), rewrites: [10] }];
     expect(await proveMove(elsewhere, [zod], made(), true)).toHaveProperty('none');
   });
+
+  describe('beside a fix that rewrites the peer on its line', () => {
+    const browser = 'apps/factory/Dockerfile.browser';
+    const playwright = 'mcr.microsoft.com/playwright';
+    const AXE = '@axe-core/playwright';
+    const CONSOLE = 'apps/console/package.json';
+    /** pnpm writes a package's peers beside its version: axe's line names Playwright's core. */
+    const files: Record<string, string> = {
+      [browser]: `FROM ${playwright}:v1.65.0-noble@${D_OLD} AS browsers\n`,
+      [LOCK]: [
+        "lockfileVersion: '9.0'",
+        'importers:',
+        '  apps/console:',
+        '    devDependencies:',
+        `      '${AXE}':`,
+        '        specifier: ^4.14.0',
+        '        version: 4.14.0(playwright-core@1.65.0)',
+        '      playwright:',
+        '        specifier: ^1.65.0',
+        '        version: 1.65.0',
+        'packages:',
+        `  '${AXE}@4.14.0':`,
+        '    resolution: {integrity: sha512-x}',
+        '  playwright-core@1.65.0:',
+        '    resolution: {integrity: sha512-c}',
+        '  playwright@1.65.0:',
+        '    resolution: {integrity: sha512-p}',
+        '',
+      ].join('\n'),
+      [CONSOLE]: `{ "devDependencies": { "${AXE}": "^4.14.0", "playwright": "^1.65.0" } }\n`,
+    };
+    const image = move({
+      name: playwright,
+      pins: [{ file: browser, line: 1 }],
+      from: 'v1.65.0-noble',
+      to: `image v1.65.1-noble@${D_NEW}`,
+    });
+    /** The day's routine update of axe, pinned at its entry, which the fix leaves. */
+    const axe: ScanMove = {
+      ...packageMove(AXE, '4.14.0', '4.14.1', 12),
+      repository: FACTORY,
+      lane: 'worker',
+      clears: NONE,
+      leaves: NONE,
+    };
+    const fixed = (text: string) => text.replaceAll('1.65.0', '1.65.1').replace(D_OLD, D_NEW);
+    const updated = (text: string) => text.replaceAll('4.14.0', '4.14.1').replace('sha512-x', 'sha512-y');
+    /** The pin step: each move it is asked for, made on main's files, and the files that writes. */
+    const read = (asked: PinStepMove[][] = []): MoveIO => ({
+      base: (path) => files[path],
+      derive: async (moves) => {
+        asked.push([...moves]);
+        const made = (text: string) => moves.reduce((at, each) => (each.name === AXE ? updated : fixed)(at), text);
+        return new Map(heads(made).map((file) => [file.path, file.head as string]));
+      },
+    });
+    const heads = (head: (text: string) => string) =>
+      Object.entries(files)
+        .map(([path, text]) => modified(path, text, head(text)))
+        .filter((file) => file.base !== file.head);
+    const docker = { ecosystem: 'docker', name: playwright, from: 'v1.65.0-noble', to: `v1.65.1-noble@${D_NEW}` };
+
+    it('is not carried by the fix: the manifest’s copy stays, and the fix passes as its own move alone', async () => {
+      expect(fixed(files[LOCK] as string).split('\n')[6]).toBe('        version: 4.14.0(playwright-core@1.65.1)');
+      const asked: PinStepMove[][] = [];
+      expect(await proveMove(heads(fixed), [image, axe], read(asked), false)).toEqual({
+        rule: 'move',
+        title: `The scan’s move of ${playwright} to v1.65.1-noble, made by the gate on main and the same as the pull request`,
+      });
+      expect(asked).toEqual([[docker]]);
+    });
+
+    it('is carried by a change that moves the manifest’s copy, with the fix or alone', async () => {
+      const asked: PinStepMove[][] = [];
+      const both = heads((text) => updated(fixed(text)));
+      expect(await proveMove(both, [image, axe], read(asked), false)).toMatchObject({ rule: 'move' });
+      expect(await proveMove(heads(updated), [image, axe], read(asked), false)).toMatchObject({ rule: 'move' });
+      const routine = { ecosystem: 'npm', name: AXE, from: '4.14.0', to: '4.14.1', routine: true };
+      expect(asked).toEqual([[docker, routine], [routine]]);
+    });
+
+    it('holds a fix that moves the manifest’s copy where the scan lists no routine update of it', async () => {
+      const both = heads((text) => updated(fixed(text)));
+      expect(reasonOf(await proveMove(both, [image], read(), false))).toBe(
+        "pnpm-lock.yaml:6 is `specifier: ^4.14.1` where the scan's moves make `specifier: ^4.14.0`",
+      );
+      // And one that moves it to another release than the scan's, beside the fix.
+      const other = heads((text) => updated(fixed(text)).replaceAll('4.14.1', '4.14.2'));
+      expect(reasonOf(await proveMove(other, [image, axe], read(), false))).toMatch(
+        /is not what the pin step writes for the moves it carries$/,
+      );
+    });
+  });
 });
 
 describe('the Makefile’s pin of Argo CD’s chart, which the App writes', () => {

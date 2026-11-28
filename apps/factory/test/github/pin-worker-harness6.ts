@@ -10,10 +10,16 @@
  * pull request has: what is under test is what the queue and the door add to the gate, not the gate.
  *
  * Closed pull requests are listed with GitHub's `closed_at` and `merged_at`, which a test sets (`times`).
+ *
+ * The repository's commits are made at the worker's clock, which each pass of the watch moves on an hour and `wait`
+ * by as long as a test says. With `pulls`, the queue says what it decides of each head there and the watch reads it,
+ * as in service.ts; `level`, `rule`, `reviews` and `removed` are then what the queue reads of the level, the gate,
+ * Martin's reviews and the merge queue's own record.
  */
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type { GateRule } from '@software-factory/events';
 import { DiskArtifacts } from '@software-factory/store';
 import { listenLocal } from '@software-factory/testing';
 import { APP_LOGIN, LiveActions } from '../../src/github/actions.ts';
@@ -26,7 +32,10 @@ import {
   pinQueueWatch,
 } from '../../src/github/deploy-queue.ts';
 import { APP_USER, IssueGuard, openedBy } from '../../src/github/issues.ts';
+import type { Merging } from '../../src/github/level.ts';
+import type { MergeQueue } from '../../src/github/merging.ts';
 import { PASS_MS, type PinScope, pinWatch } from '../../src/github/pins.ts';
+import type { PullStates } from '../../src/github/pull-states.ts';
 import type { PullRequestState, Reads } from '../../src/github/reads.ts';
 import { RefusalRecorder } from '../../src/github/refusals.ts';
 import type { Moves } from '../../src/github/scanning.ts';
@@ -49,6 +58,16 @@ export interface Options {
    * has the queue write the watch's commit again through the live action (`commitAgain`).
    */
   conclusion?: (head: string, check: string) => string | null;
+  /** Where the queue says what it decides of each head, and the watch reads it. */
+  pulls?: PullStates;
+  /** The level and the stop the queue reads: Guarded and running without it. */
+  level?: () => Merging;
+  /** The rule the gate judged a head by: `move` without it. */
+  rule?: () => GateRule;
+  /** The merge queue's record of the pull request's last removal: none without it. */
+  removed?: () => MergeQueue['removed'];
+  /** The reviews GitHub lists of each pull request, oldest first: none without it. */
+  reviews?: () => { user: { id: number }; state: string }[];
 }
 
 export async function worker(
@@ -142,6 +161,11 @@ export async function worker(
         return { body: [] };
       },
     },
+    {
+      method: 'GET',
+      path: /\/pulls\/\d+\/reviews\?per_page=100&page=\d+$/,
+      answer: ({ path }) => ({ body: path.endsWith('page=1') ? (options.reviews?.() ?? []) : [] }),
+    },
     { method: 'POST', path: `/repos/${FACTORY}/check-runs`, answer: () => ({ status: 201, body: { id: 9001 } }) },
     { method: 'PATCH', path: new RegExp(`^/repos/${FACTORY}/check-runs/\\d+$`), answer: () => ({ body: {} }) },
   ];
@@ -210,6 +234,12 @@ export async function worker(
   const guard = new IssueGuard({ openedBy: openedBy(github), recorder });
   const actions = new LiveActions(github, { guard });
   let clock = Date.parse('2026-11-12T07:00:00Z');
+  /** Moves the clock on, and with it the time the repository gives a commit. */
+  const tick = (ms: number) => {
+    clock += ms;
+    repo.at = new Date(clock).toISOString();
+  };
+  tick(0);
   // One record of the watch's commits for both, as service.ts gives it.
   const heads = new WatchedHeads();
   const watch = pinWatch(
@@ -224,6 +254,7 @@ export async function worker(
       log: quiet,
       now: () => clock,
       only,
+      pulls: options.pulls,
     },
     FACTORY,
   );
@@ -239,7 +270,7 @@ export async function worker(
       head: head(number),
       check: null,
       verdict: null,
-      judged: { number, head: head(number), rule: 'move', tags: [] },
+      judged: { number, head: head(number), rule: options.rule?.() ?? 'move', tags: [] },
       problem: null,
     }),
     checkRuns: async (_repo, sha) =>
@@ -265,7 +296,7 @@ export async function worker(
       state: 'open',
       queued: null,
       added: null,
-      removed: null,
+      removed: options.removed?.() ?? null,
       checks: [],
     }),
   };
@@ -294,8 +325,9 @@ export async function worker(
           actions.commitAgain(repo, branch, head, run),
       },
       heads,
-      level: async () => ({ autonomy: 'guarded', stopped: false }) as const,
+      level: async () => options.level?.() ?? ({ autonomy: 'guarded', stopped: false } as const),
       log: quiet,
+      pulls: options.pulls,
     },
     FACTORY,
     only,
@@ -348,15 +380,16 @@ export async function worker(
     failEnqueue,
     enqueued,
     ask,
+    wait: tick,
     watchOnly: async () => {
-      clock += PASS_MS;
+      tick(PASS_MS);
       await watch();
     },
     queueOnly: async () => {
       await queue();
     },
     pass: async () => {
-      clock += PASS_MS;
+      tick(PASS_MS);
       await watch();
       await queue();
     },
