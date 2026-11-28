@@ -353,7 +353,7 @@ describe('the line', () => {
       attempt: 1,
       commit: MAIN,
       result: true,
-      repository: 'https://github.com/the-roganator/cv-worlds-worst-website.git',
+      repository: 'https://github.com/the-roganator/cv-worlds-worst-website-scratch.git',
     });
     expect(steps.requests[0]?.prompt).toContain('Category errors, severity broken');
 
@@ -2930,7 +2930,7 @@ describe('the deploy pull request that carries a held work item', () => {
   ): DeployBuild => ({
     commit,
     pinned: sha('1'),
-    image: 'the-roganator/cv-worlds-worst-website',
+    image: 'the-roganator/cv-worlds-worst-website-scratch',
     digest: `sha256:${commit.slice(0, 1).repeat(64)}`,
     signature,
     ...more,
@@ -2951,7 +2951,7 @@ describe('the deploy pull request that carries a held work item', () => {
     expect(await payloads(workItem, 'build.unsigned')).toEqual([
       {
         commit: sha('3'),
-        image: 'the-roganator/cv-worlds-worst-website',
+        image: 'the-roganator/cv-worlds-worst-website-scratch',
         digest: `sha256:${'3'.repeat(64)}`,
         signature: 'unsigned',
         reason: 'no signature',

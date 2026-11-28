@@ -25,8 +25,8 @@ type Repository = Day['repositories'][number];
 type Move = Repository['moves'][number];
 type Pull = Repository['pulls'][number];
 
-const FACTORY = 'the-roganator/cv-software-factory';
-const APP = 'the-roganator/cv-worlds-worst-website';
+const FACTORY = 'the-roganator/cv-software-factory-scratch';
+const APP = 'the-roganator/cv-worlds-worst-website-scratch';
 const counts = (critical: number, high: number, medium: number, low: number, unknown = 0) => ({
   critical,
   high,
