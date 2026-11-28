@@ -4,7 +4,8 @@
  * fix is nothing he can act on, and no move carries one, so nothing here counts it. Nor does he hear of a routine
  * update, a pin merely behind that no finding asks to move (`routine`): nothing is due, whoever's lane it is in, and
  * its pull request or its issue is where it waits. Each kind is counted once for each
- * move, ever, so nothing repeats on a timer, and a day has at most a message or two for a move:
+ * move while the days list it, so nothing repeats on a timer, and a day has at most a message or two for a move; one
+ * that leaves a day whose scan judged its moves and comes back, as a pin's next fix does, is counted again (`ended`):
  *
  * - `move-fix`: a move first clears a High or a Critical, which a fix the scan found has given it;
  * - `move-waits`: a move a finding asks for first waits on him: its lane is his cluster's own command, an issue, or no
@@ -32,8 +33,10 @@
  * every count, is the security events' (`security.ts`), whose gauge says when a read fails.
  *
  * And he hears when the scan stops (`staleScans`): a repository whose newest scan in the sense's days judged its moves
- * more than `SCAN_MAX_AGE_HOURS` ago, by the clock. No day arriving is the same to it as a day with no newer scan, so
- * it says so whether the scan has stopped running, fails before it judges, or the sense can no longer read it. And
+ * more than `SCAN_MAX_AGE_HOURS` ago, by the clock. A scan that says it judged them more than `SCAN_CLOCK_SKEW_MS`
+ * after its day arrived is no judgement, as it is none to the review gate: it would never grow old. No day arriving is
+ * the same to it as a day with no newer scan, so it says so whether the scan has stopped running, fails before it
+ * judges, or the sense can no longer read it. And
  * he hears when the sense stops (`senseStaleFor`): no day has arrived in `SENSE_MAX_AGE_HOURS`, though the sense
  * appends one at least every `KEEP_DAY_HOURS`. Each is a condition, not a count, given as how long it has stood, so its
  * rule tells him once: it ends when a day arrives with a scan judged since, or a day at all. A repository no scan has
@@ -41,7 +44,7 @@
  * the sense's first read, has nothing to measure from: nothing is stale there.
  */
 import type { PayloadOf } from '@software-factory/events';
-import { SCAN_MAX_AGE_HOURS } from '../../../../policy/vulnerabilities.ts';
+import { SCAN_CLOCK_SKEW_MS, SCAN_MAX_AGE_HOURS } from '../../../../policy/vulnerabilities.ts';
 import { KEEP_DAY_HOURS } from '../patching/schedule.ts';
 
 export const PATCHING_KINDS = [
@@ -144,7 +147,7 @@ export const emptyPatchingTally = (): PatchingTally => ({
   lastDay: null,
 });
 
-/** Counts a kind for a key, once ever. */
+/** Counts a kind for a key, once until the key ends (`ended`). */
 function once(tally: PatchingTally, kind: PatchingKind, key: string) {
   if (tally.counted[kind].has(key)) return;
   tally.counted[kind].add(key);
@@ -170,6 +173,28 @@ function rowKey(row: Day['rows'][number]): string {
     : `${row.row} ${row.namespace} ${row.image}@${row.digest}`;
 }
 
+/** The kinds counted for a move, by its key (`moveKey`). */
+const MOVE_KINDS = ['move-fix', 'move-waits', 'move-due-soon', 'move-overdue'] as const;
+
+/**
+ * Ends each key of a kind that a day no longer lists (`gone`), so what it names is counted again if it comes back: a
+ * pin's next fix, or a pin once more with no better release. The counts stand.
+ */
+function ended(tally: PatchingTally, kinds: readonly PatchingKind[], gone: (key: string) => boolean) {
+  for (const kind of kinds) {
+    for (const key of tally.counted[kind]) if (gone(key)) tally.counted[kind].delete(key);
+  }
+}
+
+/**
+ * When a repository's scan judged its day's moves, as the staleness clock and the keys' ends read it: null when its
+ * run judged none, or says it did more than `SCAN_CLOCK_SKEW_MS` after the day arrived.
+ */
+function judgedAt(repository: Day['repositories'][number], at: number): number | null {
+  const judged = repository.judged === null ? null : Date.parse(repository.judged);
+  return judged !== null && judged - at <= SCAN_CLOCK_SKEW_MS ? judged : null;
+}
+
 /** Each deadline of the last day's moves judged at t: within a day, or past. */
 export function judgeDeadlines(tally: PatchingTally, t: number): void {
   for (const [key, deadline] of tally.deadlines) {
@@ -183,7 +208,10 @@ export function judgeDeadlines(tally: PatchingTally, t: number): void {
 
 /**
  * Adds the sense's day, which arrived at `at`: the day before's deadlines judged then, and this day's moves. A
- * repository whose run judged no moves (it failed early) keeps the deadlines it had: its moves did not go.
+ * repository whose run judged no moves (it failed early) keeps the deadlines it had: its moves did not go. Nor does a
+ * key end but on a day that can say what it names has gone: a repository's on one its scan judged (`judgedAt`), a
+ * `not-running` row's on one that compared the cluster. A row of something running never ends: its digest is in its
+ * key, and a Job's pod comes and goes.
  */
 export function addDay(tally: PatchingTally, day: Day, at: number): void {
   judgeDeadlines(tally, at);
@@ -204,13 +232,16 @@ export function addDay(tally: PatchingTally, day: Day, at: number): void {
       const key = stopped(repository.repository, pull);
       if (key && !routineAlone(pull)) once(tally, 'move-stopped', key);
     }
+    const waits = new Set<string>();
     for (const wait of waiting) {
       const key = noBetter(repository.repository, wait);
-      if (key) once(tally, 'move-stopped', key);
+      if (!key) continue;
+      once(tally, 'move-stopped', key);
+      waits.add(key);
     }
     const scan = tally.scans.get(repository.repository);
-    if (repository.judged !== null) {
-      const judged = Date.parse(repository.judged);
+    const judged = judgedAt(repository, at);
+    if (judged !== null) {
       if (!scan?.judged || judged > scan.at) tally.scans.set(repository.repository, { judged: true, at: judged });
     } else if (!scan) tally.scans.set(repository.repository, { judged: false, at });
     if (repository.judged === null) {
@@ -219,9 +250,11 @@ export function addDay(tally: PatchingTally, day: Day, at: number): void {
       }
       continue;
     }
+    const listed = new Set<string>();
     let lockfiles = 0;
     for (const move of repository.moves) {
       const key = moveKey(repository.repository, move, move.lockfile ? ++lockfiles : lockfiles);
+      listed.add(key);
       const first = !tally.counted['move-fix'].has(key);
       if (move.clears.critical + move.clears.high > 0) once(tally, 'move-fix', key);
       if (HIS.includes(move.lane) && !routine(move)) once(tally, 'move-waits', key);
@@ -233,8 +266,15 @@ export function addDay(tally: PatchingTally, day: Day, at: number): void {
       }
       deadlines.set(key, deadline);
     }
+    if (judged === null) continue;
+    // A stopped pull request's or issue's key has its number, after a `#`, and stands: only a pin's own ends.
+    const its = (key: string) => key.startsWith(`${repository.repository} `);
+    ended(tally, MOVE_KINDS, (key) => its(key) && !listed.has(key));
+    ended(tally, ['move-stopped'], (key) => its(key) && key.endsWith(' no-better') && !waits.has(key));
   }
-  for (const row of day.rows) once(tally, 'move-waits', rowKey(row));
+  const rows = new Set(day.rows.map(rowKey));
+  for (const key of rows) once(tally, 'move-waits', key);
+  if (day.compared) ended(tally, ['move-waits'], (key) => key.startsWith('not-running ') && !rows.has(key));
   tally.deadlines = deadlines;
 }
 
