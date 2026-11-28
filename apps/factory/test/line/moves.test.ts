@@ -50,7 +50,7 @@ import {
 
 withLineStore();
 
-const REPO = 'the-roganator/cv-worlds-worst-website';
+const REPO = 'the-roganator/cv-worlds-worst-website-scratch';
 const MOVE = { name: 'invented-pkg', ecosystem: 'npm' as const, from: '2.0.0', to: '2.0.1' };
 const PINS = [{ file: 'pnpm-lock.yaml', line: 41 }];
 
@@ -1218,7 +1218,7 @@ describe('what the line says of a move', () => {
     expect(title).toBe(TICKET.title);
     expect(body).toBe(
       [
-        'The factory’s ticket #7: the move of `invented-pkg`, in npm, from `2.0.0` to `2.0.1` or later, in the-roganator/cv-worlds-worst-website.',
+        'The factory’s ticket #7: the move of `invented-pkg`, in npm, from `2.0.0` to `2.0.1` or later, in the-roganator/cv-worlds-worst-website-scratch.',
         '',
         '- Category: dependency',
         '- Severity: cosmetic',

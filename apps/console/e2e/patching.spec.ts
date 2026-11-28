@@ -171,17 +171,17 @@ test('a row opens in place, one at a time: why it waits, what failed and its run
   await expect(more.locator('p.failed-run')).toHaveText('database tests · failed · try 3 of 3 · its run ↗');
   await expect(more.locator('p.failed-run a')).toHaveAttribute(
     'href',
-    'https://github.com/the-roganator/cv-software-factory/actions/runs/19220481337',
+    'https://github.com/the-roganator/cv-software-factory-scratch/actions/runs/19220481337',
   );
   await expect(more.getByRole('link', { name: 'Open #1348 on GitHub (opens GitHub in a new tab)' })).toHaveAttribute(
     'href',
-    'https://github.com/the-roganator/cv-software-factory/pull/1348',
+    'https://github.com/the-roganator/cv-software-factory-scratch/pull/1348',
   );
   await expect(more).toContainText('Left as it is, the scan fails from');
   await expect(more).toContainText('Clears · 60 findings');
   await expect(more.getByRole('link', { name: /Code scanning/ })).toHaveAttribute(
     'href',
-    'https://github.com/the-roganator/cv-software-factory/security/code-scanning',
+    'https://github.com/the-roganator/cv-software-factory-scratch/security/code-scanning',
   );
 
   const logs = row(page, 'example-logs');
@@ -382,7 +382,9 @@ test('a day the sense read long ago says so, in the summary, the sheet and the c
 });
 
 test('the address opens the sheet at a row: opened, scrolled to and focused', async ({ page }) => {
-  await page.goto(`${consoleUrl()}&move=${encodeURIComponent('the-roganator/cv-software-factory example/sidecar')}`);
+  await page.goto(
+    `${consoleUrl()}&move=${encodeURIComponent('the-roganator/cv-software-factory-scratch example/sidecar')}`,
+  );
   await expect(sheet(page)).toBeVisible();
   await expect(row(page, 'example/sidecar')).toHaveAttribute('aria-expanded', 'true');
   await expect(row(page, 'example/sidecar')).toBeInViewport();

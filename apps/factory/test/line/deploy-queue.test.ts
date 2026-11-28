@@ -266,7 +266,7 @@ describe('the line, adding the app’s deploy pull request to the merge queue', 
   it('never adds the factory’s own deploy pull request', async () => {
     await controls({ autonomy: 'lights-out' });
     const workItem = await heldForDeploy(sha('2'));
-    const { pass, enqueues } = lineWith('exact-pin', 'the-roganator/cv-software-factory');
+    const { pass, enqueues } = lineWith('exact-pin', 'the-roganator/cv-software-factory-scratch');
     await pass();
     expect(enqueues()).toEqual([]);
     expect(await changes(workItem)).toEqual([{ head: 'd', pullRequest: DEPLOY, state: 'passed' }]);

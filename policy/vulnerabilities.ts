@@ -48,7 +48,7 @@ const KERNEL_HEADERS = {
   reason:
     "Kernel headers only: a container runs its host's kernel, never the one this package describes, so a kernel advisory cannot reach the dev container.",
   expires: '2027-02-26',
-  repositories: ['the-roganator/cv-software-factory', 'the-roganator/cv-worlds-worst-website'],
+  repositories: ['the-roganator/cv-software-factory-scratch', 'the-roganator/cv-worlds-worst-website-scratch'],
   advisories: [
     'CVE-2026-99287',
     'CVE-2026-99306',

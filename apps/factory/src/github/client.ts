@@ -27,7 +27,7 @@ import { type AppCredentials, InstallationTokens } from './app.ts';
 
 export const API = 'https://api.github.com';
 const VERSION = '2022-11-28';
-const USER_AGENT = 'mrogan-software-factory';
+const USER_AGENT = 'the-roganator-scratch-factory';
 
 export type GitHubErrorKind =
   /** Not allowed: the App lacks the permission, a ruleset forbids it, or GitHub refused for its own reasons. */

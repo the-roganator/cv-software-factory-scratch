@@ -392,7 +392,7 @@ describe('the gate, reading the description', () => {
       GITHUB_EVENT_NAME: 'merge_group',
       MERGE_GROUP_HEAD_REF: `refs/heads/gh-readonly-queue/main/pr-155-${SHA}`,
       GITHUB_TOKEN: 'token',
-      GITHUB_REPOSITORY: 'the-roganator/cv-worlds-worst-website',
+      GITHUB_REPOSITORY: 'the-roganator/cv-worlds-worst-website-scratch',
       GITHUB_API_URL: 'https://api.example',
     };
     const asked: [string, RequestInit | undefined][] = [];
@@ -403,8 +403,8 @@ describe('the gate, reading the description', () => {
     }) as typeof fetch;
     expect(await description(env, fetcher, async () => {})).toBe(SECTION);
     expect(asked.map(([url]) => url)).toEqual([
-      'https://api.example/repos/the-roganator/cv-worlds-worst-website/pulls/155',
-      'https://api.example/repos/the-roganator/cv-worlds-worst-website/pulls/155',
+      'https://api.example/repos/the-roganator/cv-worlds-worst-website-scratch/pulls/155',
+      'https://api.example/repos/the-roganator/cv-worlds-worst-website-scratch/pulls/155',
     ]);
     expect(new Headers(asked[0]?.[1]?.headers).get('authorization')).toBe('Bearer token');
     // A refusal is not asked again; a description of another pull request, or with no token, is not read.
@@ -445,7 +445,7 @@ describe('the gate, reading the description', () => {
         GITHUB_EVENT_NAME: name,
         ...passed,
         GITHUB_TOKEN: 'token',
-        GITHUB_REPOSITORY: 'the-roganator/cv-worlds-worst-website',
+        GITHUB_REPOSITORY: 'the-roganator/cv-worlds-worst-website-scratch',
         GITHUB_STEP_SUMMARY: '',
       };
       const named = await run([base, change], env, (async () =>
@@ -484,7 +484,7 @@ describe('the gate, reading the description', () => {
 
   it('links the summary to the heading in the docs that describes the section', async () => {
     const link = new URL(CONTRADICTS_DOC);
-    const prefix = '/the-roganator/cv-software-factory/blob/main/';
+    const prefix = '/the-roganator/cv-software-factory-scratch/blob/main/';
     expect(link.pathname.startsWith(prefix)).toBe(true);
     const doc = await readFile(new URL(`../../../../${link.pathname.slice(prefix.length)}`, import.meta.url), 'utf8');
     // GitHub's anchor for a heading: lower case, punctuation dropped, spaces as hyphens. An example in a code fence,

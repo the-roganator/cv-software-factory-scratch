@@ -59,7 +59,7 @@ import { CANARY, commitOf, digestOf, type RolloutState, releaseOf, rollout, STAB
 import { appendSettings, settingsPayload } from '../settings-events.ts';
 import { Authenticator, type Ceremony } from './authenticator.ts';
 
-const ORIGIN = 'https://console.localhost:8443';
+const ORIGIN = 'https://console.localhost:9443';
 const RP_ID = 'console.localhost';
 
 let db: Database;
@@ -474,13 +474,13 @@ describe('signing in', () => {
 
   it('tells a signed-in session the deployment’s Grafana and Argo CD, and nobody else', async () => {
     await service.stop();
-    const tools = { grafana: 'http://grafana.localhost:8080/', argocd: 'http://argocd.localhost:8080/' };
+    const tools = { grafana: 'http://grafana.localhost:9080/', argocd: 'http://argocd.localhost:9080/' };
     await start({ tools });
     const { browser } = await signedIn();
     expect((await browser.get('/admin/session')).body.tools).toEqual(tools);
     const visitor = await new Browser().get('/admin/session');
     expect(visitor.status).toBe(401);
-    expect(JSON.stringify(visitor.body)).not.toContain('localhost:8080');
+    expect(JSON.stringify(visitor.body)).not.toContain('localhost:9080');
   });
 
   it('records no sign-out for a session the browser had that had already ended', async () => {
@@ -594,7 +594,7 @@ describe('every write route', () => {
     const other = (await signedIn()).browser;
     for (const [path, body] of WRITES) {
       expect((await browser.post(path, body, { origin: 'https://evil.example' })).body.refused, path).toBe('origin');
-      expect((await browser.post(path, body, { origin: 'http://console.localhost:8443' })).body.refused, path).toBe(
+      expect((await browser.post(path, body, { origin: 'http://console.localhost:9443' })).body.refused, path).toBe(
         'origin',
       );
       expect((await browser.post(path, body, { origin: '' })).body.refused, path).toBe('origin');

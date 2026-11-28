@@ -1480,7 +1480,7 @@ for (const [width, viewport] of Object.entries(WIDTHS)) {
     }
 
     test('a move that waits on Martin opened, for him', async ({ page }) => {
-      await patchingAt(page, 'martin', 'paper', 'the-roganator/cv-software-factory example/sidecar');
+      await patchingAt(page, 'martin', 'paper', 'the-roganator/cv-software-factory-scratch example/sidecar');
       await expect(page).toHaveScreenshot(`m07-patching-open-${width}.png`);
     });
 

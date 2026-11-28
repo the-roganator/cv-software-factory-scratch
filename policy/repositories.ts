@@ -18,8 +18,8 @@ export const OWNER = 'the-roganator';
 
 /** The real two, which an unset setting names. */
 export const REAL = {
-  factory: 'the-roganator/cv-software-factory',
-  app: 'the-roganator/cv-worlds-worst-website',
+  factory: 'the-roganator/cv-software-factory-scratch',
+  app: 'the-roganator/cv-worlds-worst-website-scratch',
 } as const;
 
 export interface Repositories {

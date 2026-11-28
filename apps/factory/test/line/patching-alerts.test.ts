@@ -336,7 +336,7 @@ describe('a move across days', () => {
 });
 
 describe('a move that goes and comes back', () => {
-  const FACTORY = 'the-roganator/cv-software-factory';
+  const FACTORY = 'the-roganator/cv-software-factory-scratch';
   /** The day with the factory's repository as given, and the app's as it is. */
   const factory = (change: (r: Day['repositories'][number]) => object, day: Day = DAY): Day => ({
     ...day,
@@ -402,8 +402,8 @@ describe('a move that goes and comes back', () => {
 });
 
 describe('a scan that stops', () => {
-  const FACTORY = 'the-roganator/cv-software-factory';
-  const APP = 'the-roganator/cv-worlds-worst-website';
+  const FACTORY = 'the-roganator/cv-software-factory-scratch';
+  const APP = 'the-roganator/cv-worlds-worst-website-scratch';
   /** The fixture's scans judged at 04:57 and 05:01 on the 11th. */
   const JUDGED = { [FACTORY]: at('2026-11-11T04:57:00Z'), [APP]: at('2026-11-11T05:01:00Z') };
   const stale = (tally: PatchingTally, t: number, since = READ) =>

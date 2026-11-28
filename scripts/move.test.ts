@@ -20,8 +20,8 @@ const D_OLD = digest('a');
 const D_NEW = digest('b');
 const D_OTHER = digest('c');
 
-const FACTORY = 'the-roganator/cv-software-factory';
-const APP = 'the-roganator/cv-worlds-worst-website';
+const FACTORY = 'the-roganator/cv-software-factory-scratch';
+const APP = 'the-roganator/cv-worlds-worst-website-scratch';
 const POSTGRES = 'deploy/base/postgres/statefulset.yaml';
 const PROMETHEUS = 'deploy/base/telemetry/prometheus.yaml';
 const OTEL = 'deploy/base/telemetry/otel-collector.yaml';
@@ -925,13 +925,13 @@ describe('what is not a move, and says what differs', () => {
     const ours = 'deploy/base/factory/factory.yaml';
     const scan = [
       move({
-        name: 'ghcr.io/the-roganator/cv-software-factory/factory',
+        name: 'ghcr.io/the-roganator/cv-software-factory-scratch/factory',
         pins: [{ file: ours, line: 1 }],
         from: 'main',
         to: `image main@${D_NEW}`,
       }),
     ];
-    const reference = 'image: ghcr.io/the-roganator/cv-software-factory/factory:main@';
+    const reference = 'image: ghcr.io/the-roganator/cv-software-factory-scratch/factory:main@';
     const changed = [modified(ours, `${reference}${D_OLD}`, `${reference}${D_NEW}`)];
     expect(reasonOf(await proveMove(changed, scan, io(), false))).toContain('passes only as an exact pin');
   });
