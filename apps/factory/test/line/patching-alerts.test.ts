@@ -666,19 +666,15 @@ describe('a move tried and stopped', () => {
     expect(live.kinds['move-stopped']).toBe(STOPPED.length);
   });
 
-  it('counts a pin no release is better than again, once a judged day had it gone and a later one has it back', () => {
+  it('counts a pin no release is better than once, though a day between does not list it: its registry did not answer', () => {
     const tally = emptyPatchingTally();
-    const days = [
-      withPulls([], [wait('redis', {})]),
-      withPulls([], [wait('redis', {})]),
-      withPulls([]),
-      withPulls([], [wait('redis', { deadline: '2027-04-25T04:57:00Z' })]),
-    ];
+    // The scan judges on the day its registry does not answer, and names no wait for the pin.
+    const days = [withPulls([], [wait('redis', {})]), withPulls([]), withPulls([], [wait('redis', {})])];
     const counts = days.map((day, i) => {
       addDay(tally, day, READ + i * 24 * H);
       return tally.kinds['move-stopped'];
     });
-    expect(counts).toEqual([1, 1, 1, 2]);
+    expect(counts).toEqual([1, 1, 1]);
   });
 
   it('says nothing of a routine update tried and stopped, as of a routine wait: nothing is due', () => {
