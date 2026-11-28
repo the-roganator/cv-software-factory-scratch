@@ -87,7 +87,7 @@ describe('a failed check on a pin move’s own head', () => {
     expect(said).toHaveLength(1);
     expect(JSON.stringify(said[0]?.body)).toContain(`in ${RUN_TRIES} runs`);
     // What happens next is said as it is: the watch makes the move again, and when.
-    expect(JSON.stringify(said[0]?.body)).toContain('Once `main` has moved and this head is a day old');
+    expect(JSON.stringify(said[0]?.body)).toContain('once `main` has moved and the head is a day old');
     expect([...w.enqueued, ...next.enqueued]).toEqual([]);
   });
 
@@ -108,7 +108,7 @@ describe('a failed check on a pin move’s own head', () => {
 describe('a head out of its check runs', () => {
   const DAY = SPENT_REMAKE_MS;
   /** Checks that fail at every head until `mended`, as a move `main` must change for; and where the queue says so. */
-  async function spentHead(options: Options = {}) {
+  async function spentHead(options: Options = {}, hold = 'checks-spent') {
     const mended = { main: false };
     const pulls = new PullStates({ sources: () => [] });
     const conclusion = () => (mended.main ? 'success' : 'failure');
@@ -116,7 +116,7 @@ describe('a head out of its check runs', () => {
     for (let i = 0; i < RUN_TRIES; i++) await o.w.queueOnly();
     const spent = o.repo.refs.get(DASHBOARDS) as string;
     expect(checksRunOf(o.repo.messages.get(spent) as string)).toBe(RUN_TRIES);
-    expect(pulls.said(FACTORY, o.pull.number, spent)).toMatchObject({ hold: 'checks-spent' });
+    expect(pulls.said(FACTORY, o.pull.number, spent)).toMatchObject({ hold });
     return { ...o, mended, pulls, spent, conclusion, head: () => o.repo.refs.get(DASHBOARDS) as string };
   }
   /** Martin's review that asks for changes, as GitHub lists it. */
@@ -135,9 +135,9 @@ describe('a head out of its check runs', () => {
   it('is made again on main’s head once main has moved and it is a day old, with its own runs, and queued once green', async () => {
     const { repo, w, pull, spent, mended, head } = await spentHead();
     const main = repo.push({ 'README.md': 'mended\n' });
-    mended.main = true;
     w.wait(DAY);
     await w.watchOnly();
+    mended.main = true;
     const again = head();
     expect(again).not.toBe(spent);
     expect(repo.made.get(again)?.parents).toEqual([main]);
@@ -149,7 +149,7 @@ describe('a head out of its check runs', () => {
     expect(w.enqueued).toEqual([{ number: pull.number, head: again }]);
   });
 
-  it('is told once more, and made again once more, only a day after its last run, while main moves', async () => {
+  it('is made again once more only a day after its last run, while main moves, and the pull request told no more', async () => {
     const { repo, w, pull, head } = await spentHead();
     repo.push({ 'README.md': 'one\n' });
     w.wait(DAY);
@@ -159,17 +159,65 @@ describe('a head out of its check runs', () => {
     const last = head();
     expect(checksRunOf(repo.messages.get(last) as string)).toBe(RUN_TRIES);
     expect(repo.made.get(last)?.parents).toEqual(repo.made.get(second)?.parents);
-    expect(comments(w.sent, pull.number)).toHaveLength(2);
+    expect(comments(w.sent, pull.number)).toHaveLength(1);
     // main moves every hour of the day after: nothing is written until the head is a day old.
     for (let hour = 0; hour < 22; hour++) {
       repo.push({ 'README.md': `hour ${hour}\n` });
       await w.pass();
     }
     expect(head()).toBe(last);
-    expect(comments(w.sent, pull.number)).toHaveLength(2);
+    expect(comments(w.sent, pull.number)).toHaveLength(1);
     w.wait(2 * PASS_MS);
     await w.watchOnly();
     expect(head()).not.toBe(last);
+  });
+
+  it('is left as it is while the line is stopped, or the level holds it, though the queue ran its checks again', async () => {
+    const stop = { stopped: true };
+    const stopped = await spentHead({ level: () => ({ autonomy: 'guarded', ...stop }) });
+    stopped.repo.push({ 'README.md': 'moved\n' });
+    stopped.w.wait(DAY);
+    await stopped.w.pass();
+    await stopped.w.pass();
+    expect(stopped.head()).toBe(stopped.spent);
+    // The line started again, it is made again on the next pass.
+    stop.stopped = false;
+    await stopped.w.watchOnly();
+    expect(stopped.head()).not.toBe(stopped.spent);
+    // A major at Guarded is said held by the level, whatever its checks, and is Martin's.
+    const major = await spentHead({ rule: () => 'major' }, 'level');
+    major.repo.push({ 'README.md': 'moved\n' });
+    major.w.wait(DAY);
+    await major.w.pass();
+    await major.w.pass();
+    expect(major.head()).toBe(major.spent);
+  });
+
+  it('is left to its run once Martin has run its checks again, whatever the queue last said of it', async () => {
+    const { repo, w, pull, pulls, spent, mended, head } = await spentHead();
+    repo.push({ 'README.md': 'mended\n' });
+    w.wait(DAY);
+    // The checks pass there now, and the queue has not looked since.
+    mended.main = true;
+    expect(pulls.said(FACTORY, pull.number, spent)).toMatchObject({ hold: 'checks-spent' });
+    await w.watchOnly();
+    expect(head()).toBe(spent);
+    await w.queueOnly();
+    expect(w.enqueued).toEqual([{ number: pull.number, head: spent }]);
+  });
+
+  it('is one whose failed check another app posted, too: never run again or told, and made again a day on', async () => {
+    const pulls = new PullStates({ sources: () => [] });
+    const { repo, w, pull, first } = await opened(() => 'failure', { pulls, app: 'another-app' });
+    await w.queueOnly();
+    await w.queueOnly();
+    expect(repo.refs.get(DASHBOARDS)).toBe(first);
+    expect(pulls.said(FACTORY, pull.number, first)).toMatchObject({ hold: 'checks-spent' });
+    const main = repo.push({ 'README.md': 'moved\n' });
+    w.wait(DAY);
+    await w.pass();
+    expect(repo.made.get(repo.refs.get(DASHBOARDS) as string)?.parents).toEqual([main]);
+    expect(comments(w.sent, pull.number)).toEqual([]);
   });
 
   it('is left as it is, a day old, while main has not moved', async () => {
@@ -195,8 +243,8 @@ describe('a head out of its check runs', () => {
     expect(head()).not.toBe(spent);
   });
 
-  describe('is the only head made again: a day old, main moved', () => {
-    /** A green head the queue holds for the reason a test gives, a day on, main having moved. */
+  describe('is the only head made again: a day old, main moved, no green head is', () => {
+    /** A head, green unless a test says, that the queue holds for the reason the test gives, a day on, main having moved. */
     async function held(options: Options) {
       const pulls = new PullStates({ sources: () => [] });
       const o = await opened(() => 'success', { pulls, ...options });
@@ -252,15 +300,17 @@ describe('a head out of its check runs', () => {
     async function remade(options: Options = {}) {
       const s = await spentHead(options);
       s.repo.push({ 'README.md': 'mended\n' });
-      s.mended.main = true;
       s.w.wait(DAY);
       await s.w.watchOnly();
+      s.mended.main = true;
       expect(s.head()).not.toBe(s.spent);
       return s;
     }
 
-    it('not queued while the line is stopped, or the gate holds the new head', async () => {
-      const stopped = await remade({ level: () => ({ autonomy: 'guarded', stopped: true }) });
+    it('not queued once the line is stopped, or the gate holds the new head', async () => {
+      const stop = { stopped: false };
+      const stopped = await remade({ level: () => ({ autonomy: 'guarded', ...stop }) });
+      stop.stopped = true;
       await stopped.w.pass();
       expect(stopped.w.enqueued).toEqual([]);
       expect(stopped.pulls.said(FACTORY, stopped.pull.number, stopped.head())).toMatchObject({ hold: 'stopped' });

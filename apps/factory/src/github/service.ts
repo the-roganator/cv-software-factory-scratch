@@ -13,6 +13,7 @@ import { WatchedHeads } from './branches.ts';
 import { GitHub } from './client.ts';
 import { type GitHubConfig, REPOSITORIES, stateKeyName } from './config.ts';
 import {
+  checksFailed,
   deployQueueWatch,
   pinHeadsOf,
   pinQueueWatch,
@@ -124,7 +125,21 @@ export async function startGitHubWorker(config: GitHubConfig, log: Logger) {
       const only = config.pinWatchOnly;
       poller.watch(
         `pins in ${repo}`,
-        pinWatch({ github, reads: liveReads, actions, recorder, ...recorded, log, only, pulls }, repo),
+        pinWatch(
+          {
+            github,
+            reads: liveReads,
+            actions,
+            recorder,
+            ...recorded,
+            log,
+            only,
+            pulls,
+            level,
+            failed: checksFailed(liveReads),
+          },
+          repo,
+        ),
       );
       // Each of those pull requests is added to the merge queue once the gate passes it by a rule the autonomy level
       // queues and its checks are green (ADR 0027), recorded instead in a dry run; only a move the watch is told to
