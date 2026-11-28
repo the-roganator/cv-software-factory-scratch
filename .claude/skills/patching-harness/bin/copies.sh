@@ -348,7 +348,8 @@ push_baseline() { # <copy> <dir>
   git -C "$dir" push -q --force "https://github.com/$copy" HEAD:refs/heads/baseline HEAD:refs/heads/main
   ruleset "$copy" active
   # The factory copy's one version tag, on the real commit its baseline starts from, which a reset's sweep of tags
-  # takes and this puts back. It is the tag of the version release-please's manifest holds there, for two readers.
+  # takes and this puts back. It has the name of the real factory's last release before that commit, which is the
+  # version release-please holds as released there, for two readers.
   # The worker runs release-please at each move of main, and release-please reads the commits back to its last
   # release: with no release it takes the manifest's version's tag for one, and with neither it reads five hundred
   # commits, some 550 calls a run of the App's 5,000 an hour, where the real factory's stops at its last release.
@@ -357,9 +358,9 @@ push_baseline() { # <copy> <dir>
   # own baseline commit, which the app copy pins.
   if [[ $copy == "$FACTORY_COPY" ]]; then
     local version
-    version=$(git -C "$dir" show "$FACTORY_FROM:.release-please-manifest.json" | jq -er '."."') ||
-      die "no version in .release-please-manifest.json at $FACTORY_FROM, for the factory copy's version tag"
-    git -C "$dir" push -q --force "https://github.com/$copy" "$FACTORY_FROM:refs/tags/v$version"
+    version=$(git -C "$dir" describe --tags --abbrev=0 --match 'v[0-9]*' "$FACTORY_FROM") ||
+      die "the real factory has no release's tag before $FACTORY_FROM, for the factory copy's version tag"
+    git -C "$dir" push -q --force "https://github.com/$copy" "$FACTORY_FROM:refs/tags/$version"
   fi
 }
 

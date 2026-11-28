@@ -1240,6 +1240,22 @@ export function forgeFault(stderr: string): string {
   );
 }
 /**
+ * The reset's own scan, where the run stands on a later one: a run that summons Dependabot (test 22) pushes one
+ * commit past the baseline as the last of its reset, and stands on that push's scan, which waits behind the scan the
+ * baseline's own push started and reads the state it left. That earlier scan is the first after the reset, the one
+ * with no state: the newest scan a push of the baseline's commit started, from the reset's beginning until the scan
+ * the run stands on was started. None, where the baseline's push started no scan, or GitHub replaced it unrun.
+ */
+export function resetScan(
+  runs: readonly { id: number; event: string; headSha: string; createdAt: string }[],
+  o: { baseline: string; since: string; before: string },
+): number | undefined {
+  return runs
+    .filter((run) => run.event === 'push' && run.headSha === o.baseline)
+    .filter((run) => run.createdAt >= o.since && run.createdAt <= o.before)
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0]?.id;
+}
+/**
  * Content first seen today waits a day (test 28): the first scan after the reset, with no state to read, lists no
  * move of it and says it waits for its content's day; no pull request of the App's is opened for it before the scan
  * after, which, on the first's state with its sightings put back, lists it. Listed by the first, the wait did not
