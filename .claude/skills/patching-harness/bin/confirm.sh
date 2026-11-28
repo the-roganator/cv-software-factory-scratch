@@ -21,6 +21,7 @@ mkdir -p "$STATE" && touch "$BATCH"
 R=the-roganator/cv-software-factory-scratch
 APP_COPY=the-roganator/cv-worlds-worst-website-scratch
 LOGS=${1:?a directory for the baseline logs}
+mkdir -p "$LOGS"
 # The pass, by its folder's name: each run the harness starts records it, and the summary reads only this pass's runs.
 export PATCHING_PASS; PATCHING_PASS=$(basename "$LOGS")
 STEPS=${STEPS:-A B C D apps W}

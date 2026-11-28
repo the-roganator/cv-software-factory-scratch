@@ -145,9 +145,11 @@ STEPS=B KEEP_BASELINE=1 ./confirm.sh <dir>                          # one batch;
 STEPS=apps APP_TESTS="16 20" KEEP_BASELINE=1 ./confirm.sh <dir>     # some app tests
 STEPS=W W_APPS="W2 W4" W1=no KEEP_BASELINE=1 ./confirm.sh <dir>     # some of W; W_APPS= runs W1 alone
 ./level.sh guarded && node harness.ts batch 6,7a,9,15 &&
-  node harness.ts factory --only 6,7a,9,15,19 --no-forge            # part of a factory batch
+  PATCHING_PASS=<dir's name> node harness.ts factory --only 6,7a,9,15,19 --no-forge   # part of a factory batch
 node harness.ts resume <run>                                        # a run that was killed
 ```
+
+A run by hand is in the pass's summary only with `PATCHING_PASS`, the name of the folder `confirm.sh` was given. The summary keeps a test's verdict at each level it was judged at, Guarded and Lights-out: a run again at the same level takes the earlier one's place, and a failure at one level stays in the test's line whatever a batch at the other came to.
 
 Part of a batch keeps the tests of one pull request together (6, 7a and 9), and 15 with them: the routine updates' pull request and the findings' write one lockfile.
 

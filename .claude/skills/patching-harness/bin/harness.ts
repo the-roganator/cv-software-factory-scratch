@@ -76,6 +76,7 @@ import {
   LOKI_PAGE,
   leftAloneFault,
   lineTooEarly,
+  listingScans,
   lokiPage,
   MOVED_WAIT_MS,
   type MovesFile,
@@ -110,7 +111,8 @@ import {
   startingPods,
   stillListed,
   storeBack,
-  summaryRun,
+  summaryLine,
+  summaryRuns,
   type TicketFacts,
   ticketFault,
   unlisted,
@@ -722,6 +724,8 @@ interface State {
   kickedAt?: string;
   /** When the run restarted the dependency sense for its day after the first merge (`mergeDay`). */
   dayAsked?: string;
+  /** The error lines of each dependency sense the run restarted for a day, read before its pod went (`askDay`). */
+  senseBefore?: { errors: string[]; errorAt: string[] };
   /** When the run summoned Dependabot (test 20; test 22, at its reset). */
   summonedAt?: string;
   /** The scratch GitHub worker's poll, in seconds, as its Deployment sets it (60 when it sets none). */
@@ -2188,6 +2192,11 @@ function report(state: State) {
   console.log(
     `scan ${state.scan1?.id ?? '-'} at ${t0 ?? '-'} (${state.scan1?.conclusion ?? 'running'}); next scan ${state.scan2?.id ?? 'not run'}\n`,
   );
+  // The days first: a run's last lines are its verdicts and whether it was clean, which confirm.sh shows.
+  for (const day of keptDays(dirOf(state.id))) {
+    printDay(day);
+    console.log('');
+  }
   const lines = TESTS.filter((t) => inRun(state, t)).map((test) => {
     const { pass, why, mark: other } = verdict(state, test);
     const mark = other ?? (state.dropped?.[test.id] ? 'NOT RUN' : pass ? 'PASS' : 'FAIL');
@@ -2236,10 +2245,6 @@ function report(state: State) {
   }
   if (state.kickedAt)
     console.log(`\nthe harness restarted the GitHub worker and the dependency sense at ${state.kickedAt}`);
-  for (const day of keptDays(dirOf(state.id))) {
-    console.log('');
-    printDay(day);
-  }
 }
 
 /** A test's line: its mark, why, and, in the summary, the run it is from. */
@@ -2273,7 +2278,8 @@ function baselineBuilt(): Baseline {
   return { factory: at('factory'), app: at('app') };
 }
 /**
- * Every test, one line each, from the latest finished run of the pass that held it (decide.ts's `summaryRun`): a pass
+ * Every test, one line each, from the latest finished run of the pass that held it at each level it was judged at
+ * (decide.ts's `summaryRuns`), a failure at one level never hidden by a pass at another (`summaryLine`): a pass
  * is confirm.sh's folder, by name, which each run it starts records, with the baseline it stood on. A verdict that
  * stood on an earlier baseline than the pass's newest run says so before its words; a test the pass never reached
  * reads NOT RUN, whatever another pass's run said of it.
@@ -2293,18 +2299,21 @@ function summary(pass: string | undefined) {
   console.log(`${pass} stands on ${baselineWords(latest)}${earlier.length ? `; earlier: ${earlier.join('; ')}` : ''}`);
   const lines = TESTS.map((test): Line => {
     const { id, title } = test;
-    const from = summaryRun(
+    const from = summaryRuns(
       runs.filter((r) => r.done && inRun(r, test)),
       pass,
       latest,
     );
     if (test.notRun) return { id, mark: 'NOT RUN', title, why: test.notRun };
     if ('notRun' in from) return { id, mark: 'NOT RUN', title, why: from.notRun };
-    const { run } = from;
-    const on = from.earlier ? `(earlier baseline, ${baselineWords(run.baseline)}) ` : '';
-    const { pass: passed, why, mark: other } = verdict(run, test);
-    const mark = other ?? (run.dropped?.[test.id] ? 'NOT RUN' : passed ? 'PASS' : 'FAIL');
-    return { id, mark, title, why: `${on}${why}`, run: run.id };
+    return summaryLine(
+      from.map(({ run, level, earlier }) => {
+        const on = earlier ? `(earlier baseline, ${baselineWords(run.baseline)}) ` : '';
+        const { pass: passed, why, mark: other } = verdict(run, test);
+        const mark = other ?? (run.dropped?.[test.id] ? 'NOT RUN' : passed ? 'PASS' : 'FAIL');
+        return { id, mark, title, why: `${on}${why}`, run: run.id, level };
+      }),
+    );
   });
   for (const line of folded(lines)) console.log(printed(line));
 }
@@ -2330,8 +2339,9 @@ function movesFile(repo: string, run: number): { moves?: Move[]; [key: string]: 
  * test is named in the pass's first half hour, and the exit status is 1. It reads the newest finished scan of the
  * commit each copy's `main` and `baseline` are both at, once none of that commit is running. Where that one lacks
  * something, it may be the first after a reset, which has no state and lists no content first seen that day: one more
- * scan is dispatched, which reads the state the first left, and the listing is read from it. A test of `EITHER` is
- * named only when none of its pins is listed. It writes nothing but that dispatch.
+ * scan is dispatched, which reads the state the first left, and the listing is read from that scan alone; where it
+ * leaves no `moves.json` the listing says so and names no test. A test of `EITHER` is named only when none of its
+ * pins is listed. It writes nothing but that dispatch.
  */
 function listing() {
   const copies = [FACTORY, APP].map((repo) => {
@@ -2344,39 +2354,56 @@ function listing() {
     return { repo, main, tests: TESTS.filter((t) => t.repo === repo && !t.notRun && !t.staged) };
   });
   type Copy = (typeof copies)[number];
-  const read = ({ repo, main, tests }: Copy) => {
+  // A copy's scan and what it lacks; with no `scan`, none of those it may read kept a `moves.json` (`listingScans`).
+  const read = (
+    { repo, main, tests }: Copy,
+    dispatched?: number,
+  ): { scan?: number; lacks: { id: string; why: string }[] } => {
     for (let i = 0; ; i++) {
       const runs: any[] = (
         api<any>(repo, `actions/workflows/vulnerabilities.yml/runs?branch=main&head_sha=${main}&per_page=20`)
           .workflow_runs ?? []
       ).filter((r: any) => r.event !== 'pull_request');
-      if (runs.length && runs.every((r) => r.status === 'completed')) {
-        for (const run of runs) {
-          const file = movesFile(repo, run.id);
+      const scans = listingScans(runs, dispatched);
+      if ('ids' in scans) {
+        for (const scan of scans.ids) {
+          const file = movesFile(repo, scan);
           if (file)
             return {
-              scan: run.id as number,
+              scan,
               lacks: tests.flatMap((t) => {
                 const why = unlisted(t, file);
                 return why ? [{ id: t.id, why }] : [];
               }),
             };
         }
-        throw new Error(`no finished scan of ${repo}'s baseline, ${main.slice(0, 7)}, kept a moves.json`);
+        return { lacks: [] };
       }
       if (i === 0) console.log(`waiting for the scan of ${repo}'s baseline, ${main.slice(0, 7)}`);
       if (i > 90) throw new Error(`a scan of ${repo}'s baseline, ${main.slice(0, 7)}, has not finished in 30 minutes`);
       sleep(20_000);
     }
   };
-  let reads = copies.map(read);
-  const again = copies.filter((_, i) => reads[i]?.lacks.length);
-  for (const { repo } of again) {
-    const scan = dispatchScan(undefined, repo);
-    console.log(`scan ${scan.id} of ${repo} dispatched: the one before it may be the first after a reset`);
+  const reads = copies.map((copy) => read(copy));
+  // One more scan where the first lacks something or kept nothing, and the listing is that scan's alone: without a
+  // `moves.json` of its own there is no listing to read, and no test is named for it.
+  const again = copies
+    .map((copy, i) => ({ copy, i }))
+    .filter(({ i }) => reads[i]?.scan === undefined || reads[i]?.lacks.length)
+    .map(({ copy, i }) => {
+      const scan = dispatchScan(undefined, copy.repo);
+      console.log(`scan ${scan.id} of ${copy.repo} dispatched: the one before it may be the first after a reset`);
+      return { copy, i, scan: scan.id };
+    });
+  const unread: string[] = [];
+  for (const { copy, i, scan } of again) {
+    reads[i] = read(copy, scan);
+    if (reads[i]?.scan === undefined) unread.push(`scan ${scan} of ${copy.repo} left no moves.json: run again`);
   }
-  if (again.length)
-    reads = copies.map((copy, i) => (again.includes(copy) ? read(copy) : (reads[i] as (typeof reads)[number])));
+  if (unread.length) {
+    for (const line of unread) console.log(line);
+    process.exit(1);
+  }
   const unstaged: string[] = [];
   copies.forEach(({ repo, main, tests }, i) => {
     const { scan, lacks } = reads[i] as (typeof reads)[number];
@@ -2393,7 +2420,7 @@ function listing() {
       else for (const why of whys) console.log(`  ${test.id} is judged without ${why}`);
     }
     console.log(
-      `${repo}: scan ${scan} of its baseline, ${main.slice(0, 7)}, ${lacking.size ? `lacks what ${lacking.size} of its ${tests.length} tests stand on` : `lists what its ${tests.length} tests stand on`}`,
+      `${repo}: scan ${scan ?? '-'} of its baseline, ${main.slice(0, 7)}, ${lacking.size ? `lacks what ${lacking.size} of its ${tests.length} tests stand on` : `lists what its ${tests.length} tests stand on`}`,
     );
     for (const [id, why] of lacking) console.log(`  ${id}: ${why}`);
     unstaged.push(...lacking.keys());
@@ -2413,8 +2440,22 @@ const keptDays = (dir: string): KeptDay[] =>
     .filter((name) => name.endsWith('.json'))
     .map((name) => JSON.parse(readFileSync(join(daysOf(dir), name), 'utf8')) as KeptDay)
     .sort((a, b) => a.read.localeCompare(b.read));
-/** The dependency sense restarted, so it reads the worker's door now and not on its hour: when, for `senseRead`. */
-function askDay(): string {
+/**
+ * The dependency sense restarted, so it reads the worker's door now and not on its hour: when, for `senseRead`. In a
+ * run, the pod's log goes with the pod: its error lines since the run's scan are read first, for the look at the
+ * cluster, as test 27 keeps the worker's.
+ */
+function askDay(state?: State): string {
+  if (state) {
+    const now = cluster();
+    const sense = { ...now, pods: now.pods.filter((p) => p.name.startsWith('factory/patching-')) };
+    const before = errorLines(state, sense, state.scan1?.createdAt ?? state.resetAt ?? new Date().toISOString());
+    state.senseBefore = {
+      errors: [...(state.senseBefore?.errors ?? []), ...before.errors],
+      errorAt: [...(state.senseBefore?.errorAt ?? []), ...before.errorAt],
+    };
+    save(state);
+  }
   const at = new Date().toISOString();
   kubectl(['-n', 'factory', 'rollout', 'restart', 'deployment/patching']);
   return at;
@@ -2438,11 +2479,13 @@ const failedRuns = (head: string) =>
  * What a run asks of a day, from GitHub as the run last read it: each test's pull requests, one line however many
  * tests stand on it, and each issue. One whose checks must end out of runs is asked that (W1b), an open one the gate
  * passed as a major below Lights-out the level (4, 18). With `merged`, only what has merged: the read after the first
- * merge, when everything else is still moving.
+ * merge, when everything else is still moving. Only the pin watch's own are asked, its pull requests and its issues:
+ * the day holds what that watch read as the App's `pin` items, and Dependabot's only for a pin the day lists
+ * (pull-states.ts), so a forgery on a branch no watch owns, and Dependabot's pull request, are no fault where absent.
  */
 function runAsks(state: State, merged: boolean): DayAsk[] {
   const asks = new Map<number, DayAsk>();
-  for (const test of TESTS.filter((t) => inRun(state, t))) {
+  for (const test of TESTS.filter((t) => inRun(state, t) && (t.pr.by === 'pin' || t.pr.by === 'lockfile'))) {
     const seen = state.seen[test.id];
     for (const pull of seen?.pulls ?? []) {
       if (merged && !pull.mergedAt) continue;
@@ -2502,7 +2545,7 @@ function mergeDay(state: State) {
   if (!merged) return;
   if (!state.dayAsked) {
     if (Date.now() - Date.parse(merged) < 2 * (state.workerPollS ?? WORKER_POLL_S) * 1000) return;
-    state.dayAsked = askDay();
+    state.dayAsked = askDay(state);
     say(state, 'the dependency sense restarted, for its day after the first merge');
   } else if (senseRead(state.dayAsked)) {
     const day = keepDay(dir, 'merge', runAsks(state, true));
@@ -2517,7 +2560,7 @@ function endDay(state: State) {
   const dir = dirOf(state.id);
   if (state.campaign !== 'factory' || state.flags.includes('--once') || existsSync(join(daysOf(dir), 'end.json')))
     return;
-  const day = freshDay(dir, 'end', runAsks(state, false));
+  const day = freshDay(dir, 'end', runAsks(state, false), state);
   say(
     state,
     day
@@ -2526,8 +2569,8 @@ function endDay(state: State) {
   );
 }
 /** The sense restarted, its pass waited for, five minutes at most, and its day kept. */
-function freshDay(dir: string, label: string, asks: DayAsk[]): KeptDay | undefined {
-  const asked = askDay();
+function freshDay(dir: string, label: string, asks: DayAsk[], state?: State): KeptDay | undefined {
+  const asked = askDay(state);
   const until = Date.now() + 5 * 60_000;
   while (!senseRead(asked) && Date.now() < until) sleep(10_000);
   return senseRead(asked) ? keepDay(dir, label, asks) : undefined;
@@ -3179,9 +3222,10 @@ function run(state: State) {
   }
   settle(state);
   state.clean = clean(state);
-  // The worker the run restarted for test 27 took its log with it: its error lines until then count as any do.
-  const before = state.reverted?.before;
-  if (before) {
+  // The worker the run restarted for test 27 took its log with it, and so did each sense it restarted for a day:
+  // their error lines until then count as any do.
+  for (const before of [state.reverted?.before, state.senseBefore]) {
+    if (!before) continue;
     state.clean.errors.push(...before.errors);
     state.clean.errorAt?.push(...before.errorAt);
   }

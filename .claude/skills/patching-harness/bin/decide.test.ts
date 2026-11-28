@@ -30,6 +30,7 @@ import {
   type LokiStream,
   leftAloneFault,
   lineTooEarly,
+  listingScans,
   lokiPage,
   majorNext,
   majorNextFault,
@@ -68,7 +69,8 @@ import {
   startingPods,
   stillListed,
   storeBack,
-  summaryRun,
+  summaryLine,
+  summaryRuns,
   type TicketFacts,
   targetOf,
   ticketFault,
@@ -1007,22 +1009,75 @@ describe('the summary of a pass', () => {
   });
 
   it('takes a test’s verdict from its latest run of the pass, on whichever of its baselines', () => {
-    expect(summaryRun(runs, 'pass-7', fixed)).toEqual({ run: runs[4], earlier: false });
+    expect(summaryRuns(runs, 'pass-7', fixed)).toEqual([{ run: runs[4], level: 'Guarded', earlier: false }]);
   });
 
   it('marks a verdict that stood on an earlier baseline than the pass’s latest, and keeps it', () => {
-    expect(summaryRun(runs.slice(0, 3), 'pass-7', fixed)).toEqual({ run: runs[2], earlier: true });
-    expect(summaryRun([{ id: 'unstamped', pass: 'pass-7' }], 'pass-7', fixed)).toHaveProperty('earlier', true);
+    expect(summaryRuns(runs.slice(0, 3), 'pass-7', fixed)).toEqual([{ run: runs[2], level: 'Guarded', earlier: true }]);
+    expect(summaryRuns([{ id: 'unstamped', pass: 'pass-7' }], 'pass-7', fixed)).toHaveProperty('0.earlier', true);
   });
 
   it('reads NOT RUN for a test the pass never reached: a run of another pass, or of none, never counts', () => {
-    expect(summaryRun([runs[0], runs[3]] as typeof runs, 'pass-7', fixed)).toEqual({ notRun: 'not reached in pass-7' });
-    expect(summaryRun([], 'pass-7', fixed)).toEqual({ notRun: 'no finished run yet' });
+    expect(summaryRuns([runs[0], runs[3]] as typeof runs, 'pass-7', fixed)).toEqual({
+      notRun: 'not reached in pass-7',
+    });
+    expect(summaryRuns([], 'pass-7', fixed)).toEqual({ notRun: 'no finished run yet' });
+  });
+
+  it('keeps a verdict at each level, and lets only a later run at the same level take one’s place', () => {
+    const b = { id: 'B', pass: 'pass-7', baseline: fixed };
+    const c = { id: 'C', pass: 'pass-7', baseline: fixed, flags: ['--lights-out'] };
+    const again = { id: 'B again', pass: 'pass-7', baseline: fixed, flags: ['--no-forge'] };
+    expect(summaryRuns([b, c], 'pass-7', fixed)).toEqual([
+      { run: b, level: 'Guarded', earlier: false },
+      { run: c, level: 'Lights-out', earlier: false },
+    ]);
+    expect(summaryRuns([b, c, again], 'pass-7', fixed)).toEqual([
+      { run: c, level: 'Lights-out', earlier: false },
+      { run: again, level: 'Guarded', earlier: false },
+    ]);
+  });
+
+  it('keeps a failure at one level in the line, whatever a later run at another level came to', () => {
+    const held = { mark: 'FAIL', why: '#12 merged, and must not', level: 'Guarded' };
+    const merged = { mark: 'PASS', why: '#14 merged 0:27', level: 'Lights-out' };
+    expect(summaryLine([held, merged])).toEqual({ ...held, why: 'at Guarded: #12 merged, and must not' });
+    expect(summaryLine([{ ...held, mark: 'NOT RUN' }, merged]).mark).toBe('NOT RUN');
+    expect(
+      summaryLine([
+        { ...held, mark: 'NOT RUN' },
+        { ...merged, mark: 'FAIL' },
+      ]).mark,
+    ).toBe('FAIL');
+    expect(summaryLine([{ ...held, mark: 'PASS' }, merged])).toEqual({
+      ...merged,
+      why: 'at Lights-out: #14 merged 0:27',
+    });
+    expect(summaryLine([merged])).toEqual(merged);
   });
 
   it('says a baseline by both copies’ commits', () => {
     expect(baselineWords(fixed)).toBe('factory 4fd1e66, app 1f07328');
     expect(baselineWords(undefined)).toBe('a baseline it did not record');
+  });
+});
+
+describe('the scan the listing reads', () => {
+  const done = (id: number) => ({ id, status: 'completed' });
+
+  it('waits while the baseline has no scan, or one of its scans is unfinished', () => {
+    expect(listingScans([])).toEqual({ wait: true });
+    expect(listingScans([{ id: 3, status: 'in_progress' }, done(2)])).toEqual({ wait: true });
+  });
+
+  it('reads the finished scans newest first', () => {
+    expect(listingScans([done(3), done(2)])).toEqual({ ids: [3, 2] });
+  });
+
+  it('reads only the scan it dispatched, once that has finished, never the one before it', () => {
+    expect(listingScans([done(2)], 3)).toEqual({ wait: true });
+    expect(listingScans([{ id: 3, status: 'queued' }, done(2)], 3)).toEqual({ wait: true });
+    expect(listingScans([done(3), done(2)], 3)).toEqual({ ids: [3] });
   });
 });
 

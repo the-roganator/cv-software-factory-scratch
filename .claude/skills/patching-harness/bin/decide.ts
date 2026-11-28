@@ -821,24 +821,69 @@ export interface PassRun {
   id: string;
   pass?: string | undefined;
   baseline?: Baseline | undefined;
+  /** The run's flags: `--lights-out` is the level it was judged at. */
+  flags?: readonly string[];
 }
 /** The baseline a pass stands on now: its newest run's, the runs oldest first. */
 export const passBaseline = (runs: readonly PassRun[], pass: string): Baseline | undefined =>
   runs.findLast((r) => r.pass === pass)?.baseline;
+/** The level a run judged its tests at: Lights-out where it was told so, and otherwise Guarded, the line's own. */
+export const levelOf = (run: Pick<PassRun, 'flags'>) =>
+  run.flags?.includes('--lights-out') ? 'Lights-out' : 'Guarded';
 /**
- * The run the summary takes a test's verdict from: the latest of the finished runs that held it, oldest first, that
- * was of the pass, on whichever of the pass's baselines, and whether that is an earlier one than the pass stands on
- * now (`latest`), as a verdict from before a fix is. A run of another pass, or of none, never counts: with none of
- * this pass the test reads NOT RUN, whatever an older run said of it.
+ * The runs the summary takes a test's verdict from, oldest first: of the finished runs that held it and were of the
+ * pass, the latest at each level, on whichever of the pass's baselines, and whether that is an earlier one than the
+ * pass stands on now (`latest`), as a verdict from before a fix is. A test judged at Guarded in one batch and at
+ * Lights-out in another has a verdict at each, and neither stands for the other; a later run at the same level is
+ * the test run again, as after a fix, and takes the earlier one's place. A run of another pass, or of none, never
+ * counts: with none of this pass the test reads NOT RUN, whatever an older run said of it.
  */
-export function summaryRun<R extends PassRun>(
+export function summaryRuns<R extends PassRun>(
   runs: readonly R[],
   pass: string,
   latest: Baseline | undefined,
-): { run: R; earlier: boolean } | { notRun: string } {
-  const run = runs.findLast((r) => r.pass === pass);
-  if (!run) return { notRun: runs.length ? `not reached in ${pass}` : 'no finished run yet' };
-  return { run, earlier: run.baseline?.factory !== latest?.factory || run.baseline?.app !== latest?.app };
+): { run: R; level: string; earlier: boolean }[] | { notRun: string } {
+  const ours = runs.filter((r) => r.pass === pass);
+  if (!ours.length) return { notRun: runs.length ? `not reached in ${pass}` : 'no finished run yet' };
+  return ours
+    .filter((run, i) => !ours.slice(i + 1).some((later) => levelOf(later) === levelOf(run)))
+    .map((run) => ({
+      run,
+      level: levelOf(run),
+      earlier: run.baseline?.factory !== latest?.factory || run.baseline?.app !== latest?.app,
+    }));
+}
+/**
+ * A test's one line in the summary from its line at each level, oldest first: a failure at any level before all
+ * else, then any other that did not pass, and only then the pass, the latest's. The level is said wherever another
+ * level's line is left out, so a pass at Lights-out never reads as the test's whole.
+ */
+export function summaryLine<L extends { mark: string; why: string; level: string }>(lines: readonly L[]): L {
+  const last = lines.at(-1);
+  if (!last) throw new Error('a summary line needs a run');
+  const said = lines.find((l) => l.mark === 'FAIL') ?? lines.find((l) => l.mark !== 'PASS') ?? last;
+  return lines.length > 1 ? { ...said, why: `at ${said.level}: ${said.why}` } : said;
+}
+
+// ── The scan the listing reads ──────────────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Which of a baseline commit's scans the listing reads, from GitHub's runs of it, newest first: none while any of
+ * them is unfinished, or there is none (`wait`); then each finished one, newest first, for the first that kept a
+ * `moves.json`. Once the listing has dispatched a scan of its own (`dispatched`), that run alone: an older one is the
+ * scan it was dispatched to supersede, the first after a reset, and reading it in the new one's place would name
+ * every image's and chart's test as unstaged.
+ */
+export function listingScans(
+  runs: readonly { id: number; status: string }[],
+  dispatched?: number,
+): { wait: true } | { ids: number[] } {
+  if (dispatched !== undefined) {
+    const own = runs.find((run) => run.id === dispatched);
+    return own?.status === 'completed' ? { ids: [dispatched] } : { wait: true };
+  }
+  if (!runs.length || runs.some((run) => run.status !== 'completed')) return { wait: true };
+  return { ids: runs.map((run) => run.id) };
 }
 
 // ── Martin asks for changes on a move that would merge ──────────────────────────────────────────────────────────────
