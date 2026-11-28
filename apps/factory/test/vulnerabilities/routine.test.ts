@@ -1090,7 +1090,7 @@ describe('a lockfile’s package that is behind', () => {
     expect((await listed(current)).listing.counts).toMatchObject({ current: 1, listed: 0 });
   });
 
-  it('leaves alone a package at two versions, a range the pin step does not move, and a fixture’s lockfile', async () => {
+  it('lists a package a parent also brings from the importers’ copy, and leaves alone one the importers resolve at two versions, a range the pin step does not move, and a fixture’s lockfile', async () => {
     const importers = [
       '  .:',
       '    dependencies:',
@@ -1112,7 +1112,7 @@ describe('a lockfile’s package that is behind', () => {
     ].join('\n');
     const text = lockfile(importers, [
       'example-two@1.0.0',
-      'example-two@2.0.0',
+      'example-two@1.0.1',
       'example-split@1.0.0',
       'example-split@1.1.0',
       'example-wide@1.0.0',
@@ -1130,10 +1130,19 @@ describe('a lockfile’s package that is behind', () => {
         'apps/x/test/fixtures/pnpm-lock.yaml': direct('^1.2.0', '1.2.0', {}).files?.['pnpm-lock.yaml'] ?? '',
         'pnpm-lock.next.yaml': direct('^1.2.0', '1.2.0', {}).files?.['pnpm-lock.yaml'] ?? '',
       },
+      packages: { 'example-two': releases({ '1.0.0': 90, '1.0.1': 9 }) },
     });
-    expect(found).toEqual([]);
-    expect(asked).toEqual([]);
-    expect(listing.counts).toMatchObject({ pins: 7, left: 7 });
+    // The importer's copy is the pin, at its own entry, though a parent's copy is at the target already.
+    expect(found).toEqual([
+      expect.objectContaining({
+        name: 'example-two',
+        pins: [{ file: 'pnpm-lock.yaml', line: text.split('\n').indexOf('  example-two@1.0.0:') + 1 }],
+        from: '1.0.0',
+        to: { kind: 'version', versions: ['1.0.1'] },
+      }),
+    ]);
+    expect(asked).toEqual(['versions example-two']);
+    expect(listing.counts).toMatchObject({ pins: 7, listed: 1, left: 6 });
   });
 
   it('is one move of a package two lockfiles resolve at one version, to what every range admits', async () => {

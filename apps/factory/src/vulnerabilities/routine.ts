@@ -25,9 +25,12 @@
  *   in `dependencies`, `devDependencies` or `optionalDependencies`), from the version the lockfile resolves it at to
  *   the newest release its manifest's range admits; only when the range admits nothing newer, the newest release
  *   outside it, a major whatever its numbers, since the pin step writes the manifest for it. Never a prerelease, a
- *   deprecated release, or one past the registry's `latest`. A package the lockfile resolves at two versions, and a
+ *   deprecated release, or one past the registry's `latest`. A copy only a parent brings is no part of it, at whatever
+ *   version: the pin step moves the importers' copy alone. A package the importers resolve at two versions, and a
  *   range that is not `^`, `~` or a version (a workspace's, a link, a file, git, an alias), is left alone: the pin step
- *   moves no other.
+ *   moves no other. Nor is an indirect package ever listed: pnpm moves a package to an exact version only where a
+ *   manifest names it, so its update could not be held to the release that waited; it moves with its parent, or for a
+ *   finding.
  *
  * Never listed: what mise pins (a tool, Node itself, k3d's images), since the toolchain moves only when someone
  * upgrades it or for a finding, though an image's move still brings the Node it runs; an image of ours, whose digest
@@ -195,13 +198,6 @@ export function directs(lockfile: string) {
   return found;
 }
 
-/** The versions a lockfile resolves a package at, from the keys of its `packages:`. */
-function lockedAt(lockfile: string, name: string) {
-  const literal = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const key = new RegExp(`^ {2}'?${literal}@([^'(:\\s]+)['(:]`, 'gm');
-  return new Set([...lockfile.matchAll(key)].map((m) => m[1] ?? ''));
-}
-
 /**
  * The entry that leaves a package, or an image by its repository's name, alone in a repository: every move of it, or
  * with `major` only its majors.
@@ -277,25 +273,21 @@ function pinned(asked: Asked) {
   }
   // Each lockfile pnpm installs where it lies, as the coverage job takes them: a package by its name, wherever it is.
   const packages = new Map<string, { file: string; lines: string[]; specifier: string; version: string }[]>();
-  const versions = new Map<string, Set<string>>();
   for (const target of targets) {
     if (target.kind !== 'lockfile' || !/(^|\/)pnpm-lock\.yaml$/.test(target.file) || isFixture(target.file)) continue;
     const text = sources.file(target.file);
     if (text === undefined) continue;
     const lines = text.split('\n');
-    for (const direct of directs(text)) {
+    for (const direct of directs(text))
       packages.set(direct.name, [...(packages.get(direct.name) ?? []), { file: target.file, lines, ...direct }]);
-      const at = versions.get(direct.name) ?? new Set<string>();
-      for (const version of lockedAt(text, direct.name)) at.add(version);
-      versions.set(direct.name, at.add(direct.version));
-    }
   }
   let left = 0;
   for (const [name, places] of packages) {
     const version = places[0]?.version ?? '';
-    // One version, from the registry, in a range the pin step moves: anything else is left as it is.
+    // One version across the importers, from the registry, in a range the pin step moves: anything else is left as
+    // it is. A copy a parent brings at another version is not counted.
     if (
-      versions.get(name)?.size !== 1 ||
+      places.some((place) => place.version !== version) ||
       !PLAIN.test(version) ||
       places.some((place) => !RANGE.test(place.specifier))
     ) {
