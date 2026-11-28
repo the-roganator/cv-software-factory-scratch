@@ -20,8 +20,8 @@
  *   day's moves at its files change (a target moves on, a move joins or goes), its branch moves, in one forced update,
  *   and its title and description with it; one that conflicts with `main` is committed again on `main`'s head, and so
  *   is one whose head is out of its check runs (the pin queue's `checks-spent`, `deploy-queue.ts`), once `main` has
- *   moved since that head and the head is a day old (`SPENT_REMAKE_MS`): what failed there may have been `main`'s to
- *   mend, and the new head has its own runs. Every other head that holds the day's edits is left as it is. A pull
+ *   moved since that head and the head is a day old (`SPENT_REMAKE_MS`), while the line runs and a required check has
+ *   failed there still: what failed may have been `main`'s to mend, and the new head has its own runs. Every other head that holds the day's edits is left as it is. A pull
  *   request Martin closed without merging it is not opened again for the same edits; one anyone else closed is. A
  *   branch that a pull request of someone else's stands on is not written, and an open GitHub refuses costs that
  *   branch alone: each is refused for the branch, with an issue for each of its moves, and the pass goes on to the
@@ -94,6 +94,7 @@ import { type Actions, APP_LOGIN } from './actions.ts';
 import { BranchRefused, PIN_PREFIX, type WatchedHeads } from './branches.ts';
 import { type GitHub, GitHubError } from './client.ts';
 import { MARTIN } from './issues.ts';
+import type { LevelReader } from './level.ts';
 import { type Apart, groupKey, groupOf, type MadeGroup, madeByStep, namedMajor, writtenBy } from './made.ts';
 import { isOwnCommit } from './own-commit.ts';
 import { PatchRefused } from './patches.ts';
@@ -195,6 +196,10 @@ export interface PinWatchDependencies {
    * for the day's pins, for the read `pulls`.
    */
   pulls?: PullStates | undefined;
+  /** The level and the line's stop, and whether a required check has failed at a head, as the pin queue reads each
+   * (`deploy-queue.ts`): read before a head out of its check runs is written again, which without both it never is. */
+  level?: LevelReader | undefined;
+  failed?: ((repo: string, head: string) => Promise<boolean>) | undefined;
 }
 
 /** Which of the day's moves the watch takes: every one, or those named. */
@@ -1105,17 +1110,19 @@ export function pinWatch(deps: PinWatchDependencies, repo: string): Watch {
 
   /**
    * Whether a head of the watch's that holds the day's edits is out of its check runs and due to be written again: the
-   * pin queue last said so of this very head (`checks-spent`: nothing else it says of a head, a hold of Martin's among
-   * them, is written over), it was made on another commit than `main`'s head (`main`), and `SPENT_REMAKE_MS` ago or more. A
-   * head the queue has said nothing of since the worker started, or a commit whose parent or time cannot be read, is
-   * left as it is.
+   * pin queue last said so of this very head, the branch's own now (`checks-spent`: nothing else it says of a head, a
+   * hold of Martin's among them, is written over), it was made on another commit than `main`'s head (`main`), and
+   * `SPENT_REMAKE_MS` ago or more. Then, read now: the line is not stopped, and a required check has failed there
+   * still, so a head Martin has since run again is left to its run. A head the queue has said nothing of since the
+   * worker started, or a commit whose parent or time cannot be read, is left as it is.
    */
   const spent = async (number: number, at: string | undefined, main: string): Promise<boolean> => {
     if (at === undefined || deps.pulls?.said(repo, number, at)?.hold !== 'checks-spent') return false;
     const { body } = await github.poll(repo, `/repos/${repo}/git/commits/${at}`, WRITTEN);
     const [parent] = body.parents;
     if (body.parents.length !== 1 || parent?.sha === main) return false;
-    return now() - Date.parse(body.committer.date) >= SPENT_REMAKE_MS;
+    if (!(now() - Date.parse(body.committer.date) >= SPENT_REMAKE_MS)) return false;
+    return (await deps.level?.())?.stopped === false && (await deps.failed?.(repo, at)) === true;
   };
 
   /**

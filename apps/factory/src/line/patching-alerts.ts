@@ -177,8 +177,8 @@ function rowKey(row: Day['rows'][number]): string {
 const MOVE_KINDS = ['move-fix', 'move-waits', 'move-due-soon', 'move-overdue'] as const;
 
 /**
- * Ends each key of a kind that a day no longer lists (`gone`), so what it names is counted again if it comes back: a
- * pin's next fix, or a pin once more with no better release. The counts stand.
+ * Ends each key of a kind that a day no longer lists (`gone`), so what it names is counted again if it comes back, as
+ * a pin's next fix does. The counts stand.
  */
 function ended(tally: PatchingTally, kinds: readonly PatchingKind[], gone: (key: string) => boolean) {
   for (const kind of kinds) {
@@ -211,7 +211,8 @@ export function judgeDeadlines(tally: PatchingTally, t: number): void {
  * repository whose run judged no moves (it failed early) keeps the deadlines it had: its moves did not go. Nor does a
  * key end but on a day that can say what it names has gone: a repository's on one its scan judged (`judgedAt`), a
  * `not-running` row's on one that compared the cluster. A row of something running never ends: its digest is in its
- * key, and a Job's pod comes and goes.
+ * key, and a Job's pod comes and goes. Nor does a pin's `no-better`: a scan whose registry did not answer judges, and
+ * lists no wait for the pin, and the day does not say which pins it could not read.
  */
 export function addDay(tally: PatchingTally, day: Day, at: number): void {
   judgeDeadlines(tally, at);
@@ -232,12 +233,9 @@ export function addDay(tally: PatchingTally, day: Day, at: number): void {
       const key = stopped(repository.repository, pull);
       if (key && !routineAlone(pull)) once(tally, 'move-stopped', key);
     }
-    const waits = new Set<string>();
     for (const wait of waiting) {
       const key = noBetter(repository.repository, wait);
-      if (!key) continue;
-      once(tally, 'move-stopped', key);
-      waits.add(key);
+      if (key) once(tally, 'move-stopped', key);
     }
     const scan = tally.scans.get(repository.repository);
     const judged = judgedAt(repository, at);
@@ -267,10 +265,7 @@ export function addDay(tally: PatchingTally, day: Day, at: number): void {
       deadlines.set(key, deadline);
     }
     if (judged === null) continue;
-    // A stopped pull request's or issue's key has its number, after a `#`, and stands: only a pin's own ends.
-    const its = (key: string) => key.startsWith(`${repository.repository} `);
-    ended(tally, MOVE_KINDS, (key) => its(key) && !listed.has(key));
-    ended(tally, ['move-stopped'], (key) => its(key) && key.endsWith(' no-better') && !waits.has(key));
+    ended(tally, MOVE_KINDS, (key) => key.startsWith(`${repository.repository} `) && !listed.has(key));
   }
   const rows = new Set(day.rows.map(rowKey));
   for (const key of rows) once(tally, 'move-waits', key);
