@@ -347,11 +347,19 @@ push_baseline() { # <copy> <dir>
   ruleset "$copy" disabled
   git -C "$dir" push -q --force "https://github.com/$copy" HEAD:refs/heads/baseline HEAD:refs/heads/main
   ruleset "$copy" active
-  # Dependabot follows a branch for a `uses:` pinned by commit only where the called repository has a version tag
-  # that is not on the pinned commit, as the real factory's releases are: the factory copy has one, on the real commit
-  # its baseline starts from, which a reset's sweep of tags takes and this puts back (test 20).
+  # The factory copy's one version tag, on the real commit its baseline starts from, which a reset's sweep of tags
+  # takes and this puts back. It is the tag of the version release-please's manifest holds there, for two readers.
+  # The worker runs release-please at each move of main, and release-please reads the commits back to its last
+  # release: with no release it takes the manifest's version's tag for one, and with neither it reads five hundred
+  # commits, some 550 calls a run of the App's 5,000 an hour, where the real factory's stops at its last release.
+  # And Dependabot follows a branch for a `uses:` pinned by commit only where the called repository has a version tag
+  # that is not on the pinned commit, as the real factory's releases are (test 20): so the tag is never on the copy's
+  # own baseline commit, which the app copy pins.
   if [[ $copy == "$FACTORY_COPY" ]]; then
-    git -C "$dir" push -q --force "https://github.com/$copy" "$FACTORY_FROM:refs/tags/$DEPENDABOT_TAG"
+    local version
+    version=$(git -C "$dir" show "$FACTORY_FROM:.release-please-manifest.json" | jq -er '."."') ||
+      die "no version in .release-please-manifest.json at $FACTORY_FROM, for the factory copy's version tag"
+    git -C "$dir" push -q --force "https://github.com/$copy" "$FACTORY_FROM:refs/tags/v$version"
   fi
 }
 
