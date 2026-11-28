@@ -485,7 +485,8 @@ describe('each hold the queues give', () => {
     expect(await pinQueue({ queue: already })).toMatchObject({ queued: true });
     // Added, then gone from the queue by no removal of the queue's own: the worker adds it no more.
     let read = 0;
-    const left = () => (read++ === 0 ? queueOf() : queueOf({ added: { at: at(NOW), by: 'mrogan-software-factory' } }));
+    const left = () =>
+      read++ === 0 ? queueOf() : queueOf({ added: { at: at(NOW), by: 'the-roganator-scratch-factory' } });
     const gone = await pinQueue({ queue: left, passes: 2 });
     expect(gone).toMatchObject({ hold: 'dequeued' });
     expect(gone).not.toHaveProperty('queued');

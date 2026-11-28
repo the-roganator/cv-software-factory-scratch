@@ -81,7 +81,7 @@ describe('watching merges', () => {
       {
         number: 8,
         title: 'a',
-        user: { login: 'mrogan-software-factory[bot]' },
+        user: { login: 'the-roganator-scratch-factory[bot]' },
         head: { ref: 'a' },
         merged_at: '2026-10-04T12:01:00Z',
         merge_commit_sha: 'c8',
@@ -175,7 +175,7 @@ describe('the poller', () => {
 });
 
 describe('GHCR', () => {
-  const image = 'the-roganator/cv-worlds-worst-website';
+  const image = 'the-roganator/cv-worlds-worst-website-scratch';
   function registry(requests: string[] = []) {
     const answer = (body: unknown, headers: Record<string, string> = {}) =>
       new Response(JSON.stringify(body), { headers: { 'content-type': 'application/json', ...headers } });

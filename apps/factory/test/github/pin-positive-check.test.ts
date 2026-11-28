@@ -138,7 +138,7 @@ describe('a commit the watch did not write is never the recorded one', () => {
     expect(headWait(heads, FACTORY, pull('deploy/local'), 'not-a-deploy')).toBeUndefined();
     expect(headWait(heads, FACTORY, pull(A), 'not-a-pin')).toBeDefined();
     expect(
-      headWait(heads, 'the-roganator/cv-worlds-worst-website', pull('deploy/local'), 'not-a-deploy'),
+      headWait(heads, 'the-roganator/cv-worlds-worst-website-scratch', pull('deploy/local'), 'not-a-deploy'),
     ).toBeDefined();
     // The key is the repository and the branch with a space between: neither may hold one (a repository's name
     // cannot, and git refuses a space in a ref), so no pair of them makes another pair's key.

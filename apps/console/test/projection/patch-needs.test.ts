@@ -114,7 +114,7 @@ describe('the card when nothing waits', () => {
   it('is shown once a scan was judged more than 36 hours ago, naming it, as the review gate then passes none', () => {
     const judged = Date.parse(last().payload.repositories[0]?.judged ?? '');
     const need = patchingNeed(day(), judged + 36 * H + 60_000);
-    expect(need?.scanStale.map((scan) => scan.repository)).toContain('the-roganator/cv-software-factory');
+    expect(need?.scanStale.map((scan) => scan.repository)).toContain('the-roganator/cv-software-factory-scratch');
   });
 
   it('reads a day appended before the sense read pull requests as read when it was appended', () => {

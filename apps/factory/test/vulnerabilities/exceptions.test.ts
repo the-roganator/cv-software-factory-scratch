@@ -16,8 +16,8 @@ import { alertKey, type Finding } from '../../src/vulnerabilities/sarif.ts';
  * (fixtures/alerts, in the shape GitHub's API gives, with invented advisories), and the lockfile gate reading the same.
  */
 const ROOT = resolve(import.meta.dirname, '../../../..');
-const FACTORY = 'the-roganator/cv-software-factory';
-const APP = 'the-roganator/cv-worlds-worst-website';
+const FACTORY = 'the-roganator/cv-software-factory-scratch';
+const APP = 'the-roganator/cv-worlds-worst-website-scratch';
 const TODAY = '2026-11-10';
 const recorded = (name: string) =>
   JSON.parse(readFileSync(new URL(`./fixtures/alerts/${name}.json`, import.meta.url), 'utf-8')) as Alert[];
@@ -105,7 +105,7 @@ describe('the policy', () => {
   it("holds every entry to its rules: a reason, an expiry within 90 days, a repository of ours, an item on that repository's list, and a CVE or GHSA id", () => {
     // The app's list is read from its checkout beside this one where there is one; the daily scan of the app names an
     // entry whose item is not on its list in any case.
-    const app = process.env.APP_DIR ?? resolve(ROOT, '../cv-worlds-worst-website');
+    const app = process.env.APP_DIR ?? resolve(ROOT, '../cv-worlds-worst-website-scratch');
     const listOf = (root: string) => inventory(root).items.map((item) => item.name);
     const lists = {
       [FACTORY]: listOf(ROOT),
@@ -128,7 +128,7 @@ describe('the policy', () => {
     expect(check({ advisory: 'OSV-2026-1' })).toEqual([expect.stringContaining('is not a CVE or GHSA id')]);
     expect(check({ advisory: 'GHSA-2222-3333-4444' })).toEqual([]);
     expect(check({ item: 'apps/x/pnpm-lock.yaml' })).toEqual([
-      expect.stringContaining("is not on the-roganator/cv-software-factory's list"),
+      expect.stringContaining("is not on the-roganator/cv-software-factory-scratch's list"),
     ]);
     // An image by its reference, its digest aside; one that names two of the list's items is not one item.
     expect(check({ item: 'ghcr.io/example/app' })).toEqual([]);
@@ -201,7 +201,7 @@ describe("the scan's reading of it", () => {
     const out = judge(p, FACTORY, ['pnpm-lock.yaml', IMAGE], [A_LOCKFILE, B_LOCKFILE, A_IMAGE], toml, TODAY);
     expect([...out.excepted]).toEqual([[alertKey(A_LOCKFILE), policy.dismissal(entry())]]);
     expect(out.lines[0]).toBe(
-      'Exceptions: 4 for the-roganator/cv-software-factory in policy/vulnerabilities.ts on main, 2 in force, excepting 1 result.',
+      'Exceptions: 4 for the-roganator/cv-software-factory-scratch in policy/vulnerabilities.ts on main, 2 in force, excepting 1 result.',
     );
     expect(out.lines).toContain('  The exception for pnpm-lock.yaml: example-a CVE-2099-10007 met no finding today.');
     expect(out.warnings).toEqual([

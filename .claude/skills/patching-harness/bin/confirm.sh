@@ -92,7 +92,7 @@ extra() { # [<name>]
 }
 # A baseline, with batch.env's STAGED_EXTRA: built, checked, reset and pinned, then root Synced and Healthy.
 baseline() { # <log>
-  echo "real repo queued: $(gh run list -R the-roganator/cv-software-factory --status queued -L 100 --json databaseId -q length)"
+  echo "real repo queued: $(gh run list -R the-roganator/cv-software-factory-scratch --status queued -L 100 --json databaseId -q length)"
   for step in build check reset pin-images; do
     echo "== $step $(date -u +%H:%MZ)"
     (cd "$H" && ./copies.sh "$step") >>"$1" 2>&1 || {

@@ -60,12 +60,12 @@ describe('a rate limit', () => {
 
 describe('the settings', () => {
   it('take the console’s origin exactly, and the relying party from it', () => {
-    expect(configFromEnv({ ADMIN_ORIGIN: 'https://console.localhost:8443' })).toMatchObject({
-      origin: 'https://console.localhost:8443',
+    expect(configFromEnv({ ADMIN_ORIGIN: 'https://console.localhost:9443' })).toMatchObject({
+      origin: 'https://console.localhost:9443',
       rpId: 'console.localhost',
       port: 8080,
     });
-    for (const origin of ['https://console.localhost:8443/', 'http://console.example', 'console.localhost', '']) {
+    for (const origin of ['https://console.localhost:9443/', 'http://console.example', 'console.localhost', '']) {
       expect(() => configFromEnv({ ADMIN_ORIGIN: origin }), origin).toThrow();
     }
     expect(() => configFromEnv({ ADMIN_ORIGIN: 'https://console.localhost', ADMIN_RP_ID: 'example.com' })).toThrow();
@@ -74,16 +74,16 @@ describe('the settings', () => {
   });
 
   it('take the deployment’s Grafana and Argo CD as http or https addresses, each only when set', () => {
-    const origin = { ADMIN_ORIGIN: 'https://console.localhost:8443' };
+    const origin = { ADMIN_ORIGIN: 'https://console.localhost:9443' };
     expect(configFromEnv(origin).tools).toEqual({});
     expect(configFromEnv({ ...origin, GRAFANA_URL: '', ARGOCD_URL: ' ' }).tools).toEqual({});
     expect(
       configFromEnv({
         ...origin,
-        GRAFANA_URL: 'http://grafana.localhost:8080',
+        GRAFANA_URL: 'http://grafana.localhost:9080',
         ARGOCD_URL: 'https://argocd.example.com/applications',
       }).tools,
-    ).toEqual({ grafana: 'http://grafana.localhost:8080/', argocd: 'https://argocd.example.com/applications' });
+    ).toEqual({ grafana: 'http://grafana.localhost:9080/', argocd: 'https://argocd.example.com/applications' });
     for (const given of [
       'grafana.localhost',
       'javascript:alert(1)',
