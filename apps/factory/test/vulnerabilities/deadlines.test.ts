@@ -1003,6 +1003,88 @@ describe('an image’s fix', () => {
     });
   });
 
+  describe('in k3s’s node image', () => {
+    const PINNED = 'rancher/k3s:v1.37.1-k3s1';
+    const target: ReadTarget = {
+      key: 'k3s rancher/k3s',
+      kind: 'k3s',
+      name: PINNED,
+      file: 'deploy/k3d/cluster.yaml',
+      line: 9,
+      label: PINNED,
+      image: PINNED,
+    };
+    const inNode = os({
+      item: target.key,
+      file: target.file,
+      line: 9,
+      label: PINNED,
+      listed: PINNED,
+      type: 'gobinary',
+      package: 'stdlib',
+    });
+    const release = (published: string) => ({ published, images: [] });
+    const world = (tags: string[], k3s: NonNullable<World['k3s']>, images: Record<string, TrivyReport>) => ({
+      findings: [inNode],
+      targets: [target],
+      alerts: [alertOf(inNode, '2026-10-01T00:00:00Z')],
+      tags: { 'rancher/k3s': tags },
+      k3s,
+      images,
+    });
+
+    it('counts from the release’s publication, not the time the image says it was made', async () => {
+      const { rows, fixes, asked } = await judge(
+        world(
+          ['v1.37.1-k3s1', 'v1.37.2-k3s1'],
+          { 'v1.37.2+k3s1': release('2026-11-03T12:00:00Z') },
+          { 'rancher/k3s:v1.37.2-k3s1': imageReport('2026-10-20T00:00:00Z') },
+        ),
+      );
+      expect(asked).toEqual(['tags rancher/k3s', 'k3s v1.37.2+k3s1', 'image rancher/k3s:v1.37.2-k3s1']);
+      expect(fixes[0]?.target).toEqual({ kind: 'k3s', release: 'v1.37.2+k3s1' });
+      expect(rows[0]?.installable).toBe(at('2026-11-03T12:00:00Z'));
+    });
+
+    it('stays on the pin’s Kubernetes minor, and takes a later build of a release', async () => {
+      const { rows, fixes, asked } = await judge(
+        world(
+          ['v1.37.1-k3s1', 'v1.37.1-k3s2', 'v1.37.2-rc1-k3s1', 'v1.38.0-k3s1'],
+          { 'v1.37.1+k3s2': release('2026-11-05T00:00:00Z'), 'v1.38.0+k3s1': release('2026-11-06T00:00:00Z') },
+          {
+            'rancher/k3s:v1.37.1-k3s2': imageReport('2026-11-05T00:00:00Z'),
+            'rancher/k3s:v1.38.0-k3s1': imageReport('2026-11-06T00:00:00Z'),
+          },
+        ),
+      );
+      expect(asked).toEqual(['tags rancher/k3s', 'k3s v1.37.1+k3s2', 'image rancher/k3s:v1.37.1-k3s2']);
+      expect(fixes[0]?.target).toEqual({ kind: 'k3s', release: 'v1.37.1+k3s2' });
+      expect(rows[0]?.installable).toBe(at('2026-11-05T00:00:00Z'));
+    });
+
+    it('passes over a tag with no release published, for the next below it', async () => {
+      const { rows, fixes, asked, lines } = await judge(
+        world(
+          ['v1.37.1-k3s1', 'v1.37.2-k3s1', 'v1.37.3-k3s1'],
+          { 'v1.37.2+k3s1': release('2026-11-03T12:00:00Z') },
+          {
+            'rancher/k3s:v1.37.2-k3s1': imageReport('2026-11-03T12:00:00Z'),
+            'rancher/k3s:v1.37.3-k3s1': imageReport('2026-11-09T00:00:00Z'),
+          },
+        ),
+      );
+      expect(asked).toEqual([
+        'tags rancher/k3s',
+        'k3s v1.37.3+k3s1',
+        'k3s v1.37.2+k3s1',
+        'image rancher/k3s:v1.37.2-k3s1',
+      ]);
+      expect(fixes[0]?.target).toEqual({ kind: 'k3s', release: 'v1.37.2+k3s1' });
+      expect(rows[0]?.installable).toBe(at('2026-11-03T12:00:00Z'));
+      expect(lines.join('\n')).toContain('k3s v1.37.3+k3s1 has a node image and no published, stable release');
+    });
+  });
+
   it('keeps the fix the last run gave when the newest image cannot be pulled, and judges every other result', async () => {
     const other = npm();
     const world = { findings: [finding, other], tags, published: { 'example-a@1.0.1': '2025-01-01T00:00:00Z' } };
