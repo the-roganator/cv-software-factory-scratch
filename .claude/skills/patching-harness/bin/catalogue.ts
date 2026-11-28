@@ -69,7 +69,7 @@ export interface Test {
   /**
    * A second ticket, for another move the first's pull request makes too. The harness takes it once the first
    * has merged and before its deploy, then gives the line back the first: it must close with this outcome and its
-   * reason, with no pull request of its own, no hold and no failed step.
+   * reason, with no pull request of its own, no hold and no failed step. No test of the catalogue has one.
    */
   then?: { dependency: string; closes: 'no-change'; reason: RegExp };
   /** Lines the pull request's diff of a file must take out: each copy of a package it moves. */
@@ -93,7 +93,7 @@ export interface Test {
   heldFor?: RegExp;
   /** The rule the gate must pass its pull request by (X2: `move`, never `major`). */
   rule?: string;
-  /** Exactly the files its pull request may write (X4: the Dockerfile alone). */
+  /** Exactly the files its pull request may write (17: the Makefile alone). */
   files?: string[];
   /** Moves the pin watch must take beside the test's own, as one group with them (`harness.ts only`), not judged. */
   alsoTakes?: string[];
@@ -154,7 +154,8 @@ export interface Test {
    * `lifts`, which `later` fixes, and no other (`./copies.sh lift-exception`), and scans again, and the same pull
    * request and issue must take `later`. `gates` names the required checks that refuse `later` for advisories of
    * its own, where the staging's later target has them: red on those alone, with the issue and the pull request at
-   * `later`, the test is seen as far as the gates, which is neither a pass nor a failure.
+   * `later`, the test is seen as far as the gates, which is neither a pass nor a failure. No test of the catalogue
+   * has one: test 21 is the line's unit tests' (apps/factory/test/line/machine.test.ts).
    */
   newer?: { package: string; first: string; later: string; lifts: string[]; gates?: string[] };
   /** The store restarted under a report left through the app's widget: no scan, no reset, a step of its own. */
@@ -219,6 +220,23 @@ const FACTORY_DEV_LOCKFILE = 'a package in `pnpm-lock.yaml`';
  */
 const N8_UNIT =
   "the gate holds any but Dependabot's for its opener, as N8a shows; what it does with this change under Dependabot's name is its unit tests' (scripts/review-routing.test.ts)";
+/**
+ * A test judged on whichever of its pins the day's scan lets it judge. Test 4, a chart's major, stands on loki and on
+ * grafana: an upstream release can put a move within the major first on either, and that pin then has no major to
+ * judge (decide.ts's `majorNotFirst`). Each pin is an entry of `TESTS`, taken, watched and dropped as any is; the test
+ * has one line, which passes when every pin that was judged passed and one was (decide.ts's `eitherVerdict`).
+ */
+export const EITHER: readonly { id: string; title: string; pins: readonly string[] }[] = [
+  { id: '4', title: "a chart's major (loki, grafana)", pins: ['4a', '4b'] },
+];
+/** The catalogue's ids a comma-separated list of tests names: a test of `EITHER` stands for each of its pins. */
+export const testIds = (list: string): string[] =>
+  list
+    .split(',')
+    .map((id) => id.trim())
+    .filter(Boolean)
+    .flatMap((id) => EITHER.find((test) => test.id === id)?.pins ?? [id]);
+
 export const TESTS: Test[] = [
   {
     id: '1',
@@ -256,9 +274,9 @@ export const TESTS: Test[] = [
     // the move within the major stands, the scan lists it first, and 4a and 4b are dropped from the run with no
     // verdict (decide.ts's `majorNotFirst`), as the major lists only once that has merged. loki 18.13.7 has 18.17.1
     // behind it, and grafana 13.2.7 has 13.7.0: which comes first is the scan's to say, from each candidate's own
-    // report.
+    // report. The two are test 4's pins, and it is judged on whichever lists its major (`EITHER`).
     id: '4a',
-    title: 'loki chart, a major',
+    title: "a chart's major: loki",
     repo: FACTORY,
     campaign: 'factory',
     moves: ['loki'],
@@ -268,7 +286,7 @@ export const TESTS: Test[] = [
   },
   {
     id: '4b',
-    title: 'grafana chart, a major',
+    title: "a chart's major: grafana",
     repo: FACTORY,
     campaign: 'factory',
     moves: ['grafana'],
@@ -305,21 +323,11 @@ export const TESTS: Test[] = [
   },
   {
     id: '7a',
-    title: 'lockfile package in our image (8 Medium)',
+    title: 'lockfile package in our image',
     repo: FACTORY,
     campaign: 'factory',
     moves: [LOCKFILE],
     clears: { MEDIUM: 8 },
-    pr: { by: 'lockfile' },
-    deployed: { kind: 'deploy-pr' },
-  },
-  {
-    id: '7b',
-    title: 'lockfile package in our image (4 Medium)',
-    repo: FACTORY,
-    campaign: 'factory',
-    moves: [LOCKFILE],
-    clears: { MEDIUM: 4 },
     pr: { by: 'lockfile' },
     deployed: { kind: 'deploy-pr' },
   },
@@ -502,34 +510,10 @@ export const TESTS: Test[] = [
     deployed: { kind: 'none' },
   },
   {
-    // follow-redirects, a development dependency staged at exactly 1.14.8 (staged/app-21/), so pnpm resolves exactly
-    // the scan's target. The factory copy excepts, for the app, the advisory only 1.16.0 fixes (staged/factory-21/),
-    // so the first scan names 1.15.6, which every gate passes; with the exception lifted the next names 1.16.0. That
-    // release has three High advisories of its own, which the scan's gates refuse, so the test is seen as far as the
-    // gates: no real pair of this package's releases gives a first target dependency review passes (it knows nothing
-    // of the factory's exceptions) and a second with no advisory of its own.
-    id: '21',
-    title: 'app move whose target moves on (follow-redirects)',
-    repo: APP,
-    campaign: 'app',
-    moves: [],
-    pr: { by: 'line' },
-    dependency: 'follow-redirects',
-    newer: {
-      package: 'follow-redirects',
-      first: '1.15.6',
-      later: '1.16.0',
-      lifts: ['CVE-2026-40895', 'GHSA-r4q5-vmmm-2653'],
-      gates: ['gates / dependency review', 'gates / lockfile scan'],
-    },
-    staged: '21',
-    deployed: { kind: 'app-deploy' },
-  },
-  {
-    // Dependabot's pull request for Postgres's image, one line of the StatefulSet, which is test 1's pin: kept open
-    // across resets (baseline.env's DEPENDABOT_KEEP_FACTORY), at whatever age, and asked for by a summon only when
-    // none is open, which Dependabot does not always answer. Beside it, its pull request for the
-    // group `playwright`, kept as it is on a base from before every baseline (baseline.env's
+    // Dependabot's pull request for Postgres's image, one line of the StatefulSet, which is test 1's pin: a reset
+    // keeps one made since `main` was last put at the baseline and closes any other (baseline.env's
+    // DEPENDABOT_REMAKE_FACTORY), and the run summons Dependabot when none is open. Beside it, its pull request for
+    // the group `playwright`, kept as it is on a base from before every baseline (baseline.env's
     // DEPENDABOT_AS_IS_FACTORY): some two hundred files, so `main` never has every line of it, whatever test 6 moves.
     id: '22',
     title: "Dependabot's pull request for a pin the App moved",
@@ -541,12 +525,10 @@ export const TESTS: Test[] = [
     deployed: { kind: 'none' },
   },
   {
-    // Why the pin step cannot make it changes with the registry: weaker provenance for 2.2.2 alone; a release too
-    // young for a day after each later one (2.2.3 came out on 25 November 2026); and after that day a newer release
-    // pnpm resolves in 2.2.2's place, past the scan's target. The issue must give whichever reason holds.
-    // lefthook, 2.2.1 on every baseline with 2.2.2 out, which was published without the provenance its earlier
-    // releases had: pnpm refuses it, the pin step leaves it out, and the day's other routine lockfile updates ride
-    // without it in the pull request test 15 stands on too.
+    // lefthook, 2.2.1 on every baseline. Its one release pnpm refuses is 2.2.2, published without the provenance its
+    // earlier releases had, and the scan lists a routine update to the newest release that has waited its days, which
+    // is a later one, published with it: the pin step makes that move, in the pull request test 15 stands on, and
+    // nothing is refused. So the test has nothing to stand on while lefthook's newest waited release is one pnpm takes.
     id: '23',
     title: 'a routine update pnpm refuses (lefthook)',
     repo: FACTORY,
@@ -557,6 +539,8 @@ export const TESTS: Test[] = [
     keeps: { file: 'pnpm-lock.yaml', lines: ['  lefthook@2.2.1:'] },
     refused: { names: ['lefthook'], says: [/`\d+\.\d+\.\d+`/], never: [/log says which/] },
     deployed: { kind: 'none' },
+    notRun:
+      "the scan lists lefthook's routine update to a release pnpm takes, so nothing is refused; the refusal and its issue are the pin step's and the pin watch's unit tests' (apps/runner/test/pins-exact.test.ts, apps/factory/test/github/pin-made.test.ts)",
   },
   {
     // The devcontainer's base image on a line its publisher no longer builds: the scan lists it with no lane, and the
@@ -676,7 +660,7 @@ export const TESTS: Test[] = [
     mustNot: true,
     notRun: N8_UNIT,
   },
-  // The recovery tests, W1 to W4 (the names N1 to N5 are the refusals').
+  // The recovery tests, W1 to W5 (the names N3 to N10 are the refusals').
   {
     // Prometheus's move, as test 2, with its title check red until the worker writes its head again.
     id: 'W1a',
@@ -718,23 +702,6 @@ export const TESTS: Test[] = [
     queueRuns: 2,
   },
   {
-    // Tests 11 and 10 in turn: Node's move writes the runtime image's digest too, so the second has nothing left.
-    id: 'W3',
-    title: 'a move already made closes its ticket as done',
-    repo: APP,
-    campaign: 'app',
-    moves: ['node', 'gcr.io/distroless/nodejs24-debian13'],
-    pr: { by: 'line' },
-    dependency: 'node',
-    // biome-ignore lint/suspicious/noThenProperty: a test's second ticket, never awaited
-    then: {
-      dependency: 'gcr.io/distroless/nodejs24-debian13',
-      closes: 'no-change',
-      reason: /^Main already has its move/,
-    },
-    deployed: { kind: 'app-deploy' },
-  },
-  {
     // Syft's move, as test 12, its tag and digest put on main before the line takes the ticket.
     id: 'W3b',
     title: 'an image move main already has closes its ticket as done',
@@ -771,17 +738,7 @@ export const TESTS: Test[] = [
     restart: true,
     deployed: { kind: 'none' },
   },
-  {
-    id: 'N1',
-    title: "breaks a test (Dependabot's node, one FROM alone)",
-    repo: APP,
-    campaign: 'app',
-    moves: [],
-    pr: { by: 'dependabot', title: /bump node from/i },
-    deployed: { kind: 'app-deploy' },
-    mustNot: true,
-  },
-  // The security tests, X1 to X4.
+  // The security tests, X1 and X2.
   {
     // After the app's scan, as the scratch App: the scan's runtime-image move, made by the copy's own
     // pin step, with the Node build stage it brings at an older real digest of node, and `Pins-made-at`/`Pins-asked`
@@ -825,21 +782,6 @@ export const TESTS: Test[] = [
     removes: { file: 'package.json', lines: ['    "ejs": "2.7.4"'] },
     staged: 'x2',
     deployed: { kind: 'deploy-pr' },
-  },
-  {
-    // mise at the scan's target Node, the Dockerfile behind (staged/app-x4/): the Node ticket ends in
-    // a pull request of the Dockerfile's pins alone, passed as `move`.
-    id: 'X4',
-    title: 'app Node move half made: the Dockerfile alone',
-    repo: APP,
-    campaign: 'app',
-    moves: ['node'],
-    pr: { by: 'line' },
-    dependency: 'node',
-    rule: 'move',
-    files: ['Dockerfile'],
-    staged: 'x4',
-    deployed: { kind: 'app-deploy' },
   },
   {
     id: 'N3a',

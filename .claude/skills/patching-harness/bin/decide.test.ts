@@ -4,14 +4,18 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
+  appLockfileMove,
   besideWords,
   branchFits,
   certainFail,
   changesVerdict,
+  clearsAs,
   type DuplicateFacts,
   dependabotMissing,
   duplicateVerdict,
+  eitherVerdict,
   extraSpoils,
+  type FullMove,
   factoryBusy,
   forgeFault,
   type HoldFacts,
@@ -60,6 +64,7 @@ import {
   type TicketFacts,
   targetOf,
   ticketFault,
+  unlisted,
   unreadMoves,
   waitedVerdict,
   waitsFault,
@@ -558,7 +563,7 @@ describe('a move that must not merge, and the merge queue', () => {
 
 describe("the pull requests of Dependabot's a run needs open as it starts", () => {
   const needs = [
-    { test: 'N1', title: /bump node from/i },
+    { test: '11', title: /bump node from/i },
     { test: '12', title: /anchore\/syft/i },
   ];
 
@@ -1427,6 +1432,128 @@ describe('content that waits a day', () => {
     expect(waitedVerdict({ move: 'postgres', first: undefined, second: undefined }).why).toBe(
       'the scan has not finished',
     );
+  });
+});
+
+describe("what a baseline's scan lists, before a pass", () => {
+  const clears = (c: Partial<Record<'CRITICAL' | 'HIGH' | 'MEDIUM', number>>) => ({
+    CRITICAL: 0,
+    HIGH: 0,
+    MEDIUM: 0,
+    ...c,
+  });
+  const LOCKFILE = 'a package in `deploy/overlays/local/factory-image/kustomization.yaml` and `pnpm-lock.yaml`';
+  const DEV = 'a package in `pnpm-lock.yaml`';
+  const lockfile = (name: string, c: ReturnType<typeof clears>, more: Partial<FullMove> = {}): FullMove => ({
+    name,
+    lane: 'worker',
+    from: '',
+    to: '',
+    major: false,
+    lockfile: true,
+    clears: c,
+    pins: name === DEV ? [{ file: 'pnpm-lock.yaml' }] : [{ file: 'kustomization.yaml' }, { file: 'pnpm-lock.yaml' }],
+    ...more,
+  });
+  const pin = (name: string, from: string, to: string, major = false): FullMove => ({
+    name,
+    lane: 'worker',
+    from,
+    to,
+    major,
+    clears: clears({ HIGH: 2 }),
+  });
+  const file = {
+    moves: [
+      pin('postgres', '18.6-alpine3.24', 'image 18.7-alpine3.24@sha256:0115'),
+      pin('prometheus', '29.35.0', 'chart prometheus 29.49.0'),
+      pin('grafana', '13.2.7', 'chart grafana 14.6.1 (a major)', true),
+      pin('loki', '18.13.7', 'chart loki 18.17.1'),
+      lockfile(LOCKFILE, clears({ HIGH: 3 })),
+      lockfile(LOCKFILE, clears({ MEDIUM: 8 })),
+      lockfile(DEV, clears({})),
+      lockfile(DEV, clears({}), { major: true }),
+    ],
+    waiting: [],
+  };
+
+  it('has nothing to say of a test whose every move the scan lists, of its own kind', () => {
+    expect(unlisted({ moves: ['postgres'] }, file)).toBeUndefined();
+    expect(unlisted({ moves: ['prometheus'], thenMajor: true }, file)).toBeUndefined();
+    expect(unlisted({ moves: ['grafana'], major: true }, file)).toBeUndefined();
+    expect(unlisted({ moves: [LOCKFILE], clears: { MEDIUM: 8 } }, file)).toBeUndefined();
+    expect(unlisted({ moves: [LOCKFILE], clears: { HIGH: true } }, file)).toBeUndefined();
+    expect(unlisted({ moves: [DEV], routine: true }, file)).toBeUndefined();
+    expect(unlisted({ moves: [DEV], routine: true, major: true }, file)).toBeUndefined();
+    expect(unlisted({ moves: [], needs: ['postgres'], waits: { move: 'postgres' } }, file)).toBeUndefined();
+    expect(unlisted({ moves: [] }, {})).toBeUndefined();
+  });
+
+  it('names a move the scan does not list, by the kind the test stands on', () => {
+    expect(unlisted({ moves: ['k3s'] }, file)).toBe('the scan lists no move of k3s');
+    expect(unlisted({ moves: [LOCKFILE], clears: { MEDIUM: 4 } }, file)).toContain('that clears {"MEDIUM":4}');
+    expect(unlisted({ moves: [DEV], routine: true }, { moves: file.moves.slice(0, 6) })).toContain(
+      ', a routine update',
+    );
+    expect(unlisted({ moves: [DEV] }, file)).toBe(`the scan lists no move of ${DEV}`);
+    expect(unlisted({ moves: [], needs: ['kyverno: a'] }, file)).toBe('the scan lists no move of kyverno: a');
+  });
+
+  it('names a move listed while its content waits its day, as the first scan after a reset lists one', () => {
+    const waiting = { ...file, waiting: [{ name: 'postgres', why: 'content' }] };
+    expect(unlisted({ moves: ['postgres'] }, waiting)).toBe('the scan lists postgres while its content waits its day');
+    expect(unlisted({ moves: [], waits: { move: 'postgres' } }, waiting)).toBe('the scan lists no move of postgres');
+  });
+
+  it("names a major's test whose pin lists a move within its major first, and a move within it that lists a major", () => {
+    expect(unlisted({ moves: ['loki'], major: true }, file)).toContain('a move within its major');
+    expect(unlisted({ moves: ['grafana'], thenMajor: true }, file)).toContain('names a major for grafana');
+  });
+
+  it("tells the app's lockfile move in its image by whether it clears a Critical", () => {
+    const line = (c: ReturnType<typeof clears>, name = LOCKFILE) => lockfile(name, c, { lane: 'line' });
+    expect(appLockfileMove(line(clears({ CRITICAL: 2 })), 'critical')).toBe(true);
+    expect(appLockfileMove(line(clears({ HIGH: 2 })), 'critical')).toBe(false);
+    expect(appLockfileMove(line(clears({ HIGH: 2 })), 'no-critical')).toBe(true);
+    // A development dependency's, a routine update and the worker's are none of them.
+    expect(appLockfileMove(line(clears({ HIGH: 1 }), DEV), 'no-critical')).toBe(false);
+    expect(appLockfileMove(line(clears({})), 'no-critical')).toBe(false);
+    expect(appLockfileMove(lockfile(LOCKFILE, clears({ HIGH: 2 })), 'no-critical')).toBe(false);
+    expect(unlisted({ moves: [], lockfile: 'critical' }, { moves: [line(clears({ HIGH: 2 }))] })).toContain(
+      'that clears a Critical',
+    );
+    expect(unlisted({ moves: [], lockfile: 'no-critical' }, { moves: [line(clears({ HIGH: 2 }))] })).toBeUndefined();
+  });
+
+  it('tells moves that share a name apart by what they clear', () => {
+    expect(clearsAs({ clears: clears({ MEDIUM: 8, HIGH: 1 }) }, { MEDIUM: 8 })).toBe(false);
+    expect(clearsAs({ clears: clears({ MEDIUM: 8 }) }, { MEDIUM: 8 })).toBe(true);
+    expect(clearsAs({ clears: clears({ HIGH: 1 }) }, { HIGH: true })).toBe(true);
+    expect(clearsAs({ clears: clears({ HIGH: 1 }) }, { CRITICAL: true })).toBe(false);
+  });
+});
+
+describe('a test judged on either of its pins', () => {
+  const pass = { id: '4a', mark: 'PASS', why: '#12 not merged: held' };
+  const dropped = { id: '4b', mark: 'NOT RUN', why: 'pre-flight, no verdict: a move within its major' };
+
+  it('passes on the pins that were judged, and names the one left out', () => {
+    expect(eitherVerdict([pass, dropped])).toEqual({ mark: 'PASS', why: '4a: #12 not merged: held; not judged on 4b' });
+    expect(eitherVerdict([pass, { ...pass, id: '4b' }]).why).toBe('4a: #12 not merged: held; 4b: #12 not merged: held');
+  });
+
+  it('fails when a pin that was judged fails, whatever the other came to', () => {
+    const failed = { id: '4b', mark: 'FAIL', why: '#13 merged, and must not' };
+    expect(eitherVerdict([pass, failed])).toEqual({ mark: 'FAIL', why: '4b: #13 merged, and must not' });
+    expect(eitherVerdict([{ ...pass, mark: 'NO VERDICT' }, failed]).mark).toBe('FAIL');
+    expect(eitherVerdict([{ ...pass, mark: 'NO VERDICT' }, dropped]).mark).toBe('NO VERDICT');
+  });
+
+  it('is not run when no pin was judged, and says why of each', () => {
+    const both = eitherVerdict([{ ...dropped, id: '4a' }, dropped]);
+    expect(both.mark).toBe('NOT RUN');
+    expect(both.why).toContain('4a: pre-flight');
+    expect(both.why).toContain('4b: pre-flight');
   });
 });
 

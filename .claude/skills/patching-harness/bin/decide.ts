@@ -1318,6 +1318,103 @@ export const lineTooEarly = (last: string | undefined): string | undefined =>
     ? 'the restored line is running before the scan the run stands on is in, and would read the first, stateless scan'
     : undefined;
 
+// ── What a baseline's scan lists, before a pass ─────────────────────────────────────────────────────────────────────
+
+/** A scan's move as `moves.json` gives it whole: whether it is a lockfile's or a major, and the files of its pins. */
+export type FullMove = ListedMove & { major?: boolean; lockfile?: boolean; pins?: readonly { file: string }[] };
+/**
+ * Whether a move clears what a test of a lockfile's package is told apart by: moves that share a name (a lockfile's
+ * names no package) differ in what they clear, a Critical, a High, or exactly so many Mediums and no High.
+ */
+export const clearsAs = (
+  move: Pick<ListedMove, 'clears'>,
+  want: { CRITICAL?: boolean; HIGH?: boolean; MEDIUM?: number },
+) =>
+  want.CRITICAL
+    ? (move.clears?.CRITICAL ?? 0) > 0
+    : want.HIGH
+      ? (move.clears?.HIGH ?? 0) > 0
+      : (move.clears?.HIGH ?? 0) === 0 && move.clears?.MEDIUM === want.MEDIUM;
+/**
+ * Whether a move is the app's lockfile move a test stands on: a finding's, the line's to make, of a package in the
+ * app's image (its pins name the overlay too), which clears a Critical or none as the test says. A development
+ * dependency's is not.
+ */
+export const appLockfileMove = (move: FullMove, kind: 'critical' | 'no-critical') =>
+  Boolean(move.lockfile) &&
+  !isRoutine(move) &&
+  move.lane === 'line' &&
+  (move.pins ?? []).some((pin) => pin.file !== 'pnpm-lock.yaml') &&
+  (move.clears?.CRITICAL ?? 0) > 0 === (kind === 'critical');
+/** What a test stands on, as the catalogue says it: the fields of a `Test` a scan's listing is held to. */
+export interface StandsOn {
+  moves: readonly string[];
+  needs?: readonly string[];
+  waits?: { move: string };
+  clears?: { CRITICAL?: boolean; HIGH?: boolean; MEDIUM?: number };
+  lockfile?: 'critical' | 'no-critical';
+  routine?: boolean;
+  major?: boolean;
+  thenMajor?: boolean;
+  mustNot?: boolean;
+}
+/**
+ * Why a scan of a baseline does not list what a test stands on, or undefined where it does: a move of each name of
+ * the test's own kind (a finding's or a routine update, across a major or not, clearing what the test is told apart
+ * by), listed and not held for its content's day; for a test of a pin's major, the major and not a move within it
+ * (`majorNotFirst`); for a move that must stay within its major, no major (`majorNextFault`); and the moves its
+ * forgery copies or its wait is read on. A run reads the same of the scan it stands on, an hour or more into a pass:
+ * this is read of every test before the first batch, so a release published since the baseline was last built, which
+ * changes what the scan lists, is found then. A lockfile's moves name no package, so a routine update is held to its
+ * kind alone.
+ */
+export function unlisted(
+  test: StandsOn,
+  file: { moves?: readonly FullMove[]; [key: string]: unknown },
+): string | undefined {
+  const moves = file.moves ?? [];
+  for (const name of test.moves) {
+    const named = moves.filter((move) => move.name === name && moveFits(move, test));
+    const want = test.clears;
+    const move = want ? named.find((each) => clearsAs(each, want)) : named[0];
+    const kind = want
+      ? ` that clears ${JSON.stringify(want)}`
+      : test.routine
+        ? `, a routine update${test.major ? ' across a major' : ''}`
+        : '';
+    if (!move) return `the scan lists no move of ${name}${kind}`;
+    if (notListed([name], file).length) return `the scan lists ${name} while its content waits its day`;
+    if (test.major && !test.routine && !test.mustNot) {
+      const within = majorNotFirst(move);
+      if (within) return within;
+    }
+    if (test.thenMajor && move.major) return majorNextFault(move, []);
+  }
+  const kind = test.lockfile;
+  if (kind && !moves.some((move) => appLockfileMove(move, kind)))
+    return `the scan lists no move of a lockfile package in the app's image that clears ${kind === 'critical' ? 'a' : 'no'} Critical`;
+  const others = notListed([...(test.needs ?? []), ...(test.waits ? [test.waits.move] : [])], file);
+  return others.length ? `the scan lists no move of ${others.join(', ')}` : undefined;
+}
+/**
+ * The one line of a test judged on whichever of its pins the scan lets it judge (catalogue.ts's `EITHER`), from its
+ * pins' lines: NOT RUN when none was judged; the mark of a pin that was judged and did not pass, a failure before any
+ * other; and PASS when every pin that was judged passed, naming those left out.
+ */
+export function eitherVerdict(pins: readonly { id: string; mark: string; why: string }[]): {
+  mark: string;
+  why: string;
+} {
+  const said = (list: typeof pins) => list.map((pin) => `${pin.id}: ${pin.why}`).join('; ');
+  const judged = pins.filter((pin) => pin.mark !== 'NOT RUN');
+  if (!judged.length) return { mark: 'NOT RUN', why: said(pins) };
+  const short = judged.filter((pin) => pin.mark !== 'PASS');
+  const [first] = short;
+  if (first) return { mark: short.find((pin) => pin.mark === 'FAIL')?.mark ?? first.mark, why: said(short) };
+  const left = pins.filter((pin) => pin.mark === 'NOT RUN').map((pin) => pin.id);
+  return { mark: 'PASS', why: `${said(judged)}${left.length ? `; not judged on ${left.join(', ')}` : ''}` };
+}
+
 // ── A move within the major, and then the major ─────────────────────────────────────────────────────────────────────
 
 /**

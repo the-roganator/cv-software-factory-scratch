@@ -8,11 +8,9 @@
  * git now once a watched pull request has merged (a refresh, which hastens its poll and changes nothing in the
  * cluster), `./copies.sh summon-dependabot` for the tests of Dependabot's own pull requests (20, and 22 on the
  * factory copy, between its reset and the worker's start), and, for an app test,
- * telling the line which ticket it takes (W3 turns it to a second ticket and back). Three tests stage what they stand
- * on as the run goes: W3b puts its image's move on the app copy's main before the line takes the ticket
- * (`./copies.sh move-on-main`), 21 lifts the factory copy's exception once the pull request is open
- * (`./copies.sh lift-exception`) and scans the app copy again, and W5 leaves a report through the app's widget and
- * deletes the store's pod. An app run with 24 tells the pin watch that test's move by name (the ConfigMap
+ * telling the line which ticket it takes. Two tests stage what they stand on as the run goes: W3b puts its image's
+ * move on the app copy's main before the line takes the ticket (`./copies.sh move-on-main`), and W5 leaves a report
+ * through the app's widget and deletes the store's pod. An app run with 24 tells the pin watch that test's move by name (the ConfigMap
  * `scratch-pin-watch`), as the worker opens an issue only for a move it was told. Four more are a run's own: a factory
  * run's reset holds the pin watch at no move until the scan the run stands on is in, and then gives it the batch's
  * (`./copies.sh pin-watch`); a run whose pull requests the worker queues has the scratch line running, with new work
@@ -22,12 +20,13 @@
  * pin watch reads it. It never approves, queues, re-runs a check, answers a hold or sets
  * a variable (a test's `variables` are read, and confirm.sh sets them). Everything else is a read.
  *
- *     node harness.ts factory [--only 1,2,N4] [--limit 60] [--lights-out] [--no-reset] [--no-scan] [--no-kick] [--no-forge] [--once]
+ *     node harness.ts factory [--only 1,2,N4] [--limit 75] [--lights-out] [--no-reset] [--no-scan] [--no-kick] [--no-forge] [--once]
  *     node harness.ts only 1,2,N4       the batch.env line for a small run of those tests
  *     node harness.ts variables W1a,W1b the repository variables those tests need, for confirm.sh to set
  *     node harness.ts app X1a --with X1b   an app run, and the app's forgeries beside its test
  *     node harness.ts app W5            the store restarted under a report: no reset, no scan
  *     node harness.ts batch 1,2 | none  the pin watch's moves for those tests, or none, written to batch.env
+ *     node harness.ts listing           whether each copy's scan of its baseline lists what every test stands on
  *     node harness.ts waits <since> stopped|supervised|either   whether every move's pull request opened since waits
  *                                       as that says, by the worker's own word (confirm.sh's batch D asks)
  *     node harness.ts resume <run>      carry on a run that was stopped
@@ -47,15 +46,18 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { APP, FACTORY, TESTS, type Test } from './catalogue.ts';
+import { APP, EITHER, FACTORY, TESTS, type Test, testIds } from './catalogue.ts';
 import {
+  appLockfileMove,
   besideWords,
   branchFits,
   certainFail,
   changesVerdict,
+  clearsAs,
   type DuplicateFacts,
   dependabotMissing,
   duplicateVerdict,
+  eitherVerdict,
   extraSpoils,
   factoryBusy,
   forgeFault,
@@ -98,6 +100,7 @@ import {
   stillListed,
   type TicketFacts,
   ticketFault,
+  unlisted,
   unreadMoves,
   VERDICT_WAIT,
   WAITING_KEY,
@@ -348,12 +351,12 @@ function preflight(state: State, appJustReset: boolean) {
         `${busy}: \`node harness.ts batch none\`, then ./copies.sh reset factory, and wait for root to be Synced and Healthy`,
       );
   }
-  // The pull requests of Dependabot's the run's tests are judged on or beside, open and without a conflict, and, for
-  // one a reset opened again by hand, made since main was last put at the baseline: a reset keeps them, opens one that
-  // is closed again and asks Dependabot to make it again, so here the run opens once more what is closed and waits,
-  // five minutes, or ten for one only a summon brings (22's, which the reset summoned for when none was open).
-  // Without one its test would pass or fail on nothing: it is dropped from the run with no verdict, and the run stops
-  // only when no test is left (decide.ts's `withoutDependabot`). Test 20's is summoned later, by the run.
+  // The pull requests of Dependabot's the run's tests are judged on or beside, open and without a conflict. A reset
+  // keeps one kept as it is and opens it again when it is closed, so here the run opens it once more and waits five
+  // minutes; one only a summon brings (22's, which the reset summoned for when it left none open) is waited for ten.
+  // Nothing is asked of Dependabot for one that is open, so one that conflicts is not waited for. Without one its
+  // test would pass or fail on nothing: it is dropped from the run with no verdict, and the run stops only when no
+  // test is left (decide.ts's `withoutDependabot`). Test 20's is summoned later, by the run.
   const kept = TESTS.filter((t) => inRun(state, t)).flatMap((t) => [
     ...(t.pr.by === 'dependabot' && !t.summons
       ? [{ test: t.id, title: t.pr.title, anyAge: Boolean(t.duplicate) }]
@@ -382,21 +385,25 @@ function preflight(state: State, appJustReset: boolean) {
       );
     };
     let missing = lacking();
-    if (missing.length) {
+    // An open one that conflicts stays so: no wait changes it.
+    const conflicts = () => missing.every((m) => m.why.endsWith('conflicts with main'));
+    if (missing.length && conflicts()) {
+      say(state, `pre-flight: ${missing.map((m) => m.why).join('; ')}: nothing is asked of Dependabot for it`);
+    } else if (missing.length) {
       const minutes = missing.some((m) => m.summoned) ? 10 : 5;
       say(
         state,
-        `pre-flight: ${missing.map((m) => m.why).join('; ')}: opening again what is closed, asking Dependabot to recreate it, and waiting ${minutes} minutes`,
+        `pre-flight: ${missing.map((m) => m.why).join('; ')}: opening again one kept as it is that is closed, and waiting ${minutes} minutes at most for it and for one a summon brings`,
       );
       sh(join(BIN, 'copies.sh'), ['reopen-dependabot', repo === APP ? 'app' : 'factory'], {
         cwd: BIN,
         timeout: 5 * 60_000,
       });
-      for (let i = 0; i < minutes * 3 && missing.length; i++) {
+      for (let i = 0; i < minutes * 3 && missing.length && !conflicts(); i++) {
         sleep(20_000);
         missing = lacking();
       }
-      missing = missing.map((m) => ({ ...m, why: `${m.why}, ${minutes} minutes after Dependabot was asked for it` }));
+      missing = missing.map((m) => ({ ...m, why: `${m.why}, ${minutes} minutes on` }));
     }
     const without = withoutDependabot(
       missing,
@@ -894,7 +901,7 @@ function scanWarnings(repo: string, scan: Scan, names: string[]): string[] {
   } catch {}
   return [...new Set(said)].slice(0, 6);
 }
-function dispatchScan(_state: State, repo: string): Scan {
+function dispatchScan(_state: State | undefined, repo: string): Scan {
   repoOk(repo);
   const since = new Date(Date.now() - 5_000).toISOString();
   sh('gh', ['workflow', 'run', 'vulnerabilities.yml', '-R', repo, '--ref', 'main']);
@@ -1325,12 +1332,7 @@ function notDeployed(test: Test, seen: Seen, pull: Pull, now: Cluster, listed: a
  * Whether a move is the app's lockfile move a test with `lockfile` stands on: one of a package in the image (its pins
  * name the overlay too), which clears a Critical or none. A development dependency's (W4's, named by `moves`) is not.
  */
-const appLockfile = (m: Move, test: Test) =>
-  Boolean(m.lockfile) &&
-  !isRoutine(m) &&
-  m.lane === 'line' &&
-  m.pins.some((p) => p.file !== 'pnpm-lock.yaml') &&
-  (m.clears?.CRITICAL ?? 0) > 0 === (test.lockfile === 'critical');
+const appLockfile = (m: Move, test: Test) => Boolean(test.lockfile) && appLockfileMove(m, test.lockfile ?? 'critical');
 
 /**
  * For a test whose pull request moves a caller's pins of another repository's workflows (`calls`): why the caller's
@@ -1432,15 +1434,7 @@ function observe(state: State, tests: Test[], final = false) {
       // A routine move and a finding's may share a name (a lockfile's names no package): a test stands on one kind.
       const named = all.filter((m) => m.name === name && moveFits(m, test));
       const want = test.clears;
-      const move = want
-        ? named.find((m) =>
-            want.CRITICAL
-              ? (m.clears?.CRITICAL ?? 0) > 0
-              : want.HIGH
-                ? (m.clears?.HIGH ?? 0) > 0
-                : (m.clears?.HIGH ?? 0) === 0 && m.clears?.MEDIUM === want.MEDIUM,
-          )
-        : named[0];
+      const move = want ? named.find((m) => clearsAs(m, want)) : named[0];
       if (move) {
         seen.moves.push(move);
         nth = named.indexOf(move);
@@ -2238,11 +2232,12 @@ function report(state: State) {
   console.log(
     `scan ${state.scan1?.id ?? '-'} at ${t0 ?? '-'} (${state.scan1?.conclusion ?? 'running'}); next scan ${state.scan2?.id ?? 'not run'}\n`,
   );
-  for (const test of TESTS.filter((t) => inRun(state, t))) {
+  const lines = TESTS.filter((t) => inRun(state, t)).map((test) => {
     const { pass, why, mark: other } = verdict(state, test);
-    const mark = other ?? (state.dropped?.[test.id] ? 'NOT RUN ' : pass ? 'PASS    ' : 'FAIL    ');
-    console.log(`${test.id.padEnd(3)} ${mark} ${test.title.padEnd(46)} ${why}`);
-  }
+    const mark = other ?? (state.dropped?.[test.id] ? 'NOT RUN' : pass ? 'PASS' : 'FAIL');
+    return { id: test.id, mark, title: test.title, why };
+  });
+  for (const line of folded(lines)) console.log(printed(line));
   if (state.line?.events.length) console.log(`\nthe work item's events: ${state.line.events.join(' ')}`);
   if (state.line?.dequeued?.length)
     console.log(
@@ -2295,6 +2290,31 @@ function report(state: State) {
     console.log(`\nthe harness restarted the GitHub worker and the dependency sense at ${state.kickedAt}`);
 }
 
+/** A test's line: its mark, why, and, in the summary, the run it is from. */
+interface Line {
+  id: string;
+  mark: string;
+  title: string;
+  why: string;
+  run?: string;
+}
+/** A set of lines with the pins of each test judged on either of them (catalogue.ts's `EITHER`) as that test's one. */
+function folded(lines: Line[]): Line[] {
+  const out: Line[] = [];
+  for (const line of lines) {
+    const test = EITHER.find((each) => each.pins.includes(line.id));
+    if (!test) out.push(line);
+    else if (!out.some((each) => each.id === test.id)) {
+      const pins = lines.filter((each) => test.pins.includes(each.id));
+      const runs = [...new Set(pins.flatMap((pin) => (pin.run ? [pin.run] : [])))].join(', ');
+      out.push({ id: test.id, title: test.title, ...eitherVerdict(pins), ...(runs ? { run: runs } : {}) });
+    }
+  }
+  return out;
+}
+const printed = (line: Line) =>
+  `${line.id.padEnd(3)} ${line.mark.padEnd(8)} ${line.title.padEnd(46)} ${line.why}${line.run ? `  [${line.run}]` : ''}`;
+
 /** Every test, one line each, from the latest finished run that held it. */
 function summary() {
   const runs = readdirSync(RUNS)
@@ -2302,18 +2322,110 @@ function summary() {
     .sort()
     .map(load)
     .filter((r) => r.done && !r.flags.includes('--once'));
-  for (const test of TESTS) {
-    const id = test.id.padEnd(3);
-    const title = test.title.padEnd(46);
+  const lines = TESTS.map((test): Line => {
+    const { id, title } = test;
     const run = runs.filter((r) => inRun(r, test)).at(-1);
-    if (test.notRun) console.log(`${id} NOT RUN  ${title} ${test.notRun}`);
-    else if (!run) console.log(`${id} NOT RUN  ${title} no finished run yet`);
-    else {
-      const { pass, why, mark: other } = verdict(run, test);
-      const mark = other ?? (run.dropped?.[test.id] ? 'NOT RUN ' : pass ? 'PASS    ' : 'FAIL    ');
-      console.log(`${id} ${mark} ${title} ${why}  [${run.id}]`);
-    }
+    if (test.notRun) return { id, mark: 'NOT RUN', title, why: test.notRun };
+    if (!run) return { id, mark: 'NOT RUN', title, why: 'no finished run yet' };
+    const { pass, why, mark: other } = verdict(run, test);
+    const mark = other ?? (run.dropped?.[test.id] ? 'NOT RUN' : pass ? 'PASS' : 'FAIL');
+    return { id, mark, title, why, run: run.id };
+  });
+  for (const line of folded(lines)) console.log(printed(line));
+}
+
+// ── What the baseline's scans list, before a pass ───────────────────────────────────────────────────────────────────
+
+/** A finished scan's `moves.json`, whole; undefined for a run that kept none. */
+function movesFile(repo: string, run: number): { moves?: Move[]; [key: string]: unknown } | undefined {
+  const into = mkdtempSync(join(tmpdir(), 'harness-listing-'));
+  try {
+    sh('gh', ['run', 'download', String(run), '-R', repo, '-n', 'moves', '-D', into]);
+    return JSON.parse(readFileSync(join(into, 'moves.json'), 'utf8'));
+  } catch {
+    return undefined;
+  } finally {
+    rmSync(into, { recursive: true, force: true });
   }
+}
+/**
+ * `harness.ts listing`, between a baseline and a pass's first batch: whether each copy's scan of its baseline lists
+ * what every test of the shared baseline stands on (decide.ts's `unlisted`). A release published upstream since the
+ * baseline was last built can leave a test nothing to judge, which its own run would say hours in: here every such
+ * test is named in the pass's first half hour, and the exit status is 1. It reads the newest finished scan of the
+ * commit each copy's `main` and `baseline` are both at, once none of that commit is running. Where that one lacks
+ * something, it may be the first after a reset, which has no state and lists no content first seen that day: one more
+ * scan is dispatched, which reads the state the first left, and the listing is read from it. A test of `EITHER` is
+ * named only when none of its pins is listed. It writes nothing but that dispatch.
+ */
+function listing() {
+  const copies = [FACTORY, APP].map((repo) => {
+    const main = mainOf(repo);
+    const baseline = sh('gh', ['api', `repos/${repo}/commits/baseline`, '--jq', '.sha']).trim();
+    if (main !== baseline)
+      throw new Error(
+        `${repo}'s main is at ${main.slice(0, 7)}, not its baseline, ${baseline.slice(0, 7)}: the listing is read on a baseline just built, before any batch`,
+      );
+    return { repo, main, tests: TESTS.filter((t) => t.repo === repo && !t.notRun && !t.staged) };
+  });
+  type Copy = (typeof copies)[number];
+  const read = ({ repo, main, tests }: Copy) => {
+    for (let i = 0; ; i++) {
+      const runs: any[] = (
+        api<any>(repo, `actions/workflows/vulnerabilities.yml/runs?branch=main&head_sha=${main}&per_page=20`)
+          .workflow_runs ?? []
+      ).filter((r: any) => r.event !== 'pull_request');
+      if (runs.length && runs.every((r) => r.status === 'completed')) {
+        for (const run of runs) {
+          const file = movesFile(repo, run.id);
+          if (file)
+            return {
+              scan: run.id as number,
+              lacks: tests.flatMap((t) => {
+                const why = unlisted(t, file);
+                return why ? [{ id: t.id, why }] : [];
+              }),
+            };
+        }
+        throw new Error(`no finished scan of ${repo}'s baseline, ${main.slice(0, 7)}, kept a moves.json`);
+      }
+      if (i === 0) console.log(`waiting for the scan of ${repo}'s baseline, ${main.slice(0, 7)}`);
+      if (i > 90) throw new Error(`a scan of ${repo}'s baseline, ${main.slice(0, 7)}, has not finished in 30 minutes`);
+      sleep(20_000);
+    }
+  };
+  let reads = copies.map(read);
+  const again = copies.filter((_, i) => reads[i]?.lacks.length);
+  for (const { repo } of again) {
+    const scan = dispatchScan(undefined, repo);
+    console.log(`scan ${scan.id} of ${repo} dispatched: the one before it may be the first after a reset`);
+  }
+  if (again.length)
+    reads = copies.map((copy, i) => (again.includes(copy) ? read(copy) : (reads[i] as (typeof reads)[number])));
+  const unstaged: string[] = [];
+  copies.forEach(({ repo, main, tests }, i) => {
+    const { scan, lacks } = reads[i] as (typeof reads)[number];
+    const lacking = new Map(lacks.map((each) => [each.id, each.why]));
+    // A test judged on either of its pins has something to judge while one of them is listed, and is named by its
+    // own id when none is.
+    for (const test of EITHER) {
+      const short = test.pins.filter((id) => lacking.has(id));
+      const all = short.length === test.pins.filter((id) => tests.some((t) => t.id === id)).length;
+      if (!short.length) continue;
+      const whys = short.map((id) => `${id}: ${lacking.get(id)}`);
+      for (const id of short) lacking.delete(id);
+      if (all) lacking.set(test.id, whys.join('; '));
+      else for (const why of whys) console.log(`  ${test.id} is judged without ${why}`);
+    }
+    console.log(
+      `${repo}: scan ${scan} of its baseline, ${main.slice(0, 7)}, ${lacking.size ? `lacks what ${lacking.size} of its ${tests.length} tests stand on` : `lists what its ${tests.length} tests stand on`}`,
+    );
+    for (const [id, why] of lacking) console.log(`  ${id}: ${why}`);
+    unstaged.push(...lacking.keys());
+  });
+  if (!unstaged.length) return;
+  console.log(`unstaged, with nothing to judge on this baseline today: ${unstaged.join(', ')}`);
+  process.exit(1);
 }
 
 // ── The campaign ────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -3376,10 +3488,7 @@ function withOf(command: string | undefined, args: string[]): string[] | undefin
 function onlyOf(args: string[]): string[] | undefined {
   const at = args.indexOf('--only');
   if (at < 0) return undefined;
-  const ids = (args[at + 1] ?? '')
-    .split(',')
-    .map((id) => id.trim())
-    .filter(Boolean);
+  const ids = testIds(args[at + 1] ?? '');
   const unknown = ids.filter((id) => !TESTS.some((t) => t.id === id));
   if (!ids.length || unknown.length)
     throw new Error(
@@ -3402,7 +3511,7 @@ if (command === 'factory' || command === 'app') {
     id,
     campaign: command,
     test,
-    limitMin: limit >= 0 ? Number(rest[limit + 1]) : 60,
+    limitMin: limit >= 0 ? Number(rest[limit + 1]) : command === 'factory' ? 75 : 60,
     flags: rest.filter((r) => r.startsWith('--no-') || r === '--once' || r === '--lights-out'),
     only: onlyOf(rest),
     with: withOf(command, rest),
@@ -3415,10 +3524,7 @@ if (command === 'factory' || command === 'app') {
   // `only`'s line written to the state folder's batch.env, in place of any there, and read back as copies.sh reads it.
   // `batch none` writes the line with no name: the pin watch takes no move, as the app's tests need of it.
   const none = rest[0] === 'none';
-  const ids = (none ? '' : (rest[0] ?? ''))
-    .split(',')
-    .map((id) => id.trim())
-    .filter(Boolean);
+  const ids = testIds(none ? '' : (rest[0] ?? ''));
   const tests = TESTS.filter((t) => ids.includes(t.id));
   if (!none && (!ids.length || tests.length !== ids.length))
     throw new Error("batch <tests> | none: comma-separated tests of the catalogue's");
@@ -3503,10 +3609,7 @@ if (command === 'factory' || command === 'app') {
   process.exit(busy ? 1 : 0);
 } else if (command === 'only') {
   // The batch.env line that has the scratch pin watch take just these tests' moves (a forgery copies postgres's).
-  const ids = (rest[0] ?? '')
-    .split(',')
-    .map((id) => id.trim())
-    .filter(Boolean);
+  const ids = testIds(rest[0] ?? '');
   const tests = TESTS.filter((t) => ids.includes(t.id));
   if (!ids.length || tests.length !== ids.length)
     throw new Error("only <tests>: comma-separated tests of the catalogue's");
@@ -3555,11 +3658,13 @@ if (command === 'factory' || command === 'app') {
     save(state);
   }
   report(state);
+} else if (command === 'listing') {
+  listing();
 } else if (command === 'summary') {
   summary();
 } else {
   console.error(
-    'usage: harness.ts factory | app <test> [--limit <min>] [--no-reset] [--no-scan] [--no-kick] [--once] | batch <tests>|none | only <tests> | rests | waits <since> stopped|supervised|either [<said since>] | variables <tests> | resume [<run>] | report [<run>] | reread [<run>] | summary',
+    'usage: harness.ts factory | app <test> [--limit <min>] [--no-reset] [--no-scan] [--no-kick] [--once] | batch <tests>|none | only <tests> | listing | rests | waits <since> stopped|supervised|either [<said since>] | variables <tests> | resume [<run>] | report [<run>] | reread [<run>] | summary',
   );
   process.exit(2);
 }

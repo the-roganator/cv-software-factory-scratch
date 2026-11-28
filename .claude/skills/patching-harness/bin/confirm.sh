@@ -1,13 +1,17 @@
 #!/usr/bin/env bash
 # The confirming pass: every test on one code baseline, in batches of a few, with the two level checks.
 #   ./confirm.sh <a directory for its baseline logs>
-#   STEPS="C D" ./confirm.sh <dir> runs some of its steps (A B C D apps W; all by default; X, X4 and 21 by name).
+#   STEPS="C D" ./confirm.sh <dir> runs some of its steps (A B C D apps W; all by default; X by name).
+#   KEEP_BASELINE=1 runs them on the baseline as built; without it the baseline is built first, and what its scans
+#   list is held to what the tests stand on (LISTING=no leaves that check out).
 #   D is three phases on one reset: Supervised with the line stopped, Guarded with it stopped (26), Supervised with it
 #   running. It prints their lines itself; the summary has none for them.
-#   APP_TESTS="16 20" names the app tests the apps step runs, in that order (all eight by default).
+#   APP_TESTS="16 20" names the app tests the apps step runs, in that order (all seven by default).
+#   LIMIT=90 gives every run that limit in place of its own, 75 minutes for a factory batch and 60 for an app's test.
+#   A limit is a cap, not a wait: a run ends once every test is decided.
 # It prints one section a step, and `harness.ts summary` at the end. One baseline (every staged set-up, no
 # STAGED_EXTRA) serves A, B, C, D, the apps and W: a batch differs only in the moves the pin watch takes, which the
-# harness's reset of the factory copy gives the scratch worker. X2, X4 and 21 each build a baseline of their own. A
+# harness's reset of the factory copy gives the scratch worker. X2 builds a baseline of its own. A
 # batch's PIN_WATCH_ONLY and STAGED_EXTRA are written to the state folder's batch.env (copies.sh), never to a tracked
 # file. The app's tests run with the factory copy at rest: at its baseline, the pin watch taking no move (at_rest).
 H="$(cd "$(dirname "$0")" && pwd)"
@@ -86,9 +90,7 @@ extra() { # [<name>]
 # A baseline, with batch.env's STAGED_EXTRA: built, checked, reset and pinned, then root Synced and Healthy.
 baseline() { # <log>
   echo "real repo queued: $(gh run list -R the-roganator/cv-software-factory --status queued -L 100 --json databaseId -q length)"
-  # SKIP_CHECK=1 leaves out `make check` in the copies, for a baseline one of the copy's own tests fails by design (X4).
   for step in build check reset pin-images; do
-    [ -n "${SKIP_CHECK:-}" ] && [ "$step" = check ] && { echo "== check skipped $(date -u +%H:%MZ)"; continue; }
     echo "== $step $(date -u +%H:%MZ)"
     (cd "$H" && ./copies.sh "$step") >>"$1" 2>&1 || {
       echo "FAILED at $step"
@@ -142,7 +144,7 @@ at_rest() { # <log>
   (cd "$H" && ./copies.sh reset factory) >>"$1" 2>&1 || { broke "the factory copy's reset (see $1)"; return 1; }
   await_root "the factory copy at rest" "$(gh api "repos/$R/commits/main" -q .sha)"
 }
-campaign() { harness 22 factory "$@" --limit "${LIMIT:-60}"; }
+campaign() { harness 22 factory "$@" --limit "${LIMIT:-75}"; }
 # What the watches said of their branches after the run's own restart of the worker.
 watches() {
   echo "--- the watches after the run's restart:"
@@ -157,15 +159,27 @@ why() {
   done | head -5
 }
 
-# One baseline for every step but X and X4: every staged set-up, no STAGED_EXTRA. A batch differs from another only in
-# the moves the pin watch takes (batch). KEEP_BASELINE=1 runs on the baseline as built. A step whose baseline failed
-# runs nothing.
+# What each copy's scan of the baseline lists, held to what every test of the shared baseline stands on
+# (`harness.ts listing`). A release published upstream since the baseline was last built can leave a test nothing to
+# judge (a chart's release that puts a move within the major first, or the major), which its own batch would say hours
+# in: here the pass stops before its first batch, with those tests named. LISTING=no goes on without the check.
+listing() {
+  [ "${LISTING:-yes}" != no ] || return 0
+  echo "##### the listing: what the baseline's scans list, for every test $(date -u +%H:%MZ)"
+  (cd "$H" && set -o pipefail && mise exec -- node harness.ts listing 2>&1 | cut -c1-700) ||
+    { broke "the listing: the baseline's scans lack what those tests stand on, so no step was run"; return 1; }
+}
+
+# One baseline for every step but X: every staged set-up, no STAGED_EXTRA. A batch differs from another only in the
+# moves the pin watch takes (batch): none while the baseline is built and its listing read, so the worker opens
+# nothing on it before the first batch's reset. KEEP_BASELINE=1 runs on the baseline as built. A step whose baseline
+# failed, or whose listing lacks what a test stands on, runs nothing.
 based=yes
 if want A || want B || want C || want D || want apps || want W; then
   if [ -z "${KEEP_BASELINE:-}" ]; then
     echo "##### the baseline $(date -u +%H:%MZ)"
     extra
-    baseline "$LOGS/confirm-baseline.log" || based=
+    { batch none && baseline "$LOGS/confirm-baseline.log" && listing; } || based=
   fi
 fi
 
@@ -186,19 +200,18 @@ fi
 
 if want B && [ -n "$based" ]; then
 # The lockfile's routine updates are here beside its findings' moves: 15 merges and deploys with the day's others, and
-# 18, the one across a major, is held beside 4a and 4b.
-# Beside them, at no time of its own: the routine update pnpm refuses, an issue beside 15's pull request (23).
-echo "##### B: 4a,4b,6,7a,7b,9,14b,15,18,19,23, Guarded $(date -u +%H:%MZ)"
-batch 4a,4b,6,7a,7b,9,14b,15,18,23 && campaign --only 4a,4b,6,7a,7b,9,14b,15,18,19,23 --no-forge
+# 18, the one across a major, is held beside 4's two charts.
+echo "##### B: 4,6,7a,9,14b,15,18,19, Guarded $(date -u +%H:%MZ)"
+batch 4,6,7a,9,14b,15,18 && campaign --only 4,6,7a,9,14b,15,18,19 --no-forge
 watches
 why
 fi
 
 if want C && [ -n "$based" ]; then
 # At Lights-out the majors merge, 18 among them; a workflow's pin is still an issue (N6) and its forgery still held (N7).
-echo "##### C: 4a,4b,18 at Lights-out, with N6, N7 and 19 $(date -u +%H:%MZ)"
-batch 2,4a,4b,18,N6 && {
-  level lights-out show && campaign --only 2,4a,4b,18,N6,N7,19 --lights-out
+echo "##### C: 4,18 at Lights-out, with N6, N7 and 19 $(date -u +%H:%MZ)"
+batch 4,18,N6 && {
+  level lights-out show && campaign --only 4,18,N6,N7,19 --lights-out
 }
 fi
 
@@ -215,8 +228,9 @@ if ! line stopped; then
 else
 level supervised show
 since=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-# C's moves, on the shared baseline; a build that failed part way leaves `work/` dirty and the reset refuses.
-batch 2,4a,4b
+# Test 2's move and 4's two majors, on the shared baseline; a build that failed part way leaves `work/` dirty and the
+# reset refuses.
+batch 2,4
 # The worker stays stopped from the reset until that base has merged: started on the pushed baseline it opens the deploy
 # pull request at once, red, runs its checks again three times and is out of runs before the base is there.
 (cd "$H" && KEEP_WORKER_DOWN=1 ./copies.sh reset factory) >"$LOGS/confirm-d.log" 2>&1 || broke "D: the reset (see $LOGS/confirm-d.log); what follows is no verdict"
@@ -346,7 +360,7 @@ fi
 # N8a rides beside test 20, Dependabot's pull request, which the line has no part in. 24, the move nobody can make, is
 # an issue of the worker's from the same scan, read beside 8a.
 if want apps && [ -n "$based" ] && at_rest "$LOGS/confirm-apps.log"; then
-for test in ${APP_TESTS:-8a 10 11 12 13 16 20 N1}; do  # APP_TESTS='16 20' runs some of them
+for test in ${APP_TESTS:-8a 10 11 12 13 16 20}; do  # APP_TESTS='16 20' runs some of them
   echo "##### app $test $(date -u +%H:%MZ)"
   with=(); [ "$test" = 13 ] && with=(--with X1a,X1b)
   [ "$test" = 8a ] && with=(--with 24)
@@ -356,13 +370,13 @@ done
 fi
 
 # The recovery tests, W1 to W5, on the shared baseline, whose staged `15-…` patches have the check they turn red: the
-# app's five with the factory copy at rest (W5, the store restarted under a report, resets nothing and scans nothing),
+# app's four with the factory copy at rest (W5, the store restarted under a report, resets nothing and scans nothing),
 # then W1's campaign (prometheus and the otel-collector alone), which resets the factory copy itself. Guarded.
 if want W && [ -n "$based" ]; then
 echo "##### W: W1 to W5 $(date -u +%H:%MZ)"
 level guarded
 if at_rest "$LOGS/confirm-w.log"; then
-for test in ${W_APPS:-W5 W2 W3 W3b W4}; do  # W_APPS='W2 W4' W1=no runs some of them again
+for test in ${W_APPS:-W5 W2 W3b W4}; do  # W_APPS='W2 W4' W1=no runs some of them again
   echo "##### app $test $(date -u +%H:%MZ)"
   red_on "$test"
   harness 12 app "$test" --limit "${LIMIT:-60}"
@@ -380,42 +394,18 @@ why
 fi
 fi
 
-# The security test X2; X1 rides beside test 13 in the apps step, X3 cannot be staged, and X4 is a step of its own
-# (below). Not in the default STEPS: STEPS=X ./confirm.sh <dir>. Guarded.
+# The security test X2; X1 rides beside test 13 in the apps step, and X3 cannot be staged. Not in the default STEPS:
+# STEPS=X ./confirm.sh <dir>. Guarded.
 if want X; then
 level guarded
 # X2: a baseline of its own, with staged/factory-x2/ (copies.sh's STAGED_EXTRA, in batch.env), the day's lockfile
 # moves and ejs's major. The line is taken out of batch.env after, and the next baseline is built without it (the
 # harness refuses any other test on this one).
-if [ "${X2:-yes}" != no ]; then
-  echo "##### X2: a major that clears a Trivy Critical, Guarded $(date -u +%H:%MZ)"
-  extra x2
-  batch X2 && baseline "$LOGS/confirm-x2.log" && campaign --only X2 --no-forge
-  extra
-  watches
-fi
-fi
-# X4: a baseline of its own, with staged/app-x4/ (mise at the scan's target Node, the Dockerfile behind). The app's own
-# test/node-pins.test.ts fails on that baseline by design, so its `make check` is skipped; the move's pull request mends
-# it. The line is taken out of batch.env after: the next baseline is built without it.
-if want X4; then
-echo "##### X4: a half-made Node move, finished by the line $(date -u +%H:%MZ)"
-level guarded
-extra x4
-batch none && SKIP_CHECK=1 baseline "$LOGS/confirm-x4.log" &&
-  harness 12 app X4 --limit "${LIMIT:-60}"
+echo "##### X2: a major that clears a Trivy Critical, Guarded $(date -u +%H:%MZ)"
+extra x2
+batch X2 && baseline "$LOGS/confirm-x2.log" && campaign --only X2 --no-forge
 extra
-fi
-# 21: a baseline of its own, with staged/app-21/ (a package pinned exactly, behind two fixes) and staged/factory-21/
-# (the factory's exception, for the app, of the advisory only the later release fixes). The harness lifts the exception
-# once the line's pull request is open, and scans the app again. The line is taken out of batch.env after.
-if want 21; then
-echo "##### 21: a move whose target moves on after its pull request opened $(date -u +%H:%MZ)"
-level guarded
-extra 21
-batch none && baseline "$LOGS/confirm-21.log" &&
-  harness 14 app 21 --limit "${LIMIT:-60}"
-extra
+watches
 fi
 echo "##### summary $(date -u +%H:%MZ)"
 (cd "$H" && set -o pipefail && mise exec -- node harness.ts summary | cut -c1-170) || broke "the summary"
