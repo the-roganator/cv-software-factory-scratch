@@ -53,7 +53,7 @@ import {
 } from '../apps/factory/src/vulnerabilities/state.ts';
 import { zipEntry } from '../apps/factory/src/vulnerabilities/zip.ts';
 import type { Move as PinStepMove } from '../apps/runner/src/pins.ts';
-import { SCAN_MAX_AGE_HOURS } from '../policy/vulnerabilities.ts';
+import { SCAN_CLOCK_SKEW_MS, SCAN_MAX_AGE_HOURS } from '../policy/vulnerabilities.ts';
 import { askedKey, type Derivation, deriveOn, gitBytesIn, gitIn } from './derive.ts';
 import { type Changed, exactText, hunkLines, proveMove, rawEntries, type ScanMove } from './move.ts';
 import { type GitHub, type MoveAnswer, main, type PullRequest, type Run } from './review-gate.ts';
@@ -82,9 +82,6 @@ export interface ScanDay {
   waiting?: MovesFile['waiting'] | undefined;
 }
 
-/** How far ahead of the gate's clock a scan's time may be and still be read as now: two clocks' difference. */
-const CLOCK_SKEW_MS = 5 * 60_000;
-
 /**
  * Why a scan is no judgement by its time, as a wait says it, or nothing while it is one: judged longer ago than
  * `SCAN_MAX_AGE_HOURS`, at no time the gate can read, or at a time still to come. `moves.json` says when it was
@@ -92,7 +89,7 @@ const CLOCK_SKEW_MS = 5 * 60_000;
  */
 export function tooOld(judged: number, now = Date.now()): string | undefined {
   const next = "the next scan's moves settle it";
-  if (judged - now > CLOCK_SKEW_MS)
+  if (judged - now > SCAN_CLOCK_SKEW_MS)
     return `the scan of main it would pass by says it was judged at a time still to come, which is no judgement: ${next}`;
   const hours = (now - judged) / 3_600_000;
   if (hours <= SCAN_MAX_AGE_HOURS) return undefined;

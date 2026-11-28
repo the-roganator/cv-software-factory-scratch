@@ -6,7 +6,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { PayloadOf } from '@software-factory/events';
 import { describe, expect, it } from 'vitest';
-import { SCAN_MAX_AGE_HOURS } from '../../../../policy/vulnerabilities.ts';
+import { SCAN_CLOCK_SKEW_MS, SCAN_MAX_AGE_HOURS } from '../../../../policy/vulnerabilities.ts';
 import {
   addDay,
   addMerge,
@@ -335,6 +335,72 @@ describe('a move across days', () => {
   });
 });
 
+describe('a move that goes and comes back', () => {
+  const FACTORY = 'the-roganator/cv-software-factory';
+  /** The day with the factory's repository as given, and the app's as it is. */
+  const factory = (change: (r: Day['repositories'][number]) => object, day: Day = DAY): Day => ({
+    ...day,
+    repositories: day.repositories.map((r) => (r.repository === FACTORY ? { ...r, ...change(r) } : r)),
+  });
+  /** The day without k3s, the cluster's own move, which has 30 High. */
+  const GONE = factory((r) => ({ moves: r.moves.filter((m) => m.name !== 'k3s') }));
+  /** k3s with its next fix. */
+  const BACK = factory((r) => ({
+    moves: r.moves.map((m) => (m.name === 'k3s' ? { ...m, deadline: '2027-04-16T17:49:00Z' } : m)),
+  }));
+  /** What each day, a day apart, leaves counted of the kinds no clock counts. */
+  const told = (days: Day[]) => {
+    const tally = emptyPatchingTally();
+    return days.map((day, i) => {
+      addDay(tally, day, READ + i * 24 * H);
+      return { fix: tally.kinds['move-fix'], waits: tally.kinds['move-waits'], stopped: tally.kinds['move-stopped'] };
+    });
+  };
+
+  it('tells of a pin’s next fix as of its first: found, and waiting on him', () => {
+    const [first, gone, back] = told([DAY, GONE, BACK]);
+    expect(gone).toEqual(first);
+    expect(back).toEqual({ ...first, fix: 3 + 1, waits: 4 + 1 });
+  });
+
+  it('tells of its next deadline too, though the one before came due and passed', () => {
+    const tally = emptyPatchingTally();
+    addDay(tally, DAY, READ);
+    // The sidecar's and k3s's pass, the app's base's is due within the day; then k3s merges.
+    addDay(tally, GONE, at('2026-11-17T06:00:00Z'));
+    expect(tally.kinds['move-due-soon']).toBe(2);
+    expect(tally.kinds['move-overdue']).toBe(2);
+    addDay(tally, BACK, at('2027-04-01T06:00:00Z'));
+    judgeDeadlines(tally, at('2027-04-16T17:50:00Z'));
+    // The app's base's and the lockfile's passed meanwhile, and k3s's second comes due and passes.
+    expect(tally.kinds['move-due-soon']).toBe(2 + 1 + 1);
+    expect(tally.kinds['move-overdue']).toBe(2 + 2 + 1);
+  });
+
+  it('is the same move through a day whose run judged nothing, or named a time still to come', () => {
+    const failed = factory(() => ({ judged: null, totals: null, moves: [] }));
+    const ahead = factory(() => ({ judged: '2027-11-11T04:57:00Z' }), GONE);
+    const days = told([DAY, failed, DAY, ahead, DAY]);
+    for (const day of days) expect(day).toEqual(days[0]);
+  });
+
+  it('tells again of a pin the cluster does not run yet, once a day that compared the cluster had it gone', () => {
+    const running = DAY.rows.filter((row) => row.row !== 'not-running');
+    const uncompared: Day = { ...DAY, compared: false, rows: [] };
+    const waits = (days: Day[]) => told(days).map((day) => day.waits);
+    expect(waits([DAY, uncompared, DAY])).toEqual([4, 4, 4]);
+    expect(waits([DAY, { ...DAY, rows: running }, DAY])).toEqual([4, 4, 5]);
+    // A row of something running stands, as its digest is in its key: a Job's pod comes and goes.
+    expect(waits([DAY, { ...DAY, rows: [] }, DAY])).toEqual([4, 4, 5]);
+  });
+
+  it('counts the same after a restart that reads the days again', () => {
+    const days = [DAY, GONE, BACK, GONE, DAY];
+    expect(told(days)).toEqual(told(days));
+    expect(told(days).at(-1)).toMatchObject({ fix: 5, waits: 6 });
+  });
+});
+
 describe('a scan that stops', () => {
   const FACTORY = 'the-roganator/cv-software-factory';
   const APP = 'the-roganator/cv-worlds-worst-website';
@@ -394,6 +460,36 @@ describe('a scan that stops', () => {
     // Its first scan to judge ends it, though it judged before that first day.
     addDay(tally, DAY, READ + 40 * H);
     expect(stale(tally, JUDGED[FACTORY] + 36 * H)).toEqual({ [FACTORY]: false, [APP]: false });
+  });
+
+  it('takes a scan judged at a time still to come for no judgement: the one before it grows old, and a real one ends it', () => {
+    const tally = emptyPatchingTally();
+    addDay(tally, DAY, READ);
+    addDay(tally, scanned(DAY, { [APP]: '2027-11-11T05:01:00Z' }), READ + 24 * H);
+    expect(stale(tally, JUDGED[APP] + 36 * H)).toEqual({ [FACTORY]: true, [APP]: false });
+    expect(stale(tally, JUDGED[APP] + 36 * H + 1)).toEqual({ [FACTORY]: true, [APP]: true });
+    // The next real scan is older than the time the other named, and still ends it.
+    addDay(tally, scanned(DAY, { [APP]: '2026-11-13T05:01:00Z' }), READ + 48 * H);
+    expect(stale(tally, READ + 48 * H)).toEqual({ [FACTORY]: true, [APP]: false });
+  });
+
+  it('measures a repository whose first scan names a time still to come from that day, as one never judged', () => {
+    const tally = emptyPatchingTally();
+    addDay(tally, scanned(DAY, { [APP]: '2027-11-11T05:01:00Z' }), READ);
+    addDay(tally, scanned(DAY, { [APP]: '2027-11-12T05:01:00Z' }), READ + 24 * H);
+    expect(stale(tally, READ + 36 * H)[APP]).toBe(false);
+    expect(stale(tally, READ + 36 * H + 1)[APP]).toBe(true);
+  });
+
+  it('reads a scan judged within two clocks’ difference after its day arrived as judged then', () => {
+    const tally = emptyPatchingTally();
+    const within = READ + SCAN_CLOCK_SKEW_MS;
+    addDay(tally, scanned(DAY, { [APP]: new Date(within).toISOString() }), READ);
+    expect(stale(tally, within + 36 * H)[APP]).toBe(false);
+    expect(stale(tally, within + 36 * H + 1)[APP]).toBe(true);
+    // A second later is past it: the scan before stands.
+    addDay(tally, scanned(DAY, { [APP]: new Date(within + 24 * H + 1000).toISOString() }), READ + 24 * H);
+    expect(stale(tally, within + 36 * H + 1)[APP]).toBe(true);
   });
 
   it('says how long it has been stale, from its age or from when the line began reading, if later', () => {
@@ -568,6 +664,21 @@ describe('a move tried and stopped', () => {
     });
     expect(kinds(again)).toEqual(kinds(live));
     expect(live.kinds['move-stopped']).toBe(STOPPED.length);
+  });
+
+  it('counts a pin no release is better than again, once a judged day had it gone and a later one has it back', () => {
+    const tally = emptyPatchingTally();
+    const days = [
+      withPulls([], [wait('redis', {})]),
+      withPulls([], [wait('redis', {})]),
+      withPulls([]),
+      withPulls([], [wait('redis', { deadline: '2027-04-25T04:57:00Z' })]),
+    ];
+    const counts = days.map((day, i) => {
+      addDay(tally, day, READ + i * 24 * H);
+      return tally.kinds['move-stopped'];
+    });
+    expect(counts).toEqual([1, 1, 1, 2]);
   });
 
   it('says nothing of a routine update tried and stopped, as of a routine wait: nothing is due', () => {

@@ -205,3 +205,10 @@ export function dismissal(entry: Exception) {
  * the scan has stopped (`PatchingScanStale`).
  */
 export const SCAN_MAX_AGE_HOURS = 36;
+
+/**
+ * How far ahead of its reader's clock a scan's `judged` may be and still be read as now: two clocks' difference. One
+ * further ahead would never grow old, so it is no judgement, to the review gate (scripts/moves.ts) and to the alert
+ * that the scan has stopped (`patching-alerts.ts`).
+ */
+export const SCAN_CLOCK_SKEW_MS = 5 * 60_000;
