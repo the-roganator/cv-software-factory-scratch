@@ -18,7 +18,10 @@
  *   factory's own: each pin before and after, what each move clears in counts and its deadline, or that it is a
  *   routine update, with no advisory behind it and no deadline, and how it merges. As the
  *   day's moves at its files change (a target moves on, a move joins or goes), its branch moves, in one forced update,
- *   and its title and description with it; one that conflicts with `main` is committed again on `main`'s head. A pull
+ *   and its title and description with it; one that conflicts with `main` is committed again on `main`'s head, and so
+ *   is one whose head is out of its check runs (the pin queue's `checks-spent`, `deploy-queue.ts`), once `main` has
+ *   moved since that head and the head is a day old (`SPENT_REMAKE_MS`): what failed there may have been `main`'s to
+ *   mend, and the new head has its own runs. Every other head that holds the day's edits is left as it is. A pull
  *   request Martin closed without merging it is not opened again for the same edits; one anyone else closed is. A
  *   branch that a pull request of someone else's stands on is not written, and an open GitHub refuses costs that
  *   branch alone: each is refused for the branch, with an issue for each of its moves, and the pass goes on to the
@@ -143,6 +146,12 @@ const ISSUE_LANES = new Set(['issue', 'none']);
 
 /** How often a pass reads the day: the scan runs daily, and a pass is idempotent. */
 export const PASS_MS = 60 * 60_000;
+/**
+ * How old a head out of its check runs is before the watch writes it again on `main`'s head, `main` having moved since
+ * it was written: a day. Each run the queue gives a head is a new commit, so the day starts at the last of them, and a
+ * move that cannot pass costs its runs and one comment a day while `main` moves, and nothing while it stands.
+ */
+export const SPENT_REMAKE_MS = 24 * 60 * 60_000;
 /** What the watch logs once a scan, with the scan's run, when a pass has read its moves and what it takes of them. */
 export const READ_THE_SCAN = 'the pin watch takes the moves it was told to (PIN_WATCH_ONLY), and leaves the rest alone';
 
@@ -227,6 +236,11 @@ const PULLS = z.array(
 );
 const MERGE_BASE = z.object({ merge_base_commit: z.object({ sha: z.string() }) });
 const PULL = z.object({ mergeable: z.boolean().nullable() });
+/** A commit as git's data API gives it: what it was made on, and when. */
+const WRITTEN = z.object({
+  parents: z.array(z.object({ sha: z.string() })),
+  committer: z.object({ date: z.string() }),
+});
 const BRANCH = z.object({ object: z.object({ sha: z.string() }) });
 /** A file's bytes as text, every byte kept, as the guard reads a file from git (`treeSource`). */
 const TEXT = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
@@ -1090,6 +1104,21 @@ export function pinWatch(deps: PinWatchDependencies, repo: string): Watch {
   };
 
   /**
+   * Whether a head of the watch's that holds the day's edits is out of its check runs and due to be written again: the
+   * pin queue last said so of this very head (`checks-spent`: nothing else it says of a head, a hold of Martin's among
+   * them, is written over), it was made on another commit than `main`'s head (`main`), and `SPENT_REMAKE_MS` ago or more. A
+   * head the queue has said nothing of since the worker started, or a commit whose parent or time cannot be read, is
+   * left as it is.
+   */
+  const spent = async (number: number, at: string | undefined, main: string): Promise<boolean> => {
+    if (at === undefined || deps.pulls?.said(repo, number, at)?.hold !== 'checks-spent') return false;
+    const { body } = await github.poll(repo, `/repos/${repo}/git/commits/${at}`, WRITTEN);
+    const [parent] = body.parents;
+    if (body.parents.length !== 1 || parent?.sha === main) return false;
+    return now() - Date.parse(body.committer.date) >= SPENT_REMAKE_MS;
+  };
+
+  /**
    * Who closed an issue or pull request: Martin (`MARTIN`, by his id), whose close alone holds a target back; the App
    * itself; or anyone else, whose close holds nothing.
    */
@@ -1678,7 +1707,7 @@ export function pinWatch(deps: PinWatchDependencies, repo: string): Watch {
       const body = written ? madeBody(carried, written, day) : pullBody(carried, day);
       const fingerprint = `${title}\n${hash}`;
       if (!existing && actions.dryRun && recorded.get(branch) === fingerprint) continue;
-      /** Whether its branch already holds these edits: only its words, and a conflict with main, are then left. */
+      /** Whether its branch already holds these edits: only its words, a conflict with main, and a head out of its check runs, are then left. */
       const holds = EDITS_MARK.exec(existing?.body ?? '')?.[1] === hash;
       /** The commit the watch writes for these moves: on main's head, through the guard. */
       const asked: PinCommit = {
@@ -1719,7 +1748,13 @@ export function pinWatch(deps: PinWatchDependencies, repo: string): Watch {
           if (existing.title !== title || (existing.body ?? '') !== body)
             await actions.updatePullRequest(repo, existing.number, { title, body });
           const { body: pull } = await github.poll(repo, `/repos/${repo}/pulls/${existing.number}`, PULL);
-          if (pull.mergeable !== false) continue;
+          if (pull.mergeable !== false) {
+            if (!(await spent(existing.number, at, head))) continue;
+            log.info(
+              { repo, number: existing.number, branch, head: at },
+              'the pin pull request’s head is out of its check runs, a day old, and main has moved: the watch writes it again on main’s head',
+            );
+          }
         }
       } else if (await closedByMartin(branch, hash)) {
         say(

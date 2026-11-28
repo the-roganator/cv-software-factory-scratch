@@ -39,7 +39,7 @@ The GitHub worker holds the one key that can add a pull request to the merge que
 
 It also closes one kind of pull request: Dependabot's, once `main` already has every line it adds. It closes it with one comment, naming the pull request or commit that brought the lines in where git's blame gives it. A pull request it closed and someone opened again is left alone.
 
-Nothing else is queued this way: not a pull request the gate held, even once the owner approved it, nor a release, an improvement or another deploy profile's pin. A queue failure or a failed check that may be a flake is retried, three times in all, and then the pull request is left to the owner with a comment.
+Nothing else is queued this way: not a pull request the gate held, even once the owner approved it, nor a release, an improvement or another deploy profile's pin. A queue failure or a failed check that may be a flake is retried, three times in all, and then the pull request is left to the owner with a comment. A pin pull request left so by its own head's checks is written again on `main`'s head once `main` has moved and that head is a day old.
 
 ### The factory cannot change what judges it
 
@@ -82,7 +82,7 @@ Each is accepted knowingly, with what bounds it.
 5. **Cluster-wide controllers move as routine updates.** Kyverno, Argo CD and Argo Rollouts hold rights across the whole cluster and run outside the namespaces admission control guards. Nor is admission control a brake on any third-party image's move: the digest it admits follows the pin. What bounds it: the waits, and the required checks, including the cluster made from the change. Nothing else does.
 6. **The packages the worker and the gate's job import wait three days like any other.** What bounds it: the job that holds the review App's key imports no package; the job that does holds only the state key, and removes it before any package loads; the worker, which holds the App's key, has the wait and pnpm's guards and nothing more.
 7. **The factory has no canary and no automatic rollback.** A move that passes its checks is live. What bounds it: the required checks, and the owner's revert, which the worker honours. The app has both a canary and a rollback.
-8. **A dequeue holds one head.** When `main` moves, the pin watch writes a new head, which is queued. What bounds it: asking for changes, or closing, is the lasting stop. The worker's comment on the dequeue says the head is the owner's to add again or close, and that a new head starts again.
+8. **A dequeue holds one head.** When the pin watch next writes the pull request, as the day's moves there change or it conflicts with `main`, the new head is queued. What bounds it: asking for changes, or closing, is the lasting stop. The worker's comment on the dequeue says the head is the owner's to add again or close, and that a new head starts again.
 9. **A verdict pending on an old scan waits for something to run the gate again.** The worker's pull requests get it when the next scan rewrites them; the line's does not, and the line holds it for the owner as having no verdict. What bounds it: the hold says what the gate waited for.
 
 ## Consequences

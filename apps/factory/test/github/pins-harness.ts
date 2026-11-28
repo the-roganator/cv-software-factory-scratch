@@ -69,6 +69,9 @@ export class FakeRepo {
   readonly made = new Map<string, { parents: string[]; author: string; committer: string }>();
   /** Each commit's message, where it was given one: the App's, as `createCommitOnBranch` was asked for it. */
   readonly messages = new Map<string, string>();
+  /** The time each commit made from now on is given as its committer's, which a test moves on; and each commit's. */
+  at = '2026-11-12T07:00:00Z';
+  readonly dates = new Map<string, string>();
   #next = 100;
   #commits = 0;
 
@@ -83,6 +86,7 @@ export class FakeRepo {
     const sha = sha1(`commit ${++this.#commits}`);
     this.commits.set(sha, tree);
     this.made.set(sha, { parents, author, committer });
+    this.dates.set(sha, this.at);
     return sha;
   }
 
@@ -299,7 +303,15 @@ export class FakeRepo {
         answer: ({ path }) => {
           const sha = path.split('/').at(-1) ?? '';
           if (!this.made.has(sha)) return notFound;
-          return { body: { sha, message: this.messages.get(sha) ?? '', tree: { sha: this.treeOf(sha) } } };
+          return {
+            body: {
+              sha,
+              message: this.messages.get(sha) ?? '',
+              tree: { sha: this.treeOf(sha) },
+              parents: (this.made.get(sha)?.parents ?? []).map((parent) => ({ sha: parent })),
+              committer: { date: this.dates.get(sha) },
+            },
+          };
         },
       },
       {
